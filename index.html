@@ -433,8 +433,8 @@
         <input id="roomId" class="lobby-input" placeholder="Room Code (e.g. 1234)" maxlength="12" spellcheck="false" autocomplete="off" />
       </div>
       <div class="lobby-buttons">
-        <button class="lobby-btn btn-join" id="lobbyJoinBtn">Join Party</button>
-        <button class="lobby-btn btn-host" id="goLiveBtn"><span class="material-symbols-outlined" style="font-size:20px;">podcasts</span> Host Session</button>
+        <button class="lobby-btn btn-join" onclick="joinStream()">Join Party</button>
+        <button class="lobby-btn btn-host" id="goLiveBtn" onclick="toggleStream()"><span class="material-symbols-outlined" style="font-size:20px;">podcasts</span> Host Session</button>
       </div>
     </div>
   </div>
