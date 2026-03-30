@@ -67,14 +67,9 @@ const RES_MAP = {
    SCREEN SHARE + MIC INIT (Host Only)
    ══════════════════════════════════════════════ */
 async function initMedia() {
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-    alert("Apple blocks Screen Sharing inside 'Add to Home Screen' (PWA) apps. To Host a session from an iPhone/iPad, please open this website directly inside the Safari Browser instead.");
-    return null;
-  }
-
   const { width, height } = RES_MAP[qualitySettings.screen.res];
   const fps = qualitySettings.screen.fps;
-
+  
   let screenStream;
   try {
     screenStream = await navigator.mediaDevices.getDisplayMedia({
@@ -88,7 +83,7 @@ async function initMedia() {
   }
 
   localStream = new MediaStream();
-
+  
   screenStream.getVideoTracks().forEach(t => {
     t.onended = () => { if (isHost) leaveCall(); };
     localStream.addTrack(t);
@@ -98,16 +93,8 @@ async function initMedia() {
   // Display Host's own screen locally
   remoteVideo.srcObject = localStream;
   remoteVideo.muted = true; // prevent echoing host's own audio
-  remoteVideo.play().catch(() => { });
-
-  if ('mediaSession' in navigator) {
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: 'Host Session - Watch Party',
-      artist: 'You are sharing',
-      album: 'Live Screen Share'
-    });
-  }
-
+  remoteVideo.play().catch(() => {});
+  
   updateOverlayTags();
   noSignal.classList.add("hidden");
   isScreenSharing = true;
@@ -158,16 +145,6 @@ function createViewerPC() {
     });
     noSignal.classList.add("hidden");
     remoteVideo.play().catch(() => { });
-
-    if ('mediaSession' in navigator) {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: 'Watch Party - Live',
-        artist: 'Host stream',
-        album: 'Live Party'
-      });
-      navigator.mediaSession.setActionHandler('play', () => remoteVideo.play());
-      navigator.mediaSession.setActionHandler('pause', () => remoteVideo.pause());
-    }
   };
 
   pc.oniceconnectionstatechange = () => {
@@ -203,16 +180,9 @@ window.startStream = async () => {
   roomId = document.getElementById("roomId").value.trim();
   if (!roomId) return alert("Enter a Room Code first");
 
-  document.getElementById("lobbyScreen").style.display = "none";
-  document.getElementById("roomCodeDisplay").textContent = roomId;
-
   isHost = true;
   await initMedia();
-  if (!localStream) {
-    document.getElementById("lobbyScreen").style.display = "flex";
-    document.getElementById("roomCodeDisplay").textContent = "—";
-    return;
-  }
+  if (!localStream) return;
 
   await new Promise(r => setTimeout(r, 500));
 
@@ -249,122 +219,9 @@ window.startStream = async () => {
   goLiveBtn.classList.add("end");
   liveBadge.classList.add("active");
   window.startChatListener();
-  window.startRequestsListener();
   startStats(); startTimer();
   updateConnStatus("connected");
   showToast("🔴 Live! Waiting for viewers...");
-};
-
-/* ══════════════════════════════════════════════
-   HOST CONTROLS: Waitroom & Participants
-   ══════════════════════════════════════════════ */
-let pendingRequests = [];
-let participantsMap = {};
-
-window.startRequestsListener = () => {
-  const reqToast = document.getElementById("requestToast");
-  const reqName = document.getElementById("requestName");
-  const btnAdmit = document.getElementById("reqAdmitBtn");
-  const btnDeny = document.getElementById("reqDenyBtn");
-
-  if (!reqToast) return;
-
-  onChildAdded(ref(db, `rooms/${roomId}/requests`), (snap) => {
-    const reqData = snap.val();
-    const vId = snap.key;
-    if (reqData && reqData.status === 'pending') {
-      pendingRequests.push({ id: vId, name: reqData.name });
-      showNextRequest();
-    }
-  });
-
-  function showNextRequest() {
-    if (pendingRequests.length === 0) {
-      reqToast.style.display = "none";
-      return;
-    }
-    if (reqToast.style.display === "flex") return;
-
-    const req = pendingRequests[0];
-    reqName.textContent = req.name;
-    reqToast.style.display = "flex";
-
-    btnAdmit.onclick = async () => {
-      await set(ref(db, `rooms/${roomId}/requests/${req.id}/status`), 'approved');
-      addParticipantToUI(req.id, req.name);
-      pendingRequests.shift();
-      reqToast.style.display = "none";
-      setTimeout(showNextRequest, 500);
-    };
-
-    btnDeny.onclick = async () => {
-      await set(ref(db, `rooms/${roomId}/requests/${req.id}/status`), 'denied');
-      pendingRequests.shift();
-      reqToast.style.display = "none";
-      setTimeout(showNextRequest, 500);
-    };
-  }
-};
-
-function addParticipantToUI(id, name) {
-  participantsMap[id] = name;
-  renderParticipants();
-}
-
-function removeParticipantFromUI(id) {
-  delete participantsMap[id];
-  renderParticipants();
-}
-
-function renderParticipants() {
-  const list = document.getElementById("peopleList");
-  const count = document.getElementById("participantCount");
-  if (!list || !count) return;
-
-  const keys = Object.keys(participantsMap);
-  count.textContent = keys.length;
-
-  if (keys.length === 0) {
-    list.innerHTML = `<div style="color:var(--text-muted); text-align:center; padding-top:20px;">No viewers joined yet</div>`;
-    return;
-  }
-
-  list.innerHTML = "";
-  keys.forEach(k => {
-    const div = document.createElement("div");
-    div.style.display = "flex";
-    div.style.justifyContent = "space-between";
-    div.style.alignItems = "center";
-
-    const nameSpan = document.createElement("span");
-    nameSpan.textContent = participantsMap[k];
-    div.appendChild(nameSpan);
-
-    if (isHost) {
-      const kickBtn = document.createElement("button");
-      kickBtn.textContent = "Kick";
-      kickBtn.className = "btn-flat";
-      kickBtn.style.padding = "4px 8px";
-      kickBtn.style.fontSize = "12px";
-      kickBtn.style.color = "var(--red)";
-      kickBtn.style.borderColor = "var(--red)";
-      kickBtn.style.backgroundColor = "transparent";
-      kickBtn.onclick = () => window.kickViewer(k);
-      div.appendChild(kickBtn);
-    }
-
-    list.appendChild(div);
-  });
-}
-
-window.kickViewer = async (viewerId) => {
-  await set(ref(db, `rooms/${roomId}/requests/${viewerId}/status`), 'kicked');
-  if (pcMap && pcMap[viewerId]) {
-    pcMap[viewerId].close();
-    delete pcMap[viewerId];
-  }
-  removeParticipantFromUI(viewerId);
-  await remove(ref(db, `rooms/${roomId}/viewers/${viewerId}`));
 };
 
 /* ══════════════════════════════════════════════
@@ -377,53 +234,8 @@ window.joinStream = async () => {
   const roomSnap = await get(ref(db, `rooms/${roomId}`));
   if (!roomSnap.exists()) return alert("Room not found. Make sure host has started.");
 
-  document.getElementById("lobbyScreen").style.display = "none";
-  document.getElementById("roomCodeDisplay").textContent = roomId;
-
-  const nameInput = document.getElementById("userName");
-  const viewerName = nameInput && nameInput.value.trim() ? nameInput.value.trim() : "Viewer_" + Math.floor(Math.random() * 1000);
-
   isHost = false;
   myViewerId = "v_" + Math.random().toString(36).substr(2, 9);
-
-  showToast("🕒 Request sent. Waiting for host approval...");
-
-  // Create waitroom request
-  await set(ref(db, `rooms/${roomId}/requests/${myViewerId}`), { name: viewerName, status: 'pending', requestedAt: Date.now() });
-
-  const statusRef = ref(db, `rooms/${roomId}/requests/${myViewerId}/status`);
-  const statusListener = onValue(statusRef, async (snap) => {
-    const val = snap.val();
-    if (val === 'approved') {
-      off(statusRef, "value", statusListener);
-      showToast("✅ Approved! Connecting...");
-      await setupViewerConnection();
-    } else if (val === 'denied') {
-      off(statusRef, "value", statusListener);
-      showToast("❌ Joined denied.");
-      myViewerId = null;
-    } else if (val === 'kicked') {
-      off(statusRef, "value", statusListener);
-      showToast("🛑 Kicked from the party.");
-      window.leaveCall();
-    }
-  });
-
-  const btnMic = document.getElementById("btnMic");
-  const btnCam = document.getElementById("btnCam");
-  const btnScreen = document.getElementById("btnScreen");
-  const btnBgBlur = document.getElementById("btnBgBlur");
-  const localVideoPIP = document.querySelector(".pip-container");
-
-  if (btnMic) btnMic.style.display = "none";
-  if (btnCam) btnCam.style.display = "none";
-  if (btnScreen) btnScreen.style.display = "none";
-  if (btnBgBlur) btnBgBlur.style.display = "none";
-  if (localVideoPIP) localVideoPIP.style.display = "none";
-  document.getElementById("goLiveBtn").style.display = "none";
-};
-
-async function setupViewerConnection() {
   localStream = new MediaStream();
   remoteStream = new MediaStream();
   if (remoteVideo) { remoteVideo.srcObject = remoteStream; remoteVideo.muted = false; }
@@ -462,7 +274,21 @@ async function setupViewerConnection() {
   updateConnStatus("connecting");
   noSignal.classList.add("hidden");
   window.startChatListener();
-}
+  
+  const btnMic = document.getElementById("btnMic");
+  const btnCam = document.getElementById("btnCam");
+  const btnScreen = document.getElementById("btnScreen");
+  const btnBgBlur = document.getElementById("btnBgBlur");
+  const localVideoPIP = document.querySelector(".pip-container");
+  
+  if(btnMic) btnMic.style.display = "none";
+  if(btnCam) btnCam.style.display = "none";
+  if(btnScreen) btnScreen.style.display = "none";
+  if(btnBgBlur) btnBgBlur.style.display = "none";
+  if(localVideoPIP) localVideoPIP.style.display = "none";
+  
+  document.getElementById("goLiveBtn").style.display = "none";
+};
 
 /* ══════════════════════════════════════════════
    TOGGLE LIVE
@@ -625,14 +451,14 @@ window.startScreenShare = async () => {
    ══════════════════════════════════════════════ */
 window.leaveCall = async () => {
   stopStats(); stopTimer();
-
+  
   if (pcMap) {
     Object.values(pcMap).forEach(p => p.close());
     pcMap = {};
   }
-
+  
   if (localStream) localStream.getTracks().forEach(t => t.stop());
-
+  
   if (roomId && isHost) await remove(ref(db, "rooms/" + roomId));
   else if (roomId && !isHost && myViewerId) await remove(ref(db, `rooms/${roomId}/viewers/${myViewerId}`));
 
@@ -641,14 +467,6 @@ window.leaveCall = async () => {
   liveBadge.classList.remove("active");
   goLiveBtn.textContent = "⬤ START SESSION";
   goLiveBtn.classList.remove("end");
-
-  pendingRequests = [];
-  participantsMap = {};
-  renderParticipants();
-
-  document.getElementById("lobbyScreen").style.display = "flex";
-  document.getElementById("roomCodeDisplay").textContent = "—";
-
   updateConnStatus("disconnected");
   clearStats();
   if (window.chatUnsubscribe) off(ref(db, `rooms/${roomId}/messages`), "child_added", window.chatUnsubscribe);
@@ -793,7 +611,7 @@ window.sendChat = () => {
   if (!roomId) return showToast("⚠️ Join or Start a room first!");
 
   const nameInput = document.getElementById("userName");
-  const senderName = nameInput && nameInput.value.trim() ? nameInput.value.trim() : "Viewer_" + Math.floor(Math.random() * 1000);
+  const senderName = nameInput && nameInput.value.trim() ? nameInput.value.trim() : "Viewer_" + Math.floor(Math.random()*1000);
 
   push(ref(db, `rooms/${roomId}/messages`), {
     sender: senderName,
@@ -807,26 +625,26 @@ window.startChatListener = () => {
   const chatMessages = document.getElementById("chatMessages");
   if (!chatMessages) return;
   chatMessages.innerHTML = `<div style="text-align:center; color:#9aa0a6; margin-top:10px;">Messages are visible to everyone in the room.</div>`;
-
+  
   onChildAdded(ref(db, `rooms/${roomId}/messages`), snap => {
     const data = snap.val();
     if (!data) return;
-
+    
     const nameInput = document.getElementById("userName");
     const myName = nameInput && nameInput.value.trim() ? nameInput.value.trim() : "";
     const isMe = data.sender === myName && myName !== "";
-
+    
     const msgEl = document.createElement("div");
     msgEl.style.display = "flex";
     msgEl.style.flexDirection = "column";
     msgEl.style.gap = "2px";
-
-    const timeStr = new Date(data.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
+    
+    const timeStr = new Date(data.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    
     // Protect against XSS
     const safeSender = data.sender.replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const safeText = data.text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
+    
     msgEl.innerHTML = `
       <div style="display:flex; justify-content:space-between; align-items:flex-end;">
         <span style="font-weight:600; color: ${isMe ? '#8ab4f8' : '#e8eaed'};">${safeSender}</span>
@@ -836,38 +654,8 @@ window.startChatListener = () => {
         ${safeText}
       </div>
     `;
-
+    
     chatMessages.appendChild(msgEl);
     chatMessages.scrollTop = chatMessages.scrollHeight;
   });
 };
-
-/* ══════════════════════════════════════════════
-   PWA INSTALLATION
-   ══════════════════════════════════════════════ */
-let deferredPrompt;
-const installBtn = document.getElementById('pwaInstallBtn');
-
-window.addEventListener('beforeinstallprompt', (e) => {
-  // Prevent the mini-infobar from appearing on mobile
-  e.preventDefault();
-  deferredPrompt = e;
-  // Update UI notify the user they can install the PWA
-  if (installBtn) installBtn.style.display = 'flex';
-});
-
-if (installBtn) {
-  installBtn.addEventListener('click', async () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') {
-        installBtn.style.display = 'none';
-      }
-      deferredPrompt = null;
-    } else {
-      // iOS Fallback instruction
-      alert("Tap the Share button at the bottom of Safari, then tap 'Add to Home Screen' to install.");
-    }
-  });
-}

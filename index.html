@@ -4,8 +4,6 @@
   <meta charset="UTF-8" />
   <title>Google Meet Room</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#202124" />
-  <link rel="manifest" href="manifest.json">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
@@ -31,61 +29,10 @@
       font-family: 'Roboto', sans-serif;
       background: #000;
       color: var(--text-main);
-      height: 100vh; /* Fallback */
-      height: 100dvh;
+      height: 100vh;
       display: flex;
       overflow: hidden;
     }
-
-    /* ── PRE-CALL LOBBY ── */
-    .lobby-screen {
-      position: absolute;
-      inset: 0;
-      background: var(--bg-dark);
-      z-index: 1000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-direction: column;
-    }
-    .lobby-card {
-      background: #fff;
-      border-radius: 12px;
-      padding: 32px 24px;
-      width: 90%;
-      max-width: 380px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-      color: #202124;
-    }
-    .lobby-title {
-      font-size: 24px;
-      font-weight: 400;
-      text-align: center;
-      margin-bottom: 8px;
-    }
-    .lobby-input {
-      width: 100%;
-      padding: 12px 16px;
-      border: 1px solid #dadce0;
-      border-radius: 4px;
-      font-size: 16px;
-      color: #3c4043;
-      outline: none;
-      transition: border-color 0.2s;
-    }
-    .lobby-input:focus { border-color: var(--blue); border-width: 2px; padding: 11px 15px; }
-    .lobby-buttons { display: flex; gap: 12px; width: 100%; margin-top: 8px; }
-    .lobby-btn {
-      flex: 1; padding: 12px 0; border-radius: 4px; font-size: 15px; font-weight: 500;
-      border: none; cursor: pointer; transition: background 0.2s;
-    }
-    .btn-join { background: #f1f3f4; color: #1a73e8; }
-    .btn-join:hover { background: #e8f0fe; }
-    .btn-host { background: #1a73e8; color: #fff; display: flex; align-items: center; justify-content: center; gap: 6px; }
-    .btn-host:hover { background: #1765cc; }
 
     /* ── MAIN VIDEO AREA ── */
     .video-area {
@@ -188,14 +135,12 @@
       position: absolute;
       bottom: 0;
       width: 100%;
-      height: calc(80px + env(safe-area-inset-bottom));
-      padding-bottom: env(safe-area-inset-bottom);
+      height: 80px;
       background: var(--bg-dark);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding-left: 24px;
-      padding-right: 24px;
+      padding: 0 24px;
       z-index: 20;
     }
 
@@ -372,7 +317,6 @@
     @media (max-width: 768px) {
       .controls-bar {
         padding: 10px 8px;
-        padding-bottom: env(safe-area-inset-bottom);
         flex-wrap: wrap;
         height: auto;
         justify-content: center;
@@ -383,6 +327,7 @@
         justify-content: center;
       }
       .time-text { font-size: 14px; }
+      .room-input { width: 40%; font-size: 14px; text-align: center; }
       .controls-right { display: none; }
       
       .controls-center {
@@ -418,27 +363,6 @@
 
 <body>
 
-  <!-- LOBBY SCREEN -->
-  <div class="lobby-screen" id="lobbyScreen">
-    <div class="lobby-card">
-      <h2 class="lobby-title">Watch Party</h2>
-      
-      <!-- PWA Install Button (Hidden by default) -->
-      <button id="pwaInstallBtn" class="lobby-btn" style="display:none; background:#fbbc04; color:#202124; margin-bottom:12px; font-weight:600; width:100%; justify-content:center; align-items:center; gap:8px;">
-        <span class="material-symbols-outlined" style="font-size:20px;">download</span> Install Watch Party App
-      </button>
-
-      <div class="lobby-inputs">
-        <input id="userName" class="lobby-input" placeholder="Your Name" spellcheck="false" autocomplete="off" />
-        <input id="roomId" class="lobby-input" placeholder="Room Code (e.g. 1234)" maxlength="12" spellcheck="false" autocomplete="off" />
-      </div>
-      <div class="lobby-buttons">
-        <button class="lobby-btn btn-join" onclick="joinStream()">Join Party</button>
-        <button class="lobby-btn btn-host" id="goLiveBtn" onclick="toggleStream()"><span class="material-symbols-outlined" style="font-size:20px;">podcasts</span> Host Session</button>
-      </div>
-    </div>
-  </div>
-
   <!-- MAIN AREA -->
 <main class="video-area">
   
@@ -458,7 +382,9 @@
   </div>
 
   <div class="no-signal" id="noSignal">
-    <span class="material-symbols-outlined">background_replace</span>
+    <span class="material-symbols-outlined">present_to_all</span>
+    <span style="font-size: 18px;">Waiting for Screen Share</span>
+    <span style="font-size: 14px; opacity: 0.7;">Open the Setup menu to join or connect as Host</span>
   </div>
 
   <video id="remoteVideo" autoplay playsinline></video>
@@ -468,7 +394,8 @@
     <div class="controls-left">
       <span class="time-text" id="clockDisplay">10:00 AM</span>
       <div class="divider-vert"></div>
-      <span id="roomCodeDisplay" style="color:#9aa0a6; font-family:monospace;">—</span>
+      <input id="userName" class="room-input" placeholder="Your Name" spellcheck="false" style="width:100px; padding-right:10px;" />
+      <input id="roomId" class="room-input" placeholder="Room Code" maxlength="12" spellcheck="false" style="width:100px;" />
     </div>
     
     <div class="controls-center">
@@ -478,13 +405,13 @@
       <button class="icon-btn" id="btnScreen" onclick="startScreenShare()" title="Present screen">
         <span class="material-symbols-outlined">present_to_all</span>
       </button>
-      <button class="icon-btn" onclick="toggleSidebar('people')" title="People">
-        <span class="material-symbols-outlined">group</span>
+      <button class="icon-btn" onclick="toggleSidebar('setup')" title="More options">
+        <span class="material-symbols-outlined">more_vert</span>
       </button>
-      <button class="icon-btn" onclick="toggleSidebar('chat')" title="Chat">
-        <span class="material-symbols-outlined">chat</span>
+      <button class="btn-leave" id="goLiveBtn" onclick="toggleStream()" title="Go Live">
+        <span class="material-symbols-outlined">podcasts</span> Go Live
       </button>
-      <button class="btn-leave" onclick="leaveCall()" title="End session">
+      <button class="btn-leave" onclick="leaveCall()" title="Leave call">
         <span class="material-symbols-outlined">call_end</span>
       </button>
     </div>
@@ -511,17 +438,8 @@
   
   <div class="sidebar-tabs">
     <button class="sidebar-tab active" onclick="switchSidebarTab('setup')" id="tabSetup">Setup</button>
-    <button class="sidebar-tab" onclick="switchSidebarTab('people')" id="tabPeople">People</button>
     <button class="sidebar-tab" onclick="switchSidebarTab('chat')" id="tabChat">Chat</button>
     <button class="sidebar-tab" onclick="switchSidebarTab('stats')" id="tabStats">Details</button>
-  </div>
-
-  <!-- PEOPLE CONTENT -->
-  <div class="sidebar-content" id="contentPeople">
-    <div class="section-title">Participants (<span id="participantCount">0</span>)</div>
-    <div id="peopleList" style="display: flex; flex-direction: column; gap: 12px; font-size: 14px;">
-      <div style="color:var(--text-muted); text-align:center; padding-top:20px;">No viewers joined yet</div>
-    </div>
   </div>
 
   <!-- CHAT CONTENT -->
@@ -600,16 +518,6 @@
 
   </div>
 </aside>
-
-<!-- HOST WAITROOM REQUEST TOAST -->
-<div id="requestToast" style="display:none; position:fixed; bottom:160px; left:24px; background:#3c4043; padding:16px; border-radius:8px; z-index:999; box-shadow:0 4px 12px rgba(0,0,0,0.5); border:1px solid #5f6368; width: 300px; flex-direction:column; gap:12px;">
-  <div style="font-size:14px; font-weight:500; color:#9aa0a6;">Someone wants to join</div>
-  <div id="requestName" style="font-size:16px; font-weight:bold; color:#e8eaed;">Name</div>
-  <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:8px;">
-    <button class="btn-flat" id="reqDenyBtn" style="border-color:#5f6368; background:transparent; color:#e8eaed;">Deny</button>
-    <button class="btn-flat btn-filled" id="reqAdmitBtn">Admit</button>
-  </div>
-</div>
 
 <!-- QUALITY MODAL -->
 <div class="modal-bg" id="qualityModal">
@@ -691,12 +599,10 @@
     document.querySelectorAll('.sidebar-content').forEach(el => el.classList.remove('active'));
     
     const tabNameCapitalized = name.charAt(0).toUpperCase() + name.slice(1);
-    const targetTab = document.getElementById('tab' + tabNameCapitalized);
-    const targetContent = document.getElementById('content' + tabNameCapitalized);
-    if(targetTab) targetTab.classList.add('active');
-    if(targetContent) targetContent.classList.add('active');
+    document.getElementById('tab' + tabNameCapitalized).classList.add('active');
+    document.getElementById('content' + tabNameCapitalized).classList.add('active');
     
-    const titles = { 'setup': 'Meeting Setup', 'people': 'Participants', 'chat': 'In-call messages', 'stats': 'Connection Details', 'effects': 'Video Effects' };
+    const titles = { 'setup': 'Meeting Setup', 'chat': 'In-call messages', 'stats': 'Connection Details', 'effects': 'Video Effects' };
     document.getElementById('sidebarTitle').textContent = titles[name.toLowerCase()] || 'Menu';
   }
 
@@ -767,16 +673,6 @@
   document.addEventListener('fullscreenchange', onFullScreenChange);
   document.addEventListener('webkitfullscreenchange', onFullScreenChange);
 
-  // Service Worker Registration
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js').then((reg) => {
-        console.log('ServiceWorker registered with scope:', reg.scope);
-      }).catch((err) => {
-        console.error('ServiceWorker registration failed:', err);
-      });
-    });
-  }
 </script>
 
 </body>
