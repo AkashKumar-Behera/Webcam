@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Google Meet Room</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
+
+  <style>
+    :root {
+      --bg-dark: #202124;
+      --bg-surface: #3c4043;
+      --bg-hover: #4e5256;
+      --text-main: #e8eaed;
+      --text-muted: #9aa0a6;
+      --red: #ea4335;
+      --blue: #8ab4f8;
+      --green: #81c995;
+      --border: #3c4043;
+      --panel-width: 360px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Roboto', sans-serif;
+      background: #000;
+      color: var(--text-main);
+      height: 100vh;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ── MAIN VIDEO AREA ── */
+    .video-area {
+      flex: 1;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      transition: width 0.3s ease;
+    }
+
+    #remoteVideo {
+      width: 100%;
+      height: calc(100% - 80px); /* Leave room for bottom bar */
+      object-fit: contain;
+      background: #000;
+      display: block;
+    }
+
+    .pip-container {
+      position: absolute;
+      bottom: 100px;
+      right: 20px;
+      width: 240px;
+      height: 135px;
+      background: var(--bg-dark);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+      border: 1px solid var(--border);
+      z-index: 10;
+      cursor: move;
+      transition: transform 0.2s;
+    }
+    
+    .pip-container:hover {
+      transform: scale(1.02);
+    }
+
+    #localVideo {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1); /* Mirror by default */
+    }
+
+    .no-signal {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      color: var(--text-muted);
+      pointer-events: none;
+      height: calc(100% - 80px);
+    }
+    .no-signal .material-symbols-outlined { font-size: 64px; opacity: 0.5; }
+    .no-signal.hidden { display: none; }
+
+    /* Top Left Overlay Info */
+    .top-overlay {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      display: flex;
+      gap: 12px;
+      z-index: 10;
+    }
+
+    .badge {
+      background: rgba(32, 33, 36, 0.8);
+      backdrop-filter: blur(4px);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .live-badge { opacity: 0; transition: opacity 0.3s; color: var(--red); }
+    .live-badge.active { opacity: 1; }
+    .live-dot { width: 8px; height: 8px; background: var(--red); border-radius: 50%; animation: pulse 1.5s infinite; }
+    
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(234, 67, 53, 0.7); } 70% { box-shadow: 0 0 0 6px rgba(234, 67, 53, 0); } 100% { box-shadow: 0 0 0 0 rgba(234, 67, 53, 0); } }
+
+    .conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); }
+    .conn-dot.connected { background: var(--green); }
+    .conn-dot.connecting { background: #fbbc04; }
+
+    .overlay-tags { position: absolute; top: 16px; right: 16px; display: flex; gap: 8px; }
+    .overlay-tag { background: rgba(0,0,0,0.6); padding: 4px 8px; font-size: 12px; border-radius: 4px; font-family: monospace; }
+
+    /* ── BOTTOM CONTROL BAR ── */
+    .controls-bar {
+      position: absolute;
+      bottom: 0;
+      width: 100%;
+      height: 80px;
+      background: var(--bg-dark);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      z-index: 20;
+    }
+
+    .controls-left, .controls-right { display: flex; align-items: center; gap: 16px; width: 250px; }
+    .controls-right { justify-content: flex-end; }
+    .controls-center { display: flex; align-items: center; gap: 12px; flex: 1; justify-content: center; }
+
+    .time-text { font-size: 16px; font-weight: 500; }
+    .room-input {
+      background: transparent;
+      border: none;
+      color: var(--text-main);
+      font-family: inherit;
+      font-size: 16px;
+      width: 120px;
+      outline: none;
+    }
+    .room-input::placeholder { color: var(--text-muted); }
+    .divider-vert { width: 1px; height: 20px; background: var(--border); }
+
+    .icon-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--bg-surface);
+      border: 1px solid transparent;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .icon-btn:hover { background: var(--bg-hover); }
+    .icon-btn .material-symbols-outlined { font-size: 22px; }
+    
+    .icon-btn.off { background: var(--red); color: white; }
+    .icon-btn.off:hover { background: #d93025; }
+
+    /* For active states like screen sharing */
+    .icon-btn.active-blue { background: rgba(138, 180, 248, 0.2); color: var(--blue); }
+
+    .btn-leave {
+      height: 44px;
+      padding: 0 20px;
+      border-radius: 22px;
+      background: var(--red);
+      color: white;
+      border: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-leave:hover { background: #d93025; }
+    .btn-leave .material-symbols-outlined { font-size: 20px; }
+
+    .btn-primary { background: var(--blue); color: var(--bg-dark); }
+    .btn-primary:hover { background: #aecbfa; }
+
+    /* ── SIDEBAR ── */
+    .sidebar {
+      width: 0;
+      background: #fff;
+      color: #3c4043;
+      transition: width 0.3s ease;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      border-left: 1px solid #dadce0;
+    }
+    
+    .sidebar.open { width: var(--panel-width); }
+
+    .sidebar-header {
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #dadce0;
+    }
+    .sidebar-header h2 { font-size: 18px; font-weight: 400; color: #202124; }
+    .close-btn { background: none; border: none; cursor: pointer; color: #5f6368; display: flex; align-items: center; padding: 8px; border-radius: 50%; }
+    .close-btn:hover { background: #f1f3f4; }
+
+    .sidebar-tabs { display: flex; border-bottom: 1px solid #dadce0; }
+    .sidebar-tab {
+      flex: 1; text-align: center; padding: 12px 0; background: none; border: none;
+      font-size: 14px; font-weight: 500; color: #5f6368; cursor: pointer; border-bottom: 3px solid transparent;
+    }
+    .sidebar-tab.active { color: #1a73e8; border-bottom-color: #1a73e8; }
+    .sidebar-tab:hover:not(.active) { background: #f8f9fa; }
+
+    .sidebar-content {
+      flex: 1;
+      padding: 16px 24px;
+      overflow-y: auto;
+      display: none;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .sidebar-content.active { display: flex; }
+
+    .section-title { font-size: 13px; font-weight: 500; color: #5f6368; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+
+    /* Setup Tab */
+    .setup-actions { display: flex; flex-direction: column; gap: 10px; }
+    .btn-flat {
+      padding: 10px 16px; border-radius: 4px; border: 1px solid #dadce0;
+      background: #fff; color: #1a73e8; font-weight: 500; font-size: 14px;
+      cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .btn-flat:hover { background: #f8f9fa; }
+    .btn-filled { background: #1a73e8; color: #fff; border: none; }
+    .btn-filled:hover { background: #1557b0; }
+
+    /* Stats Tab */
+    .stat-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f1f3f4; }
+    .stat-label { font-size: 13px; color: #5f6368; }
+    .stat-value { font-size: 14px; font-weight: 500; color: #202124; font-family: monospace; }
+    .stat-value.green { color: #188038; }
+    .stat-value.yellow { color: #f29900; }
+    .stat-value.red { color: #d93025; }
+
+    /* Effects Tab */
+    .effects-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .effect-btn {
+      padding: 8px; border-radius: 8px; border: 1px solid #dadce0; background: #fff;
+      font-size: 12px; font-weight: 500; color: #3c4043; cursor: pointer; text-align: center;
+    }
+    .effect-btn:hover { background: #f8f9fa; }
+    .effect-btn.active { background: #e8f0fe; border-color: #1a73e8; color: #1a73e8; }
+
+    .slider-group { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+    .slider-header { display: flex; justify-content: space-between; font-size: 12px; color: #5f6368; }
+    input[type=range] { width: 100%; accent-color: #1a73e8; }
+
+    /* ── QUALITY MODAL ── */
+    .modal-bg {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100;
+      display: none; align-items: center; justify-content: center;
+    }
+    .modal-bg.open { display: flex; }
+    .modal {
+      background: #fff; border-radius: 8px; width: 500px; max-width: 90vw;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.2); overflow: hidden;
+    }
+    .modal-header { padding: 20px 24px; border-bottom: 1px solid #dadce0; display: flex; justify-content: space-between; align-items: center; }
+    .modal-header h2 { font-size: 18px; font-weight: 400; color: #202124; margin: 0; }
+    .modal-body { padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+    
+    .form-group { display: flex; flex-direction: column; gap: 8px; }
+    .form-group label { font-size: 13px; font-weight: 500; color: #3c4043; }
+    .form-group select {
+      padding: 10px 12px; border: 1px solid #dadce0; border-radius: 4px; font-size: 14px;
+      color: #202124; outline: none; background: #fff;
+    }
+    .form-group select:focus { border-color: #1a73e8; border-width: 2px; padding: 9px 11px; }
+
+    .modal-footer { padding: 16px 24px; border-top: 1px solid #dadce0; display: flex; justify-content: flex-end; gap: 12px; background: #f8f9fa; }
+
+    /* Toast */
+    #toast {
+      position: fixed; bottom: 100px; left: 24px; background: #323232; color: #fff;
+      padding: 12px 24px; border-radius: 4px; font-size: 14px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+      opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 999;
+    }
+    #toast.show { opacity: 1; }
+
+    /* ── RESPONSIVE / MOBILE ── */
+    @media (max-width: 768px) {
+      .controls-bar {
+        padding: 10px 8px;
+        flex-wrap: wrap;
+        height: auto;
+        justify-content: center;
+      }
+      .controls-left {
+        width: 100%;
+        margin-bottom: 8px;
+        justify-content: center;
+      }
+      .time-text { font-size: 14px; }
+      .room-input { width: 40%; font-size: 14px; text-align: center; }
+      .controls-right { display: none; }
+      
+      .controls-center {
+        width: 100%;
+        gap: 6px;
+        justify-content: center;
+      }
+      .icon-btn { width: 44px; height: 44px; }
+      .btn-leave { height: 44px; padding: 0 16px; font-size: 13px; }
+      
+      .sidebar {
+        position: fixed; right: 0; top: 0; height: 100%; z-index: 100;
+        border-left: none; box-shadow: -4px 0 20px rgba(0,0,0,0.2);
+      }
+      .sidebar.open { width: 100%; max-width: 100vw; }
+      
+      .modal { width: 95vw; }
+      #screenSettings { flex-direction: column; gap: 8px; }
+      .top-overlay { top: 8px; left: 8px; flex-wrap: wrap; }
+      .badge { padding: 4px 8px; font-size: 11px; }
+    }
+
+    @media (max-width: 480px) {
+      .controls-center { gap: 4px; }
+      .icon-btn { width: 38px; height: 38px; }
+      .icon-btn .material-symbols-outlined { font-size: 18px; }
+      .btn-leave { padding: 0 10px; font-size: 0; gap: 0; }
+      .btn-leave .material-symbols-outlined { font-size: 20px; margin: 0; }
+    }
+
+  </style>
+</head>
+
+<body>
+
+  <!-- MAIN AREA -->
+<main class="video-area">
+  
+  <div class="top-overlay">
+    <div class="badge live-badge" id="liveBadge">
+      <div class="live-dot"></div> LIVE
+    </div>
+    <div class="badge">
+      <div class="conn-dot" id="connDot"></div>
+      <span id="connLabel" style="font-family: monospace; font-size: 12px;">DISCONNECTED</span>
+    </div>
+  </div>
+
+  <div class="overlay-tags">
+    <div class="overlay-tag" id="sourceTag">—</div>
+    <div class="overlay-tag" id="qualityTag">—</div>
+  </div>
+
+  <div class="no-signal" id="noSignal">
+    <span class="material-symbols-outlined">present_to_all</span>
+    <span style="font-size: 18px;">Waiting for Screen Share</span>
+    <span style="font-size: 14px; opacity: 0.7;">Open the Setup menu to join or connect as Host</span>
+  </div>
+
+  <video id="remoteVideo" autoplay playsinline></video>
+  
+  <!-- BOTTOM CONTROL BAR -->
+  <footer class="controls-bar">
+    <div class="controls-left">
+      <span class="time-text" id="clockDisplay">10:00 AM</span>
+      <div class="divider-vert"></div>
+      <input id="userName" class="room-input" placeholder="Your Name" spellcheck="false" style="width:100px; padding-right:10px;" />
+      <input id="roomId" class="room-input" placeholder="Room Code" maxlength="12" spellcheck="false" style="width:100px;" />
+    </div>
+    
+    <div class="controls-center">
+      <button class="icon-btn" id="btnFullscreen" onclick="toggleFullscreen()" title="Full Screen">
+        <span class="material-symbols-outlined" id="fsIcon">fullscreen</span>
+      </button>
+      <button class="icon-btn" id="btnScreen" onclick="startScreenShare()" title="Present screen">
+        <span class="material-symbols-outlined">present_to_all</span>
+      </button>
+      <button class="icon-btn" onclick="toggleSidebar('setup')" title="More options">
+        <span class="material-symbols-outlined">more_vert</span>
+      </button>
+      <button class="btn-leave" id="goLiveBtn" onclick="toggleStream()" title="Go Live">
+        <span class="material-symbols-outlined">podcasts</span> Go Live
+      </button>
+      <button class="btn-leave" onclick="leaveCall()" title="Leave call">
+        <span class="material-symbols-outlined">call_end</span>
+      </button>
+    </div>
+    
+    <div class="controls-right">
+      <button class="icon-btn" onclick="toggleSidebar('stats')" title="Meeting details">
+        <span class="material-symbols-outlined">info</span>
+      </button>
+      <button class="icon-btn" onclick="openQualityModal()" title="Video Settings">
+        <span class="material-symbols-outlined">settings</span>
+      </button>
+    </div>
+  </footer>
+</main>
+
+<!-- SIDEBAR -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <h2 id="sidebarTitle">Setup</h2>
+    <button class="close-btn" onclick="closeSidebar()">
+      <span class="material-symbols-outlined">close</span>
+    </button>
+  </div>
+  
+  <div class="sidebar-tabs">
+    <button class="sidebar-tab active" onclick="switchSidebarTab('setup')" id="tabSetup">Setup</button>
+    <button class="sidebar-tab" onclick="switchSidebarTab('chat')" id="tabChat">Chat</button>
+    <button class="sidebar-tab" onclick="switchSidebarTab('stats')" id="tabStats">Details</button>
+  </div>
+
+  <!-- CHAT CONTENT -->
+  <div class="sidebar-content" id="contentChat" style="padding: 0;">
+    <div id="chatMessages" style="flex: 1; overflow-y: auto; padding: 16px 24px; display: flex; flex-direction: column; gap: 12px; font-size: 13px; height: calc(100vh - 180px);">
+      <div style="text-align:center; color:#9aa0a6; margin-top:10px;">Messages are visible to everyone in the room.</div>
+    </div>
+    <div style="padding: 16px; border-top: 1px solid #dadce0; display:flex; gap:8px;">
+      <input type="text" id="chatInput" placeholder="Send a message..." style="flex:1; padding:10px 16px; border:1px solid #dadce0; border-radius:24px; outline:none; font-family:inherit; font-size:14px; background:#f1f3f4;" onkeypress="if(event.key==='Enter') window.sendChat()" />
+      <button onclick="window.sendChat()" style="width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; border:none; background:#1a73e8; color:white; cursor:pointer; flex-shrink:0;">
+        <span class="material-symbols-outlined" style="font-size:20px;">send</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- SETUP CONTENT -->
+  <div class="sidebar-content active" id="contentSetup">
+    <div>
+      <div class="section-title">Meeting Actions</div>
+      <div class="setup-actions">
+        <button class="btn-flat" onclick="generateRoom()">
+          <span class="material-symbols-outlined" style="font-size:18px;">autorenew</span> Generate Code
+        </button>
+        <button class="btn-flat btn-filled" onclick="startStream()">
+          <span class="material-symbols-outlined" style="font-size:18px;">video_call</span> Start Host Session
+        </button>
+        <button class="btn-flat" onclick="joinStream()">
+          <span class="material-symbols-outlined" style="font-size:18px;">login</span> Join Watch Party
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATS CONTENT -->
+  <div class="sidebar-content" id="contentStats">
+    <div class="section-title">Connection Stats</div>
+    
+    <div class="stat-row">
+      <span class="stat-label">Bitrate</span>
+      <span class="stat-value blue" id="statBitrate">— Mbps</span>
+    </div>
+    <div style="width: 100%; height: 4px; background: #f1f3f4; border-radius: 2px; margin-bottom: 8px;">
+        <div id="barBitrate" style="height: 100%; background: #1a73e8; border-radius: 2px; width: 0%;"></div>
+    </div>
+
+    <div class="stat-row">
+      <span class="stat-label">FPS</span>
+      <span class="stat-value green" id="statFps">—</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Resolution</span>
+      <span class="stat-value" id="statRes">—</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Packets Lost</span>
+      <span class="stat-value yellow" id="statLoss">—</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">RTT</span>
+      <span class="stat-value" id="statRtt">— ms</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Codec</span>
+      <span class="stat-value" id="statCodec">—</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Duration</span>
+      <span class="stat-value" id="statDuration">00:00:00</span>
+    </div>
+    
+    <div style="margin-top:16px;">
+      <div class="section-title">Quality Summary</div>
+      <div id="qualitySummary" style="font-size:12px; font-family:monospace; color:#5f6368; line-height:1.6">—<br>—<br>—</div>
+    </div>
+  </div>
+
+  </div>
+</aside>
+
+<!-- QUALITY MODAL -->
+<div class="modal-bg" id="qualityModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Advanced Video Settings</h2>
+      <button class="close-btn" onclick="closeQualityModal()">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+    </div>
+    <div class="modal-body">
+       <div id="screenSettings" style="display:flex; gap: 16px; margin-top: 10px;">
+         <div class="form-group" style="flex:1">
+           <label>Share Resolution</label>
+           <select id="scrRes">
+             <option value="4k">4K (3840×2160)</option>
+             <option value="2k">2K (2560×1440)</option>
+             <option value="1080p" selected>1080p (1920×1080)</option>
+             <option value="720p">720p (1280×720)</option>
+           </select>
+         </div>
+         <div class="form-group" style="flex:1">
+           <label>Frame Rate</label>
+           <select id="scrFps">
+             <option value="60">60 FPS</option>
+             <option value="30" selected>30 FPS</option>
+           </select>
+         </div>
+       </div>
+
+       <div class="form-group" style="margin-top: 16px">
+         <label style="display:flex; justify-content:space-between">
+           Video Bitrate Limit
+           <span id="bitrateValLabel" style="font-weight:400; color:#5f6368">4 Mbps</span>
+         </label>
+         <input type="range" id="bitrateSlider" min="1" max="20" value="4" step="0.5"
+           oninput="document.getElementById('bitrateValLabel').textContent = this.value + ' Mbps'" style="width:100%" />
+       </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-flat" onclick="closeQualityModal()">Cancel</button>
+      <button class="btn-flat btn-filled" onclick="applyQuality()">Save Settings</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  // Clock update
+  setInterval(() => {
+    document.getElementById('clockDisplay').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }, 1000);
+  document.getElementById('clockDisplay').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  // Sidebar toggling
+  function toggleSidebar(tabName) {
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar.classList.contains('open')) {
+      sidebar.classList.add('open');
+      if(tabName) switchSidebarTab(tabName);
+    } else {
+      // If already open and clicking the same tab, close it.
+      const currentActive = document.querySelector('.sidebar-tab.active').id.replace('tab', '').toLowerCase();
+      if ((!tabName || currentActive === tabName) && tabName !== 'setup') {
+        sidebar.classList.remove('open');
+      } else if (tabName) {
+        switchSidebarTab(tabName);
+      }
+    }
+  }
+
+  function closeSidebar() {
+    document.getElementById('sidebar').classList.remove('open');
+  }
+
+  function switchSidebarTab(name) {
+    document.querySelectorAll('.sidebar-tab').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.sidebar-content').forEach(el => el.classList.remove('active'));
+    
+    const tabNameCapitalized = name.charAt(0).toUpperCase() + name.slice(1);
+    document.getElementById('tab' + tabNameCapitalized).classList.add('active');
+    document.getElementById('content' + tabNameCapitalized).classList.add('active');
+    
+    const titles = { 'setup': 'Meeting Setup', 'chat': 'In-call messages', 'stats': 'Connection Details', 'effects': 'Video Effects' };
+    document.getElementById('sidebarTitle').textContent = titles[name.toLowerCase()] || 'Menu';
+  }
+
+  // Intercept native toggles to alter button UI properly
+  const originalToggleMic = window.toggleMic;
+  // Note: the actual functions are in app.js which is a module. 
+  // We handle UI states natively if app.js doesn't. 
+  // Normally app.js handles adding/removing 'off' classes, let's just make sure it plays nicely.
+</script>
+
+<script type="module" src="app.js"></script>
+
+<!-- Add small script to adapt class names for app.js if needed -->
+<script>
+  // app.js might toggle .active or .muted-state on these buttons.
+  const observerClasses = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.attributeName === 'class') {
+        const target = mutation.target;
+        if (target.id === 'btnMic') {
+          const isOff = !target.classList.contains('active') || target.classList.contains('muted-state');
+          if (isOff) { target.classList.add('off'); target.querySelector('.material-symbols-outlined').textContent = 'mic_off'; }
+          else { target.classList.remove('off'); target.querySelector('.material-symbols-outlined').textContent = 'mic'; }
+        }
+        if (target.id === 'btnScreen') {
+          const isOn = target.classList.contains('sharing') || target.classList.contains('active');
+          if (isOn) { target.classList.add('active-blue'); target.querySelector('.material-symbols-outlined').textContent = 'cancel_presentation'; }
+          else { target.classList.remove('active-blue'); target.querySelector('.material-symbols-outlined').textContent = 'present_to_all'; }
+        }
+      }
+    });
+  });
+
+  window.addEventListener('load', () => {
+    if(document.getElementById('btnScreen')) observerClasses.observe(document.getElementById('btnScreen'), { attributes: true });
+  });
+
+  // Fullscreen Logic
+  function toggleFullscreen() {
+    const videoElem = document.getElementById("remoteVideo");
+    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+      if (videoElem.requestFullscreen) {
+        videoElem.requestFullscreen();
+      } else if (videoElem.webkitRequestFullscreen) { /* Safari */
+        videoElem.webkitRequestFullscreen();
+      }
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      } else if (document.webkitExitFullscreen) { /* Safari */
+        document.webkitExitFullscreen();
+      }
+    }
+  }
+
+  // Monitor fullscreen change to update icon
+  function onFullScreenChange() {
+    const fsIcon = document.getElementById('fsIcon');
+    if (!fsIcon) return;
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+      fsIcon.textContent = "fullscreen_exit";
+      document.getElementById('btnFullscreen').classList.add('active');
+    } else {
+      fsIcon.textContent = "fullscreen";
+      document.getElementById('btnFullscreen').classList.remove('active');
+    }
+  }
+  document.addEventListener('fullscreenchange', onFullScreenChange);
+  document.addEventListener('webkitfullscreenchange', onFullScreenChange);
+
+</script>
+
+</body>
+</html>

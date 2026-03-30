@@ -322,6 +322,7 @@ function renderParticipants() {
 
     list.appendChild(div);
   });
+}
   /* ══════════════════════════════════════════════
      JOIN STREAM (Viewer)
      ══════════════════════════════════════════════ */
@@ -428,134 +429,6 @@ function renderParticipants() {
       ? `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/></svg>MIC ON`
       : `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23M12 19v4M8 23h8"/></svg>MIC OFF`;
   }
-
-  /* ══════════════════════════════════════════════
-     CAM TOGGLE
-     ══════════════════════════════════════════════ */
-  window.toggleCam = () => {
-    const tracks = localStream?.getVideoTracks() || [];
-    if (!tracks.length) return;
-    camEnabled = !camEnabled;
-    tracks.forEach(t => t.enabled = camEnabled);
-    const btn = document.getElementById("btnCam");
-    btn.className = camEnabled ? "icon-btn active" : "icon-btn muted-state";
-    btn.innerHTML = camEnabled
-      ? `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>CAM ON`
-      : `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="1" y1="1" x2="23" y2="23"/><path d="M15.18 15.18A4.5 4.5 0 0 1 8.82 8.82M21 21l-9-9M3 3l18 18"/></svg>CAM OFF`;
-  };
-
-  /* ══════════════════════════════════════════════
-     CAMERA SWITCH (front/back)
-     ══════════════════════════════════════════════ */
-  window.switchCamera = async (face) => {
-    if (!isHost || isScreenSharing) return;
-    currentCamera = face;
-
-    document.getElementById("btnCamFront").className = face === "front" ? "icon-btn active" : "icon-btn";
-    document.getElementById("btnCamBack").className = face === "back" ? "icon-btn active" : "icon-btn";
-
-    const facingMode = face === "back" ? "environment" : "user";
-    const { width, height } = RES_MAP[qualitySettings.cam.res];
-    const fps = qualitySettings.cam.fps;
-
-    try {
-      const newVideoStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode, width: { ideal: width }, height: { ideal: height }, frameRate: { ideal: fps } },
-        audio: false
-      });
-
-      // Stop old video
-      rawCameraStream?.getVideoTracks().forEach(t => t.stop());
-      rawCameraStream = newVideoStream;
-
-      // Update localStream video track
-      localStream.getVideoTracks().forEach(t => { t.stop(); localStream.removeTrack(t); });
-      newVideoStream.getVideoTracks().forEach(t => localStream.addTrack(t));
-
-      // Restart canvas pipeline with new source
-      stopCanvasPipeline();
-      startCanvasPipeline(localStream);
-
-      await new Promise(r => setTimeout(r, 300));
-
-      // Update WebRTC sender with new canvas track
-      if (canvasStream) {
-        const videoSender = pc?.getSenders().find(s => s.track?.kind === "video");
-        if (videoSender) await videoSender.replaceTrack(canvasStream.getVideoTracks()[0]);
-      }
-
-      showToast(face === "back" ? "📷 Back camera" : "🤳 Front camera");
-    } catch (e) {
-      showToast("❌ Camera switch failed: " + e.message);
-    }
-
-    updateOverlayTags();
-  };
-
-  /* ══════════════════════════════════════════════
-     MIRROR TOGGLE
-     Canvas mein baked — viewer ko bhi dikhta hai
-     ══════════════════════════════════════════════ */
-  window.toggleMirror = () => {
-    isMirrored = !isMirrored;
-    const btn = document.getElementById("btnMirror");
-    btn.className = isMirrored ? "icon-btn active" : "icon-btn";
-    showToast(isMirrored ? "↔️ Mirror ON (viewer ko bhi dikhega)" : "↔️ Mirror OFF");
-    // drawLoop mein isMirrored check hota hai — auto update
-  };
-
-  /* ══════════════════════════════════════════════
-     SCREEN SHARE
-     ══════════════════════════════════════════════ */
-  window.startScreenShare = async () => {
-    if (!isHost) return showToast("⚠️ Only host can share screen");
-
-    if (isScreenSharing) {
-      // Switch back to camera
-      isScreenSharing = false;
-      document.getElementById("btnScreen").className = "icon-btn";
-      await window.switchCamera(currentCamera);
-      return;
-    }
-
-    const screenStream = await initScreenShare();
-    if (!screenStream) return;
-
-    const screenVideoTrack = screenStream.getVideoTracks()[0];
-    const screenAudioTrack = screenStream.getAudioTracks()[0] || null;
-
-    // Stop canvas pipeline (no effects on screen share)
-    stopCanvasPipeline();
-
-    // Replace video in WebRTC
-    const videoSender = pc?.getSenders().find(s => s.track?.kind === "video");
-    if (videoSender) await videoSender.replaceTrack(screenVideoTrack);
-
-    // Replace audio with system audio if available
-    if (screenAudioTrack) {
-      const audioSender = pc?.getSenders().find(s => s.track?.kind === "audio");
-      if (audioSender) await audioSender.replaceTrack(screenAudioTrack);
-      showToast("🔊 Screen + system audio streaming!");
-    } else {
-      showToast("🖥️ Screen sharing (no system audio found)");
-    }
-
-    localVideo.srcObject = screenStream;
-    localVideo.style.transform = "";
-    localVideo.style.filter = "";
-
-    isScreenSharing = true;
-    document.getElementById("btnScreen").className = "icon-btn sharing";
-    sourceTag.textContent = "SCREEN";
-    qualityTag.textContent = `${qualitySettings.screen.res.toUpperCase()} ${qualitySettings.screen.fps}fps`;
-
-    screenVideoTrack.addEventListener("ended", async () => {
-      isScreenSharing = false;
-      document.getElementById("btnScreen").className = "icon-btn";
-      await window.switchCamera(currentCamera);
-      showToast("🖥️ Screen share ended");
-    });
-  };
 
   /* ══════════════════════════════════════════════
      LEAVE CALL
@@ -807,4 +680,3 @@ function renderParticipants() {
       }
     });
   }
-}
