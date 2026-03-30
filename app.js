@@ -17,11 +17,16 @@ const db = getDatabase(app);
 const servers = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
     { urls: "stun:82.25.104.130:3478" },
     { urls: "turn:82.25.104.130:3478", username: "akash", credential: "hostinger_vps_123" },
     { urls: "turn:82.25.104.130:5349", username: "akash", credential: "hostinger_vps_123" },
     { urls: "turn:82.25.104.130:3478?transport=tcp", username: "akash", credential: "hostinger_vps_123" },
-    { urls: "turn:82.25.104.130:5349?transport=tcp", username: "akash", credential: "hostinger_vps_123" }
+    { urls: "turn:82.25.104.130:5349?transport=tcp", username: "akash", credential: "hostinger_vps_123" },
+    // Fallback Reliable Public TURN for Mobile Testing (Metered openrelay)
+    { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+    { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+    { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
   ],
   iceTransportPolicy: "all",
   iceCandidatePoolSize: 2,
