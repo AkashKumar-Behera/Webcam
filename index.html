@@ -701,20 +701,7 @@
 
 <script type="module" src="app.js"></script>
 
-<script>
-  // Wire lobby buttons AFTER module loads (modules are async)
-  document.addEventListener('DOMContentLoaded', () => {
-    // Lobby: wire buttons via delegated handlers that call window.* safely
-    document.getElementById('lobbyJoinBtn').addEventListener('click', () => {
-      if (typeof window.joinStream === 'function') window.joinStream();
-      else alert('App is still loading, please wait a moment and try again.');
-    });
-    document.getElementById('goLiveBtn').addEventListener('click', () => {
-      if (typeof window.toggleStream === 'function') window.toggleStream();
-      else alert('App is still loading, please wait a moment and try again.');
-    });
-  });
-</script>
+
 
 <!-- Add small script to adapt class names for app.js if needed -->
 <script>

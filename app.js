@@ -803,4 +803,8 @@ if (installBtn) {
   });
 }
 
-}
+/* ══════════════════════════════════════════════
+   LOBBY BUTTON WIRING (inside module — no timing issues)
+   ══════════════════════════════════════════════ */
+document.getElementById('lobbyJoinBtn').addEventListener('click', () => joinStream());
+document.getElementById('goLiveBtn').addEventListener('click', () => toggleStream());
