@@ -252,6 +252,13 @@ window.startStream = async () => {
   goLiveBtn.classList.add("end");
   liveBadge.classList.add("active");
   window.startChatListener();
+  startStats(); startTimer();
+  updateConnStatus("connected");
+  showToast("🔴 Live! Waiting for viewers...");
+};
+
+let participantsMap = {};
+
 window.kickViewer = async (viewerId) => {
   if (pcMap && pcMap[viewerId]) {
     pcMap[viewerId].close();
@@ -794,4 +801,6 @@ if (installBtn) {
       alert("Tap the Share button at the bottom of Safari, then tap 'Add to Home Screen' to install.");
     }
   });
+}
+
 }
