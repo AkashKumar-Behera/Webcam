@@ -422,6 +422,12 @@
   <div class="lobby-screen" id="lobbyScreen">
     <div class="lobby-card">
       <h2 class="lobby-title">Watch Party</h2>
+      
+      <!-- PWA Install Button (Hidden by default) -->
+      <button id="pwaInstallBtn" class="lobby-btn" style="display:none; background:#fbbc04; color:#202124; margin-bottom:12px; font-weight:600; width:100%; justify-content:center; align-items:center; gap:8px;">
+        <span class="material-symbols-outlined" style="font-size:20px;">download</span> Install Watch Party App
+      </button>
+
       <div class="lobby-inputs">
         <input id="userName" class="lobby-input" placeholder="Your Name" spellcheck="false" autocomplete="off" />
         <input id="roomId" class="lobby-input" placeholder="Room Code (e.g. 1234)" maxlength="12" spellcheck="false" autocomplete="off" />

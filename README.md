@@ -73,7 +73,7 @@ external-ip=<YOUR_VPS_IP>
 no-multicast-peers
 no-cli
 no-loopback-peers
-no-tcp-relay
+# IMPORTANT: Do NOT add "no-tcp-relay"! TCP Relay is REQUIRED for mobile networks like Jio/Airtel.
 ```
 
 ### Step 3: Enable the Daemon

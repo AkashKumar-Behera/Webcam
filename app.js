@@ -67,6 +67,11 @@ const RES_MAP = {
    SCREEN SHARE + MIC INIT (Host Only)
    ══════════════════════════════════════════════ */
 async function initMedia() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+    alert("Apple blocks Screen Sharing inside 'Add to Home Screen' (PWA) apps. To Host a session from an iPhone/iPad, please open this website directly inside the Safari Browser instead.");
+    return null;
+  }
+
   const { width, height } = RES_MAP[qualitySettings.screen.res];
   const fps = qualitySettings.screen.fps;
   
@@ -836,3 +841,33 @@ window.startChatListener = () => {
     chatMessages.scrollTop = chatMessages.scrollHeight;
   });
 };
+
+/* ══════════════════════════════════════════════
+   PWA INSTALLATION
+   ══════════════════════════════════════════════ */
+let deferredPrompt;
+const installBtn = document.getElementById('pwaInstallBtn');
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  // Prevent the mini-infobar from appearing on mobile
+  e.preventDefault();
+  deferredPrompt = e;
+  // Update UI notify the user they can install the PWA
+  if (installBtn) installBtn.style.display = 'flex';
+});
+
+if (installBtn) {
+  installBtn.addEventListener('click', async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        installBtn.style.display = 'none';
+      }
+      deferredPrompt = null;
+    } else {
+      // iOS Fallback instruction
+      alert("Tap the Share button at the bottom of Safari, then tap 'Add to Home Screen' to install.");
+    }
+  });
+}
