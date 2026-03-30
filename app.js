@@ -222,6 +222,9 @@ window.startStream = async () => {
     const viewerId = snap.key;
     if (!viewerId) return;
 
+    const vName = (snap.val() && snap.val().name) ? snap.val().name : "Unknown Viewer";
+    addParticipantToUI(viewerId, vName);
+
     const pc = createHostPC(viewerId);
     const offerCandidates = ref(db, `rooms/${roomId}/viewers/${viewerId}/offerCandidates`);
     const answerCandidates = ref(db, `rooms/${roomId}/viewers/${viewerId}/answerCandidates`);
@@ -249,61 +252,13 @@ window.startStream = async () => {
   goLiveBtn.classList.add("end");
   liveBadge.classList.add("active");
   window.startChatListener();
-  window.startRequestsListener();
-  startStats(); startTimer();
-  updateConnStatus("connected");
-  showToast("🔴 Live! Waiting for viewers...");
-};
-
-/* ══════════════════════════════════════════════
-   HOST CONTROLS: Waitroom & Participants
-   ══════════════════════════════════════════════ */
-let pendingRequests = [];
-let participantsMap = {}; 
-
-window.startRequestsListener = () => {
-  const reqToast = document.getElementById("requestToast");
-  const reqName = document.getElementById("requestName");
-  const btnAdmit = document.getElementById("reqAdmitBtn");
-  const btnDeny = document.getElementById("reqDenyBtn");
-  
-  if (!reqToast) return;
-  
-  onChildAdded(ref(db, `rooms/${roomId}/requests`), (snap) => {
-    const reqData = snap.val();
-    const vId = snap.key;
-    if (reqData && reqData.status === 'pending') {
-      pendingRequests.push({ id: vId, name: reqData.name });
-      showNextRequest();
-    }
-  });
-
-  function showNextRequest() {
-    if (pendingRequests.length === 0) {
-      reqToast.style.display = "none";
-      return;
-    }
-    if (reqToast.style.display === "flex") return; 
-    
-    const req = pendingRequests[0];
-    reqName.textContent = req.name;
-    reqToast.style.display = "flex";
-    
-    btnAdmit.onclick = async () => {
-      await set(ref(db, `rooms/${roomId}/requests/${req.id}/status`), 'approved');
-      addParticipantToUI(req.id, req.name);
-      pendingRequests.shift();
-      reqToast.style.display = "none";
-      setTimeout(showNextRequest, 500);
-    };
-    
-    btnDeny.onclick = async () => {
-      await set(ref(db, `rooms/${roomId}/requests/${req.id}/status`), 'denied');
-      pendingRequests.shift();
-      reqToast.style.display = "none";
-      setTimeout(showNextRequest, 500);
-    };
+window.kickViewer = async (viewerId) => {
+  if (pcMap && pcMap[viewerId]) {
+    pcMap[viewerId].close();
+    delete pcMap[viewerId];
   }
+  removeParticipantFromUI(viewerId);
+  await remove(ref(db, `rooms/${roomId}/viewers/${viewerId}`));
 };
 
 function addParticipantToUI(id, name) {
@@ -355,18 +310,6 @@ function renderParticipants() {
     
     list.appendChild(div);
   });
-}
-
-window.kickViewer = async (viewerId) => {
-  await set(ref(db, `rooms/${roomId}/requests/${viewerId}/status`), 'kicked');
-  if(pcMap && pcMap[viewerId]) {
-    pcMap[viewerId].close();
-    delete pcMap[viewerId];
-  }
-  removeParticipantFromUI(viewerId);
-  await remove(ref(db, `rooms/${roomId}/viewers/${viewerId}`));
-};
-
 /* ══════════════════════════════════════════════
    JOIN STREAM (Viewer)
    ══════════════════════════════════════════════ */
@@ -386,28 +329,10 @@ window.joinStream = async () => {
   isHost = false;
   myViewerId = "v_" + Math.random().toString(36).substr(2, 9);
   
-  showToast("🕒 Request sent. Waiting for host approval...");
+  showToast("🕒 Connecting to host...");
   
-  // Create waitroom request
-  await set(ref(db, `rooms/${roomId}/requests/${myViewerId}`), { name: viewerName, status: 'pending', requestedAt: Date.now() });
-  
-  const statusRef = ref(db, `rooms/${roomId}/requests/${myViewerId}/status`);
-  const statusListener = onValue(statusRef, async (snap) => {
-    const val = snap.val();
-    if (val === 'approved') {
-      off(statusRef, "value", statusListener);
-      showToast("✅ Approved! Connecting...");
-      await setupViewerConnection();
-    } else if (val === 'denied') {
-      off(statusRef, "value", statusListener);
-      showToast("❌ Joined denied.");
-      myViewerId = null;
-    } else if (val === 'kicked') {
-      off(statusRef, "value", statusListener);
-      showToast("🛑 Kicked from the party.");
-      window.leaveCall();
-    }
-  });
+  // Directly setup viewer connection
+  await setupViewerConnection(viewerName);
 
   const btnMic = document.getElementById("btnMic");
   const btnCam = document.getElementById("btnCam");
@@ -423,7 +348,7 @@ window.joinStream = async () => {
   document.getElementById("goLiveBtn").style.display = "none";
 };
 
-async function setupViewerConnection() {
+async function setupViewerConnection(viewerName) {
   localStream = new MediaStream();
   remoteStream = new MediaStream();
   if (remoteVideo) { remoteVideo.srcObject = remoteStream; remoteVideo.muted = false; }
@@ -437,7 +362,7 @@ async function setupViewerConnection() {
     if (e.candidate) push(answerCandidates, e.candidate.toJSON());
   };
 
-  await set(ref(db, `rooms/${roomId}/viewers/${myViewerId}`), { joined: Date.now() });
+  await set(ref(db, `rooms/${roomId}/viewers/${myViewerId}`), { joined: Date.now(), name: viewerName });
 
   onValue(ref(db, `rooms/${roomId}/viewers/${myViewerId}/offer`), async snap => {
     if (!snap.val() || pc.remoteDescription) return;
@@ -642,7 +567,6 @@ window.leaveCall = async () => {
   goLiveBtn.textContent = "⬤ START SESSION";
   goLiveBtn.classList.remove("end");
   
-  pendingRequests = [];
   participantsMap = {};
   renderParticipants();
   
