@@ -227,7 +227,6 @@ function createHostScreenPC(viewerId) {
     console.log(`[Screen][${viewerId}] PC:`, pc.connectionState);
     if (pc.connectionState === "connected") {
       applyBitratePerPC(pc, qualitySettings.bitrate);
-      boostScreenShareAudio(pc);
       showToast("👀 A viewer joined!");
     }
   };
@@ -281,25 +280,37 @@ async function applyBitratePerPC(pcInstance, mbps) {
   }
 }
 
-// Boost screen share audio to max Opus stereo quality (510kbps)
-// This ensures movie/song audio stays HD with full bass
-async function boostScreenShareAudio(pcInstance) {
-  for (const sender of pcInstance.getSenders()) {
-    if (!sender.track || sender.track.kind !== 'audio') continue;
-    const params = sender.getParameters();
-    if (!params.encodings?.length) params.encodings = [{}];
-    params.encodings[0].maxBitrate = 510_000;       // 510 kbps — max Opus stereo
-    params.encodings[0].networkPriority = 'high';    // Audio gets priority over video
-    params.encodings[0].priority = 'high';
-    try { await sender.setParameters(params); } catch (_) {}
+/* ══════════════════════════════════════════════
+   SDP MODIFICATION — Force HD Stereo Opus Audio
+   This modifies the SDP BEFORE negotiation so that
+   Opus codec uses stereo, max bitrate, and no CBR.
+   This is the CORRECT way to ensure HD bass audio.
+   ══════════════════════════════════════════════ */
+function forceHDStereoAudio(sdp) {
+  // Find Opus payload type from rtpmap
+  const opusMatch = sdp.match(/a=rtpmap:(\d+) opus\//i);
+  if (!opusMatch) return sdp;
+  const pt = opusMatch[1];
+
+  // Modify Opus fmtp line to add stereo + high bitrate params
+  const fmtpRegex = new RegExp(`(a=fmtp:${pt} .+)`);
+  if (fmtpRegex.test(sdp)) {
+    sdp = sdp.replace(fmtpRegex, (match) => {
+      // Remove any existing stereo/bitrate params to avoid duplicates
+      let clean = match
+        .replace(/;?stereo=\d/g, '')
+        .replace(/;?sprop-stereo=\d/g, '')
+        .replace(/;?maxaveragebitrate=\d+/g, '')
+        .replace(/;?cbr=\d/g, '')
+        .replace(/;?maxplaybackrate=\d+/g, '');
+      return clean + ';stereo=1;sprop-stereo=1;maxaveragebitrate=510000;maxplaybackrate=48000;cbr=0';
+    });
   }
+  return sdp;
 }
 
 async function applyBitrate(mbps) {
-  Object.values(screenPcMap).forEach(pc => {
-    applyBitratePerPC(pc, mbps);
-    boostScreenShareAudio(pc);
-  });
+  Object.values(screenPcMap).forEach(pc => applyBitratePerPC(pc, mbps));
 }
 
 /* ══════════════════════════════════════════════
@@ -650,10 +661,12 @@ window.startStream = async () => {
     };
 
     const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
+    // Force HD stereo Opus in SDP before sending
+    const hdSdp = forceHDStereoAudio(offer.sdp);
+    await pc.setLocalDescription({ type: offer.type, sdp: hdSdp });
     await set(ref(db, `rooms/${roomId}/viewers/${viewerId}/offer`), {
       type: offer.type,
-      sdp: offer.sdp
+      sdp: hdSdp
     });
 
     onValue(ref(db, `rooms/${roomId}/viewers/${viewerId}/answer`), async ansSnap => {
