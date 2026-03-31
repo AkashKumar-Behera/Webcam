@@ -3,45 +3,68 @@
 <head>
   <meta charset="UTF-8" />
   <title>Live Party — Watch Together</title>
-  <meta name="description" content="HD screen share watch party with voice & video calling. Watch movies, listen to music with friends in crystal-clear quality." />
+  <meta name="description" content="HD screen share watch party with face cam & emoji reactions. Watch movies, listen to music with friends." />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <link rel="manifest" href="manifest.json" />
-  <meta name="theme-color" content="#202124" />
+  <meta name="theme-color" content="#0a0a1a" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="apple-touch-icon" href="icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL@20..48,100..700,0..1" rel="stylesheet" />
 
   <style>
     :root {
-      --bg-dark: #202124;
-      --bg-surface: #303134;
-      --bg-hover: #3c4043;
-      --bg-card: #292a2d;
-      --text-main: #e8eaed;
-      --text-muted: #9aa0a6;
-      --red: #ea4335;
-      --blue: #8ab4f8;
-      --green: #81c995;
-      --yellow: #fdd663;
-      --border: #3c4043;
-      --panel-width: 360px;
-      --radius: 12px;
+      --bg: #0a0a1a;
+      --surface: rgba(255,255,255,0.06);
+      --surface-hover: rgba(255,255,255,0.1);
+      --glass: rgba(255,255,255,0.08);
+      --glass-border: rgba(255,255,255,0.12);
+      --glass-strong: rgba(255,255,255,0.14);
+      --text: #f0f0f5;
+      --text-muted: rgba(255,255,255,0.5);
+      --neon-purple: #8B5CF6;
+      --neon-blue: #3B82F6;
+      --neon-cyan: #06B6D4;
+      --neon-pink: #EC4899;
+      --neon-green: #10B981;
+      --red: #ef4444;
+      --radius: 16px;
+      --radius-sm: 10px;
+      --panel-width: 380px;
     }
 
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    * { margin:0; padding:0; box-sizing:border-box; }
 
     body {
-      font-family: 'Inter', sans-serif;
-      background: #000;
-      color: var(--text-main);
-      height: 100vh;
-      height: 100dvh;
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh; height: 100dvh;
       display: flex;
       overflow: hidden;
+      position: relative;
+    }
+
+    /* ── ANIMATED GRADIENT BACKGROUND ── */
+    .bg-gradient {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      opacity: 0.35;
+      background: linear-gradient(135deg, #8B5CF6, #3B82F6, #06B6D4, #EC4899, #8B5CF6);
+      background-size: 400% 400%;
+      animation: gradientShift 20s ease infinite;
+      pointer-events: none;
+    }
+    @keyframes gradientShift {
+      0%   { background-position: 0% 50%; }
+      25%  { background-position: 100% 50%; }
+      50%  { background-position: 100% 0%; }
+      75%  { background-position: 0% 100%; }
+      100% { background-position: 0% 50%; }
     }
 
     /* ── MAIN VIDEO AREA ── */
@@ -51,17 +74,22 @@
       display: flex;
       flex-direction: column;
       height: 100%;
-      transition: width 0.3s ease;
+      z-index: 1;
+      transition: all 0.4s cubic-bezier(0.4,0,0.2,1);
     }
 
     #remoteVideo {
       width: 100%;
       height: calc(100% - 80px);
       object-fit: contain;
-      background: #000;
-      display: block;
+      background: transparent;
+      cursor: pointer;
     }
 
+    /* Background audio element */
+    #bgAudio { display: none; }
+
+    /* ── NO SIGNAL ── */
     .no-signal {
       position: absolute;
       inset: 0;
@@ -70,153 +98,279 @@
       align-items: center;
       justify-content: center;
       gap: 16px;
-      color: var(--text-muted);
+      z-index: 2;
       pointer-events: none;
-      height: calc(100% - 80px);
     }
-    .no-signal .material-symbols-outlined { font-size: 64px; opacity: 0.5; }
     .no-signal.hidden { display: none; }
-
-    /* Top Left Overlay Info */
-    .top-overlay {
-      position: absolute;
-      top: 16px;
-      left: 16px;
-      display: flex;
-      gap: 10px;
-      z-index: 10;
+    .no-signal .ns-icon {
+      width: 64px; height: 64px;
+      border-radius: 16px;
+      background: var(--glass);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--glass-border);
+      display: flex; align-items: center; justify-content: center;
+      animation: float 3s ease-in-out infinite;
     }
+    .no-signal h3 { font-size: 18px; font-weight: 600; color: var(--text); }
+    .no-signal p { font-size: 13px; color: var(--text-muted); }
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-8px); }
+    }
+
+    /* ── OVERLAY BADGES ── */
+    .overlay-top {
+      position: absolute; top: 16px; left: 16px; right: 16px;
+      display: flex; justify-content: space-between; align-items: flex-start;
+      z-index: 10; pointer-events: none;
+    }
+    .overlay-top > * { pointer-events: auto; }
+
+    .badge-row { display: flex; gap: 8px; align-items: center; }
 
     .badge {
-      background: rgba(32, 33, 36, 0.85);
-      backdrop-filter: blur(8px);
-      padding: 6px 12px;
-      border-radius: 8px;
-      font-size: 12px;
-      font-weight: 500;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      border: 1px solid rgba(255,255,255,0.08);
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 14px;
+      background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--glass-border);
+      border-radius: 20px;
+      font-size: 12px; font-weight: 500;
+      transition: all 0.3s;
+    }
+    .badge .dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--text-muted);
+      transition: background 0.3s;
+    }
+    .badge .dot.connected { background: var(--neon-green); }
+    .badge .dot.connecting { background: #fbbf24; animation: pulse 1.5s infinite; }
+    .badge .dot.live { background: var(--red); animation: pulse 1.5s infinite; }
+
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 currentColor; }
+      70% { box-shadow: 0 0 0 6px transparent; }
     }
 
-    .live-badge { opacity: 0; transition: opacity 0.3s; color: var(--red); }
-    .live-badge.active { opacity: 1; }
-    .live-dot { width: 8px; height: 8px; background: var(--red); border-radius: 50%; animation: pulse 1.5s infinite; }
-    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(234,67,53,0.7); } 70% { box-shadow: 0 0 0 6px rgba(234,67,53,0); } 100% { box-shadow: 0 0 0 0 rgba(234,67,53,0); } }
+    .overlay-tags { display: flex; gap: 8px; }
+    .overlay-tag {
+      padding: 5px 12px;
+      background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--glass-border);
+      border-radius: 8px;
+      font-size: 11px; font-weight: 500;
+      font-family: 'Inter', monospace;
+    }
 
-    .mode-badge { color: var(--blue); }
-    .mode-badge .material-symbols-outlined { font-size: 14px; }
-
-    .conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); transition: background 0.3s; }
-    .conn-dot.connected { background: var(--green); }
-    .conn-dot.connecting { background: var(--yellow); }
-
-    .overlay-tags { position: absolute; top: 16px; right: 16px; display: flex; gap: 8px; z-index: 10; }
-    .overlay-tag { background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); padding: 4px 10px; font-size: 11px; border-radius: 6px; font-family: 'Inter', monospace; font-weight: 500; }
-
-    /* ── PARTICIPANT VIDEO GRID (floating) ── */
-    .participants-grid {
+    /* ── FACE CAM GRID (Floating) ── */
+    .cam-panel {
       position: absolute;
       bottom: 96px;
       right: 16px;
-      background: var(--bg-dark);
-      border-radius: var(--radius);
-      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-      border: 1px solid var(--border);
       z-index: 15;
-      width: 296px;
-      overflow: hidden;
       display: none;
-      transition: all 0.3s ease;
+      transition: all 0.4s cubic-bezier(0.4,0,0.2,1);
     }
-    .participants-grid.active { display: block; animation: slideUp 0.3s ease; }
+    .cam-panel.active { display: block; animation: slideInUp 0.4s ease; }
 
-    @keyframes slideUp {
-      from { opacity: 0; transform: translateY(16px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    .grid-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 10px 14px;
-      border-bottom: 1px solid var(--border);
-      font-size: 13px;
-      font-weight: 600;
-    }
-    .grid-header .participant-count {
-      background: var(--bg-surface);
-      padding: 2px 8px;
-      border-radius: 10px;
-      font-size: 11px;
-      color: var(--text-muted);
+    @keyframes slideInUp {
+      from { opacity: 0; transform: translateY(24px) scale(0.95); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
     }
 
-    .grid-tiles {
-      padding: 8px;
+    .cam-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 6px;
-      max-height: 280px;
-      overflow-y: auto;
+      gap: 8px;
+      max-width: 320px;
     }
+    /* Auto grid layout based on tile count */
+    .cam-grid[data-count="1"] { grid-template-columns: 1fr; width: 240px; }
+    .cam-grid[data-count="2"] { grid-template-columns: 1fr 1fr; width: 300px; }
+    .cam-grid[data-count="3"] { grid-template-columns: 1fr 1fr; width: 300px; }
+    .cam-grid[data-count="4"] { grid-template-columns: 1fr 1fr; width: 320px; }
+    .cam-grid[data-count="5"] { grid-template-columns: 1fr 1fr 1fr; width: 360px; }
 
-    .video-tile {
+    /* ── FACE CAM TILE ── */
+    .cam-tile {
       position: relative;
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       overflow: hidden;
-      background: var(--bg-surface);
       aspect-ratio: 4/3;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
+      /* neon border glow */
+      border: 2px solid transparent;
+      background-origin: border-box;
+      background-clip: padding-box, border-box;
     }
-    .video-tile video {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-    .video-tile .tile-name {
+    .cam-tile::before {
+      content: '';
       position: absolute;
-      bottom: 4px;
-      left: 4px;
-      font-size: 10px;
-      font-weight: 500;
-      background: rgba(0,0,0,0.65);
-      padding: 2px 6px;
-      border-radius: 4px;
-      max-width: 90%;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      inset: -2px;
+      border-radius: calc(var(--radius-sm) + 2px);
+      background: linear-gradient(135deg, var(--neon-purple), var(--neon-blue), var(--neon-cyan), var(--neon-pink));
+      background-size: 300% 300%;
+      animation: neonBorder 4s ease infinite;
+      z-index: -1;
     }
-    .video-tile .tile-mic {
+    @keyframes neonBorder {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+    .cam-tile::after {
+      content: '';
       position: absolute;
-      top: 4px;
-      right: 4px;
-      font-size: 14px;
+      inset: 0;
+      border-radius: var(--radius-sm);
+      box-shadow: inset 0 0 20px rgba(0,0,0,0.4);
+      pointer-events: none;
+      z-index: 2;
     }
-    .video-tile .tile-mic.muted { color: var(--red); }
-    .video-tile .tile-mic:not(.muted) { color: var(--green); }
+    .cam-tile:hover { transform: scale(1.04); z-index: 5; }
+    .cam-tile:hover::before {
+      filter: brightness(1.5);
+      box-shadow: 0 0 20px rgba(139,92,246,0.4);
+    }
 
-    .video-tile .tile-avatar {
-      width: 100%;
-      height: 100%;
-      display: flex;
+    .cam-tile video {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      background: #1a1a2e;
+    }
+    .cam-tile .tile-avatar {
+      width: 100%; height: 100%;
+      display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, #1a1a3e, #2a2a4e);
+      font-size: 28px; font-weight: 700;
+    }
+    .cam-tile .tile-label {
+      position: absolute;
+      bottom: 6px; left: 6px;
+      font-size: 10px; font-weight: 600;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(8px);
+      padding: 3px 8px;
+      border-radius: 6px;
+      max-width: 85%;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      z-index: 3;
+    }
+    .cam-tile .tile-actions {
+      position: absolute;
+      top: 4px; right: 4px;
+      display: flex; gap: 2px;
+      opacity: 0;
+      transition: opacity 0.2s;
+      z-index: 4;
+    }
+    .cam-tile:hover .tile-actions { opacity: 1; }
+    .tile-action-btn {
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(8px);
+      border: none;
+      color: white;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s;
+    }
+    .tile-action-btn:hover { background: var(--neon-purple); transform: scale(1.1); }
+    .tile-action-btn .material-symbols-outlined { font-size: 15px; }
+
+    .cam-tile.pinned {
+      grid-column: 1 / -1;
+      aspect-ratio: 16/9;
+    }
+    .cam-tile.pinned::before {
+      background: linear-gradient(135deg, var(--neon-green), var(--neon-cyan));
+    }
+
+    /* ── FULLSCREEN TILE OVERLAY ── */
+    .tile-fullscreen-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: rgba(0,0,0,0.85);
+      backdrop-filter: blur(20px);
+      display: none;
       align-items: center;
       justify-content: center;
-      background: linear-gradient(135deg, #3c4043, #5f6368);
-      font-size: 28px;
-      font-weight: 700;
-      color: var(--text-main);
+      animation: fadeIn 0.3s ease;
+    }
+    .tile-fullscreen-overlay.active { display: flex; }
+    .tile-fullscreen-overlay video {
+      max-width: 90vw;
+      max-height: 85vh;
+      border-radius: var(--radius);
+      border: 2px solid;
+      border-image: linear-gradient(135deg, var(--neon-purple), var(--neon-cyan)) 1;
+    }
+    .tile-fullscreen-overlay .fs-close {
+      position: absolute;
+      top: 20px; right: 20px;
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      background: var(--glass);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--glass-border);
+      color: white;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s;
+    }
+    .tile-fullscreen-overlay .fs-close:hover { background: var(--red); }
+    .tile-fullscreen-overlay .fs-name {
+      position: absolute;
+      bottom: 30px;
+      font-size: 16px; font-weight: 600;
+      background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(8px);
+      padding: 8px 20px;
+      border-radius: 20px;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    /* ── EMOJI REACTIONS OVERLAY ── */
+    .emoji-overlay {
+      position: absolute;
+      bottom: 100px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 25;
+      width: 300px;
+      height: 300px;
+      pointer-events: none;
+      overflow: visible;
+    }
+    .emoji-float {
+      position: absolute;
+      bottom: 0;
+      font-size: 36px;
+      animation: emojiRise 3s ease-out forwards;
+      pointer-events: none;
+      filter: drop-shadow(0 0 8px rgba(255,255,255,0.3));
+    }
+    @keyframes emojiRise {
+      0%   { opacity: 1; transform: translateY(0) scale(0.5) rotate(0deg); }
+      20%  { opacity: 1; transform: translateY(-40px) scale(1.2) rotate(-10deg); }
+      100% { opacity: 0; transform: translateY(-280px) scale(0.8) rotate(15deg); }
     }
 
     /* ── BOTTOM CONTROL BAR ── */
     .controls-bar {
       position: absolute;
-      bottom: 0;
-      width: 100%;
+      bottom: 0; width: 100%;
       height: 80px;
-      background: var(--bg-dark);
+      background: rgba(10,10,26,0.7);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border-top: 1px solid var(--glass-border);
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -224,643 +378,738 @@
       z-index: 20;
     }
 
-    .controls-left, .controls-right { display: flex; align-items: center; gap: 12px; min-width: 200px; }
+    .controls-left, .controls-right { display: flex; align-items: center; gap: 10px; min-width: 180px; }
     .controls-right { justify-content: flex-end; }
-    .controls-center { display: flex; align-items: center; gap: 10px; flex: 1; justify-content: center; }
+    .controls-center { display: flex; align-items: center; gap: 8px; flex: 1; justify-content: center; }
 
-    .time-text { font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
+    .time-text { font-size: 14px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--text-muted); }
     .room-input {
-      background: transparent;
-      border: none;
-      color: var(--text-main);
+      background: var(--surface);
+      border: 1px solid var(--glass-border);
+      border-radius: 8px;
+      color: var(--text);
       font-family: inherit;
-      font-size: 14px;
-      width: 100px;
+      font-size: 13px;
+      padding: 6px 12px;
+      width: 90px;
       outline: none;
+      transition: all 0.2s;
     }
+    .room-input:focus { border-color: var(--neon-purple); box-shadow: 0 0 0 2px rgba(139,92,246,0.2); }
     .room-input::placeholder { color: var(--text-muted); }
-    .divider-vert { width: 1px; height: 20px; background: var(--border); }
 
     .icon-btn {
-      width: 44px;
-      height: 44px;
+      width: 44px; height: 44px;
       border-radius: 50%;
-      background: var(--bg-surface);
-      border: 1px solid transparent;
-      color: var(--text-main);
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      background: var(--surface);
+      border: 1px solid var(--glass-border);
+      color: var(--text);
+      display: flex; align-items: center; justify-content: center;
       cursor: pointer;
-      transition: all 0.2s;
+      transition: all 0.25s cubic-bezier(0.4,0,0.2,1);
       position: relative;
+      backdrop-filter: blur(8px);
     }
-    .icon-btn:hover { background: var(--bg-hover); transform: scale(1.05); }
+    .icon-btn:hover { background: var(--surface-hover); transform: scale(1.08); border-color: var(--neon-purple); }
+    .icon-btn:active { transform: scale(0.95); }
     .icon-btn .material-symbols-outlined { font-size: 22px; }
-    .icon-btn.off { background: var(--red); color: white; }
-    .icon-btn.off:hover { background: #d93025; }
-    .icon-btn.active-blue { background: rgba(138,180,248,0.2); color: var(--blue); }
-    .icon-btn.voice-active { background: rgba(129,201,149,0.2); color: var(--green); }
+    .icon-btn.off { background: var(--red); border-color: var(--red); color: white; }
+    .icon-btn.active { background: rgba(139,92,246,0.25); border-color: var(--neon-purple); color: var(--neon-purple); }
 
-    /* Voice-only buttons hidden by default */
-    .voice-only { display: none !important; }
-    body.voice-mode .voice-only { display: flex !important; }
-
-    /* PTT button active state */
-    #btnPTT.ptt-active {
-      background: rgba(129,201,149,0.3) !important;
-      color: var(--green) !important;
-      border-color: var(--green) !important;
-      box-shadow: 0 0 12px rgba(129,201,149,0.5);
-      animation: pttPulse 1s infinite;
-    }
-    @keyframes pttPulse {
-      0%, 100% { box-shadow: 0 0 8px rgba(129,201,149,0.4); }
-      50% { box-shadow: 0 0 18px rgba(129,201,149,0.7); }
+    .icon-btn .count-badge {
+      position: absolute;
+      top: -2px; right: -2px;
+      min-width: 18px; height: 18px;
+      border-radius: 9px;
+      background: var(--neon-purple);
+      color: white;
+      font-size: 10px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      padding: 0 4px;
     }
 
-    .btn-leave {
-      height: 44px;
+    /* Emoji picker bar */
+    .emoji-bar {
+      display: flex; gap: 4px;
+      background: var(--glass);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--glass-border);
+      border-radius: 24px;
+      padding: 4px 8px;
+    }
+    .emoji-btn {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      border: none;
+      background: transparent;
+      font-size: 20px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s;
+    }
+    .emoji-btn:hover { background: var(--surface-hover); transform: scale(1.3); }
+    .emoji-btn:active { transform: scale(0.9); }
+
+    .btn-live {
+      height: 42px;
       padding: 0 20px;
-      border-radius: 22px;
-      background: var(--red);
+      border-radius: 21px;
+      background: linear-gradient(135deg, var(--neon-purple), var(--neon-blue));
       color: white;
       border: none;
       display: flex;
       align-items: center;
       gap: 8px;
       font-size: 14px;
-      font-weight: 500;
+      font-weight: 600;
       font-family: inherit;
       cursor: pointer;
-      transition: all 0.2s;
+      transition: all 0.3s;
+      box-shadow: 0 4px 16px rgba(139,92,246,0.3);
     }
-    .btn-leave:hover { background: #d93025; transform: scale(1.02); }
-    .btn-leave .material-symbols-outlined { font-size: 20px; }
+    .btn-live:hover { transform: scale(1.04); box-shadow: 0 6px 24px rgba(139,92,246,0.5); }
+    .btn-live:active { transform: scale(0.97); }
+    .btn-live .material-symbols-outlined { font-size: 20px; }
+    .btn-live.end {
+      background: linear-gradient(135deg, var(--red), #dc2626);
+      box-shadow: 0 4px 16px rgba(239,68,68,0.3);
+    }
 
-    .btn-primary { background: var(--blue); color: var(--bg-dark); }
-    .btn-primary:hover { background: #aecbfa; }
+    .btn-end {
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      background: var(--red);
+      border: none;
+      color: white;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.25s;
+    }
+    .btn-end:hover { background: #dc2626; transform: scale(1.08); }
+    .btn-end .material-symbols-outlined { font-size: 22px; }
 
-    /* ── SIDEBAR ── */
+    /* ── GLASSMORPHISM SIDEBAR ── */
     .sidebar {
       width: 0;
-      background: #fff;
-      color: #3c4043;
-      transition: width 0.3s ease;
+      background: rgba(15,15,30,0.75);
+      backdrop-filter: blur(32px);
+      -webkit-backdrop-filter: blur(32px);
+      border-left: 1px solid var(--glass-border);
+      transition: width 0.4s cubic-bezier(0.4,0,0.2,1);
       overflow: hidden;
       display: flex;
       flex-direction: column;
-      border-left: 1px solid #dadce0;
+      z-index: 30;
     }
     .sidebar.open { width: var(--panel-width); }
 
     .sidebar-header {
-      padding: 16px 24px;
+      padding: 18px 24px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      border-bottom: 1px solid #dadce0;
+      border-bottom: 1px solid var(--glass-border);
       flex-shrink: 0;
     }
-    .sidebar-header h2 { font-size: 18px; font-weight: 500; color: #202124; }
-    .close-btn { background: none; border: none; cursor: pointer; color: #5f6368; display: flex; align-items: center; padding: 8px; border-radius: 50%; transition: background 0.2s; }
-    .close-btn:hover { background: #f1f3f4; }
-
-    .sidebar-tabs { display: flex; border-bottom: 1px solid #dadce0; flex-shrink: 0; }
-    .sidebar-tab {
-      flex: 1; text-align: center; padding: 12px 0; background: none; border: none;
-      font-size: 13px; font-weight: 500; color: #5f6368; cursor: pointer;
-      border-bottom: 3px solid transparent; font-family: inherit; transition: all 0.2s;
+    .sidebar-header h2 { font-size: 18px; font-weight: 700; }
+    .sidebar-close {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: var(--surface);
+      border: 1px solid var(--glass-border);
+      color: var(--text);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s;
     }
-    .sidebar-tab.active { color: #1a73e8; border-bottom-color: #1a73e8; }
-    .sidebar-tab:hover:not(.active) { background: #f8f9fa; }
+    .sidebar-close:hover { background: var(--red); border-color: var(--red); }
+
+    .sidebar-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--glass-border);
+      flex-shrink: 0;
+    }
+    .sidebar-tab {
+      flex: 1;
+      padding: 12px;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+    }
+    .sidebar-tab:hover { color: var(--text); background: var(--surface); }
+    .sidebar-tab.active { color: var(--neon-purple); border-bottom-color: var(--neon-purple); }
 
     .sidebar-content {
       flex: 1;
-      padding: 16px 24px;
       overflow-y: auto;
+      padding: 20px 24px;
       display: none;
-      flex-direction: column;
-      gap: 20px;
     }
-    .sidebar-content.active { display: flex; }
+    .sidebar-content.active { display: flex; flex-direction: column; gap: 20px; }
 
-    .section-title { font-size: 12px; font-weight: 600; color: #5f6368; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; }
-
-    /* Setup Tab */
-    .setup-actions { display: flex; flex-direction: column; gap: 10px; }
-    .btn-flat {
-      padding: 10px 16px; border-radius: 8px; border: 1px solid #dadce0;
-      background: #fff; color: #1a73e8; font-weight: 500; font-size: 14px;
-      cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
-      font-family: inherit; transition: all 0.2s;
+    .section-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
     }
-    .btn-flat:hover { background: #f8f9fa; transform: translateY(-1px); }
-    .btn-filled { background: #1a73e8; color: #fff; border: none; }
-    .btn-filled:hover { background: #1557b0; }
 
-    /* Mobile Banner */
-    .mobile-banner {
-      background: rgba(253, 214, 99, 0.1);
-      border: 1px solid rgba(253, 214, 99, 0.25);
-      border-radius: 8px;
-      padding: 10px 14px;
-      display: none;
-      align-items: flex-start;
-      gap: 8px;
-      font-size: 12px;
-      color: var(--yellow);
-      line-height: 1.5;
-    }
-    .mobile-banner.show { display: flex; }
-    .mobile-banner .material-symbols-outlined { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+    .setup-actions { display: flex; flex-direction: column; gap: 8px; }
 
-    /* Volume Controls */
-    .volume-section { margin-top: 4px; }
-    .volume-row {
+    .btn-action {
+      width: 100%;
+      padding: 12px 16px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--glass-border);
+      background: var(--surface);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
       display: flex;
       align-items: center;
       gap: 10px;
-      margin-bottom: 14px;
+      transition: all 0.2s;
     }
-    .volume-row .material-symbols-outlined { font-size: 20px; color: #5f6368; flex-shrink: 0; }
-    .volume-row label { font-size: 12px; color: #5f6368; min-width: 50px; }
-    .volume-row input[type=range] { flex: 1; accent-color: #1a73e8; }
-    .volume-row .vol-value { font-size: 11px; color: #9aa0a6; min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
+    .btn-action:hover { background: var(--surface-hover); border-color: var(--neon-purple); transform: translateX(4px); }
+    .btn-action .material-symbols-outlined { font-size: 20px; color: var(--text-muted); }
 
-    /* Stats Tab */
-    .stat-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f1f3f4; }
-    .stat-label { font-size: 13px; color: #5f6368; }
-    .stat-value { font-size: 14px; font-weight: 500; color: #202124; font-family: 'Inter', monospace; }
-    .stat-value.green { color: #188038; }
-    .stat-value.yellow { color: #f29900; }
-    .stat-value.red { color: #d93025; }
+    .btn-action.primary {
+      background: linear-gradient(135deg, var(--neon-purple), var(--neon-blue));
+      border-color: transparent;
+      font-weight: 600;
+    }
+    .btn-action.primary:hover { transform: translateX(4px); box-shadow: 0 4px 16px rgba(139,92,246,0.3); }
+    .btn-action.primary .material-symbols-outlined { color: white; }
 
-    /* ── MODE SELECTION MODAL ── */
+    .btn-action.green {
+      background: linear-gradient(135deg, var(--neon-green), var(--neon-cyan));
+      border-color: transparent;
+      font-weight: 600;
+    }
+
+    /* Volume section */
+    .volume-row {
+      display: flex; align-items: center; gap: 10px;
+    }
+    .volume-row .material-symbols-outlined { font-size: 20px; color: var(--text-muted); }
+    .volume-row label { font-size: 13px; font-weight: 500; min-width: 45px; }
+    .volume-row input[type=range] {
+      flex: 1; height: 4px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: var(--glass-border);
+      border-radius: 2px;
+      outline: none;
+    }
+    .volume-row input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: var(--neon-purple);
+      cursor: pointer;
+      box-shadow: 0 0 8px rgba(139,92,246,0.5);
+    }
+    .volume-row .vol-value { font-size: 12px; color: var(--text-muted); min-width: 35px; text-align: right; }
+
+    /* Stats */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-sm);
+      padding: 12px;
+    }
+    .stat-label { font-size: 10px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.8px; }
+    .stat-value { font-size: 20px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+    .stat-value .stat-unit { font-size: 11px; font-weight: 500; color: var(--text-muted); }
+    .stat-value.green { color: var(--neon-green); }
+    .stat-value.yellow { color: #fbbf24; }
+    .stat-value.red { color: var(--red); }
+
+    .bar-track {
+      height: 3px;
+      background: var(--glass-border);
+      border-radius: 2px;
+      margin-top: 8px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--neon-purple), var(--neon-cyan));
+      border-radius: 2px;
+      transition: width 0.5s;
+    }
+
+    /* Chat */
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      font-size: 13px;
+      padding-bottom: 8px;
+    }
+    .chat-msg {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .chat-msg-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+    }
+    .chat-sender { font-weight: 600; font-size: 12px; }
+    .chat-time { font-size: 10px; color: var(--text-muted); }
+    .chat-bubble {
+      padding: 8px 14px;
+      border-radius: 12px;
+      line-height: 1.5;
+      word-break: break-word;
+      font-size: 13px;
+    }
+    .chat-bubble.me { background: rgba(139,92,246,0.2); border-radius: 12px 12px 4px 12px; }
+    .chat-bubble.other { background: var(--surface); border-radius: 4px 12px 12px 12px; }
+
+    .chat-input-bar {
+      display: flex; gap: 8px;
+      padding-top: 12px;
+      border-top: 1px solid var(--glass-border);
+    }
+    .chat-input {
+      flex: 1;
+      padding: 10px 16px;
+      border: 1px solid var(--glass-border);
+      border-radius: 24px;
+      background: var(--surface);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 13px;
+      outline: none;
+      transition: all 0.2s;
+    }
+    .chat-input:focus { border-color: var(--neon-purple); }
+    .chat-input::placeholder { color: var(--text-muted); }
+    .chat-send {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--neon-purple), var(--neon-blue));
+      border: none;
+      color: white;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      transition: all 0.2s;
+    }
+    .chat-send:hover { transform: scale(1.05); }
+
+    /* ── QUALITY MODAL ── */
     .modal-bg {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100;
-      display: none; align-items: center; justify-content: center;
-      backdrop-filter: blur(4px);
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(8px);
+      z-index: 50;
+      display: none;
+      align-items: center;
+      justify-content: center;
     }
     .modal-bg.open { display: flex; }
     .modal {
-      background: #fff; border-radius: var(--radius); width: 540px; max-width: 92vw;
-      box-shadow: 0 8px 40px rgba(0,0,0,0.3); overflow: hidden;
-      animation: modalIn 0.25s ease;
+      background: rgba(20,20,40,0.95);
+      backdrop-filter: blur(32px);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius);
+      width: 90%;
+      max-width: 480px;
+      max-height: 90vh;
+      overflow-y: auto;
+      animation: modalIn 0.3s ease;
     }
     @keyframes modalIn {
-      from { opacity: 0; transform: scale(0.95) translateY(8px); }
+      from { opacity: 0; transform: scale(0.95) translateY(10px); }
       to { opacity: 1; transform: scale(1) translateY(0); }
     }
-    .modal-header { padding: 20px 24px; border-bottom: 1px solid #dadce0; display: flex; justify-content: space-between; align-items: center; }
-    .modal-header h2 { font-size: 18px; font-weight: 600; color: #202124; margin: 0; }
-    .modal-body { padding: 24px; display: flex; flex-direction: column; gap: 20px; }
-
-    .mode-cards { display: flex; gap: 14px; }
-    .mode-card {
-      flex: 1; padding: 20px 16px; border: 2px solid #dadce0; border-radius: var(--radius);
-      cursor: pointer; text-align: center; transition: all 0.25s;
-      position: relative; overflow: hidden;
+    .modal-header {
+      padding: 20px 24px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid var(--glass-border);
     }
-    .mode-card::before {
-      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
-      background: transparent; transition: background 0.25s;
+    .modal-header h2 { font-size: 17px; font-weight: 700; }
+    .modal-body { padding: 24px; }
+    .modal-footer {
+      padding: 16px 24px;
+      border-top: 1px solid var(--glass-border);
+      display: flex; justify-content: flex-end; gap: 10px;
     }
-    .mode-card:hover { border-color: #8ab4f8; background: #f8f9fa; }
-    .mode-card.selected { border-color: #1a73e8; background: #e8f0fe; }
-    .mode-card.selected::before { background: #1a73e8; }
-    .mode-card .mode-icon { font-size: 36px; margin-bottom: 12px; display: block; }
-    .mode-card h3 { font-size: 15px; font-weight: 600; color: #202124; margin-bottom: 4px; }
-    .mode-card .mode-desc { font-size: 12px; color: #5f6368; margin-bottom: 14px; }
-    .mode-card ul { list-style: none; text-align: left; font-size: 12px; line-height: 2.2; color: #3c4043; }
-    .mode-card ul li { display: flex; align-items: center; gap: 6px; }
-
-    .voice-settings {
-      background: #f8f9fa; border-radius: 8px; padding: 16px;
-      display: none; flex-direction: column; gap: 14px;
-      border: 1px solid #e8eaed;
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .form-group select, .form-group input[type=range] {
+      width: 100%; padding: 10px 14px;
+      background: var(--surface);
+      border: 1px solid var(--glass-border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 14px;
+      outline: none;
+      transition: border 0.2s;
     }
-    .voice-settings.show { display: flex; }
-    .voice-settings .section-title { margin-bottom: 0; font-size: 11px; }
+    .form-group select:focus { border-color: var(--neon-purple); }
+    .form-group select option { background: #1a1a2e; }
 
-    .form-group { display: flex; flex-direction: column; gap: 6px; }
-    .form-group label { font-size: 13px; font-weight: 500; color: #3c4043; }
-    .form-group select {
-      padding: 10px 12px; border: 1px solid #dadce0; border-radius: 8px; font-size: 14px;
-      color: #202124; outline: none; background: #fff; font-family: inherit;
+    .btn-modal {
+      padding: 10px 20px;
+      border-radius: 10px;
+      border: 1px solid var(--glass-border);
+      background: var(--surface);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
     }
-    .form-group select:focus { border-color: #1a73e8; box-shadow: 0 0 0 2px rgba(26,115,232,0.2); }
+    .btn-modal:hover { background: var(--surface-hover); }
+    .btn-modal.primary {
+      background: linear-gradient(135deg, var(--neon-purple), var(--neon-blue));
+      border-color: transparent;
+      color: white;
+      font-weight: 600;
+    }
+    .btn-modal.primary:hover { box-shadow: 0 4px 16px rgba(139,92,246,0.4); }
 
-    .modal-footer { padding: 16px 24px; border-top: 1px solid #dadce0; display: flex; justify-content: flex-end; gap: 12px; background: #f8f9fa; }
-
-    /* Toast */
+    /* ── TOAST ── */
     #toast {
-      position: fixed; bottom: 100px; left: 24px; background: #323232; color: #fff;
-      padding: 12px 24px; border-radius: 8px; font-size: 14px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-      opacity: 0; transition: opacity 0.3s, transform 0.3s;
-      pointer-events: none; z-index: 999;
-      transform: translateY(8px);
+      position: fixed;
+      bottom: 100px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: rgba(20,20,40,0.9);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--glass-border);
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 500;
+      z-index: 999;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.3s ease;
+      white-space: nowrap;
     }
-    #toast.show { opacity: 1; transform: translateY(0); }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-    /* ── RESPONSIVE / MOBILE ── */
+    /* ── MOBILE RESPONSIVE ── */
     @media (max-width: 768px) {
-      .controls-bar {
-        padding: 10px 8px;
-        flex-wrap: wrap;
-        height: auto;
-        justify-content: center;
-      }
-      .controls-left {
-        width: 100%;
-        margin-bottom: 8px;
-        justify-content: center;
-        min-width: unset;
-      }
-      .time-text { font-size: 13px; }
-      .room-input { width: 35%; font-size: 13px; text-align: center; }
-      .controls-right { display: none; }
+      .controls-left { min-width: auto; gap: 6px; }
+      .controls-right { min-width: auto; }
+      .room-input { width: 65px; font-size: 12px; padding: 5px 8px; }
+      .time-text { font-size: 12px; }
+      .controls-center { gap: 5px; }
+      .icon-btn { width: 38px; height: 38px; }
+      .icon-btn .material-symbols-outlined { font-size: 20px; }
+      .btn-live { height: 38px; padding: 0 14px; font-size: 13px; }
+      .btn-end { width: 38px; height: 38px; }
+      .emoji-bar { padding: 2px 4px; }
+      .emoji-btn { width: 30px; height: 30px; font-size: 16px; }
 
-      .controls-center {
-        width: 100%;
+      .sidebar.open { width: 100%; position: absolute; inset: 0; }
+
+      /* Mobile cam layout = bottom horizontal strip */
+      .cam-panel {
+        bottom: 80px;
+        right: 0; left: 0;
+        padding: 0 8px;
+      }
+      .cam-grid {
+        display: flex !important;
+        overflow-x: auto;
         gap: 6px;
-        justify-content: center;
-        flex-wrap: wrap;
+        max-width: 100% !important;
+        width: 100% !important;
+        padding-bottom: 4px;
+        scroll-snap-type: x mandatory;
       }
-      .icon-btn { width: 42px; height: 42px; }
-      .btn-leave { height: 42px; padding: 0 14px; font-size: 13px; }
-
-      .sidebar {
-        position: fixed; right: 0; top: 0; height: 100%; z-index: 100;
-        border-left: none; box-shadow: -4px 0 20px rgba(0,0,0,0.2);
+      .cam-tile {
+        flex-shrink: 0;
+        width: 100px;
+        aspect-ratio: 3/4;
+        scroll-snap-align: start;
       }
-      .sidebar.open { width: 100%; max-width: 100vw; }
-
-      .modal { width: 95vw; }
-      .mode-cards { flex-direction: column; gap: 10px; }
-      .mode-card { padding: 14px 16px; }
-      .mode-card ul { display: none; }
-
-      .top-overlay { top: 8px; left: 8px; flex-wrap: wrap; }
-      .badge { padding: 4px 8px; font-size: 10px; }
-
-      .participants-grid {
-        bottom: auto; top: 60px; right: 8px; left: 8px; width: auto;
+      .cam-tile.pinned {
+        width: 160px;
+        aspect-ratio: 4/3;
       }
-      .grid-tiles { grid-template-columns: repeat(3, 1fr); }
     }
 
     @media (max-width: 480px) {
-      .controls-center { gap: 4px; }
-      .icon-btn { width: 38px; height: 38px; }
-      .icon-btn .material-symbols-outlined { font-size: 18px; }
-      .btn-leave { padding: 0 10px; font-size: 0; gap: 0; }
-      .btn-leave .material-symbols-outlined { font-size: 20px; margin: 0; }
+      .emoji-bar { display: none; }
+      .controls-bar { padding: 0 10px; height: 70px; }
     }
 
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 2px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
   </style>
 </head>
-
 <body>
 
-  <!-- MAIN AREA -->
-<main class="video-area">
+<!-- Animated gradient background -->
+<div class="bg-gradient" id="bgGradient"></div>
 
-  <div class="top-overlay">
-    <div class="badge live-badge" id="liveBadge">
-      <div class="live-dot"></div> LIVE
-    </div>
-    <div class="badge mode-badge" id="modeBadge" style="display:none;">
-      <span class="material-symbols-outlined">group</span>
-      <span id="modeBadgeText">Voice</span>
-    </div>
-    <div class="badge">
-      <div class="conn-dot" id="connDot"></div>
-      <span id="connLabel" style="font-family: 'Inter', monospace; font-size: 11px;">DISCONNECTED</span>
-    </div>
-  </div>
-
-  <div class="overlay-tags">
-    <div class="overlay-tag" id="sourceTag">—</div>
-    <div class="overlay-tag" id="qualityTag">—</div>
-  </div>
-
-  <div class="no-signal" id="noSignal">
-    <span class="material-symbols-outlined">present_to_all</span>
-    <span style="font-size: 18px; font-weight: 500;">Waiting for Screen Share</span>
-    <span style="font-size: 14px; opacity: 0.7;">Open the ⋮ menu to join or start a session</span>
-  </div>
-
+<main class="video-area" id="videoArea">
   <video id="remoteVideo" autoplay playsinline></video>
-  <!-- Hidden audio element for background playback -->
-  <audio id="bgAudio" autoplay playsinline style="display:none;"></audio>
+  <audio id="bgAudio"></audio>
 
-  <!-- PARTICIPANT VIDEO GRID (floating) -->
-  <div class="participants-grid" id="participantsGrid">
-    <div class="grid-header">
-      <span>👥 Participants</span>
-      <span class="participant-count" id="participantCount">0</span>
+  <!-- No signal -->
+  <div class="no-signal" id="noSignal">
+    <div class="ns-icon">
+      <span class="material-symbols-outlined" style="font-size:28px; color:var(--neon-purple);">screen_share</span>
     </div>
-    <div class="grid-tiles" id="gridTiles">
-      <!-- tiles added dynamically -->
+    <h3>Waiting for Screen Share</h3>
+    <p>Open the menu to join or start a session</p>
+  </div>
+
+  <!-- Top overlay badges -->
+  <div class="overlay-top">
+    <div class="badge-row">
+      <div class="badge" id="connBadge">
+        <span class="dot" id="connDot"></span>
+        <span id="connLabel">DISCONNECTED</span>
+      </div>
+      <div class="badge" id="liveBadge" style="display:none;">
+        <span class="dot live"></span>
+        <span>LIVE</span>
+      </div>
+    </div>
+    <div class="overlay-tags">
+      <span class="overlay-tag" id="sourceTag" style="display:none;">SCREEN</span>
+      <span class="overlay-tag" id="qualityTag" style="display:none;">—</span>
     </div>
   </div>
 
-  <!-- BOTTOM CONTROL BAR -->
+  <!-- Face cam floating grid -->
+  <div class="cam-panel" id="camPanel">
+    <div class="cam-grid" id="camGrid" data-count="0"></div>
+  </div>
+
+  <!-- Emoji reactions overlay -->
+  <div class="emoji-overlay" id="emojiOverlay"></div>
+
+  <!-- Tile fullscreen overlay -->
+  <div class="tile-fullscreen-overlay" id="tileFsOverlay" onclick="closeTileFullscreen()">
+    <video id="tileFsVideo" autoplay playsinline muted></video>
+    <button class="fs-close" onclick="closeTileFullscreen()">
+      <span class="material-symbols-outlined">close</span>
+    </button>
+    <span class="fs-name" id="tileFsName"></span>
+  </div>
+
+  <!-- Bottom control bar -->
   <footer class="controls-bar">
     <div class="controls-left">
-      <span class="time-text" id="clockDisplay">10:00 AM</span>
-      <div class="divider-vert"></div>
-      <input id="userName" class="room-input" placeholder="Your Name" spellcheck="false" style="width:90px;" />
-      <input id="roomId" class="room-input" placeholder="Room Code" maxlength="12" spellcheck="false" style="width:90px;" />
+      <span class="time-text" id="clockDisplay">00:00</span>
+      <input id="userName" class="room-input" placeholder="Name" spellcheck="false" />
+      <input id="roomId" class="room-input" placeholder="Room Code" maxlength="12" spellcheck="false" />
     </div>
 
     <div class="controls-center">
-      <!-- Voice-only buttons -->
-      <button class="icon-btn voice-only" id="btnPTT"
-        onmousedown="startPTT()" onmouseup="stopPTT()"
-        ontouchstart="event.preventDefault(); startPTT()" ontouchend="event.preventDefault(); stopPTT()"
-        title="Hold to Talk">
-        <span class="material-symbols-outlined">record_voice_over</span>
-      </button>
-      <button class="icon-btn voice-only" id="btnCam" onclick="toggleCam()" title="Toggle Camera">
+      <button class="icon-btn" id="btnCam" onclick="toggleCam()" title="Toggle Camera">
         <span class="material-symbols-outlined">videocam</span>
       </button>
 
       <button class="icon-btn" id="btnFullscreen" onclick="toggleFullscreen()" title="Full Screen">
         <span class="material-symbols-outlined" id="fsIcon">fullscreen</span>
       </button>
-      <button class="icon-btn" id="btnScreen" onclick="startScreenShare()" title="Present screen">
-        <span class="material-symbols-outlined">present_to_all</span>
+
+      <div class="emoji-bar" id="emojiBar">
+        <button class="emoji-btn" onclick="sendReaction('🎉')" title="Celebrate">🎉</button>
+        <button class="emoji-btn" onclick="sendReaction('❤️')" title="Love">❤️</button>
+        <button class="emoji-btn" onclick="sendReaction('👍')" title="Like">👍</button>
+        <button class="emoji-btn" onclick="sendReaction('😂')" title="Haha">😂</button>
+        <button class="emoji-btn" onclick="sendReaction('👏')" title="Clap">👏</button>
+        <button class="emoji-btn" onclick="sendReaction('🔥')" title="Fire">🔥</button>
+      </div>
+
+      <button class="icon-btn" onclick="toggleSidebar('chat')" title="Chat">
+        <span class="material-symbols-outlined">chat</span>
       </button>
-      <button class="icon-btn" onclick="toggleSidebar('setup')" title="More options">
+      <button class="icon-btn" onclick="toggleSidebar('setup')" title="Menu">
         <span class="material-symbols-outlined">more_vert</span>
       </button>
 
-      <!-- Voice-only: Participants toggle -->
-      <button class="icon-btn voice-only" id="btnParticipants" onclick="toggleParticipantsGrid()" title="Participants">
-        <span class="material-symbols-outlined">group</span>
-      </button>
-
-      <button class="btn-leave" id="goLiveBtn" onclick="toggleStream()" title="Go Live">
+      <button class="btn-live" id="goLiveBtn" onclick="toggleStream()" title="Go Live">
         <span class="material-symbols-outlined">podcasts</span> Go Live
       </button>
-      <button class="btn-leave" onclick="leaveCall()" title="Leave call">
+      <button class="btn-end" onclick="leaveCall()" title="Leave">
         <span class="material-symbols-outlined">call_end</span>
       </button>
     </div>
 
     <div class="controls-right">
-      <button class="icon-btn" onclick="toggleSidebar('stats')" title="Meeting details">
-        <span class="material-symbols-outlined">info</span>
+      <button class="icon-btn" onclick="toggleSidebar('stats')" title="Stats">
+        <span class="material-symbols-outlined">analytics</span>
       </button>
-      <button class="icon-btn" onclick="openQualityModal()" title="Video Settings">
-        <span class="material-symbols-outlined">settings</span>
+      <button class="icon-btn" onclick="openQualityModal()" title="Settings">
+        <span class="material-symbols-outlined">tune</span>
       </button>
     </div>
   </footer>
 </main>
 
-<!-- SIDEBAR -->
+<!-- GLASSMORPHISM SIDEBAR -->
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-header">
-    <h2 id="sidebarTitle">Setup</h2>
-    <button class="close-btn" onclick="closeSidebar()">
-      <span class="material-symbols-outlined">close</span>
+    <h2 id="sidebarTitle">Menu</h2>
+    <button class="sidebar-close" onclick="closeSidebar()">
+      <span class="material-symbols-outlined" style="font-size:20px;">close</span>
     </button>
   </div>
-
   <div class="sidebar-tabs">
     <button class="sidebar-tab active" onclick="switchSidebarTab('setup')" id="tabSetup">Setup</button>
     <button class="sidebar-tab" onclick="switchSidebarTab('chat')" id="tabChat">Chat</button>
-    <button class="sidebar-tab" onclick="switchSidebarTab('stats')" id="tabStats">Details</button>
+    <button class="sidebar-tab" onclick="switchSidebarTab('stats')" id="tabStats">Stats</button>
   </div>
 
-  <!-- CHAT CONTENT -->
-  <div class="sidebar-content" id="contentChat" style="padding: 0;">
-    <div id="chatMessages" style="flex: 1; overflow-y: auto; padding: 16px 24px; display: flex; flex-direction: column; gap: 12px; font-size: 13px; height: calc(100vh - 180px);">
-      <div style="text-align:center; color:#9aa0a6; margin-top:10px;">Messages are visible to everyone in the room.</div>
+  <!-- CHAT -->
+  <div class="sidebar-content" id="contentChat">
+    <div class="chat-messages" id="chatMessages">
+      <div style="text-align:center; color:var(--text-muted); margin-top:20px; font-size:12px;">Messages visible to everyone.</div>
     </div>
-    <div style="padding: 16px; border-top: 1px solid #dadce0; display:flex; gap:8px;">
-      <input type="text" id="chatInput" placeholder="Send a message..." style="flex:1; padding:10px 16px; border:1px solid #dadce0; border-radius:24px; outline:none; font-family:inherit; font-size:14px; background:#f1f3f4;" onkeypress="if(event.key==='Enter') window.sendChat()" />
-      <button onclick="window.sendChat()" style="width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; border:none; background:#1a73e8; color:white; cursor:pointer; flex-shrink:0;">
+    <div class="chat-input-bar">
+      <input class="chat-input" id="chatInput" placeholder="Type a message..." onkeypress="if(event.key==='Enter') window.sendChat()" />
+      <button class="chat-send" onclick="window.sendChat()">
         <span class="material-symbols-outlined" style="font-size:20px;">send</span>
       </button>
     </div>
   </div>
 
-  <!-- SETUP CONTENT -->
+  <!-- SETUP -->
   <div class="sidebar-content active" id="contentSetup">
-    <!-- Mobile Warning -->
-    <div class="mobile-banner" id="mobileBanner">
-      <span class="material-symbols-outlined">phone_iphone</span>
-      <div>
-        <strong id="mobileMsg">Mobile detected.</strong><br>
-        <span id="mobileDetail">Screen sharing may be limited. Join as viewer for best experience.</span>
-      </div>
-    </div>
-
     <div>
-      <div class="section-title">Meeting Actions</div>
+      <div class="section-title">Actions</div>
       <div class="setup-actions">
-        <button class="btn-flat" onclick="generateRoom()">
-          <span class="material-symbols-outlined" style="font-size:18px;">autorenew</span> Generate Code
+        <button class="btn-action" onclick="generateRoom()">
+          <span class="material-symbols-outlined">autorenew</span> Generate Room Code
         </button>
-        <button class="btn-flat btn-filled" id="btnStartHost" onclick="openModeModal()">
-          <span class="material-symbols-outlined" style="font-size:18px;">video_call</span> Start Host Session
+        <button class="btn-action primary" onclick="startStream()">
+          <span class="material-symbols-outlined">cast</span> Start Host Session
         </button>
-        <button class="btn-flat" onclick="joinStream()">
-          <span class="material-symbols-outlined" style="font-size:18px;">login</span> Join Watch Party
+        <button class="btn-action green" onclick="joinStream()">
+          <span class="material-symbols-outlined">login</span> Join Watch Party
         </button>
       </div>
     </div>
 
-    <!-- Volume Controls Section -->
     <div>
-      <div class="section-title">🔊 Volume Controls</div>
-      <div class="volume-section">
-        <div class="volume-row">
-          <span class="material-symbols-outlined">movie</span>
-          <label>Movie</label>
-          <input type="range" id="movieVolume" min="0" max="100" value="100" oninput="setMovieVolume(this.value)" />
-          <span class="vol-value" id="movieVolVal">100%</span>
-        </div>
-        <div class="volume-row" id="voiceVolumeRow" style="display:none;">
-          <span class="material-symbols-outlined">mic</span>
-          <label>Voice</label>
-          <input type="range" id="voiceVolume" min="0" max="100" value="80" oninput="setVoiceVolume(this.value)" />
-          <span class="vol-value" id="voiceVolVal">80%</span>
-        </div>
+      <div class="section-title">🔊 Volume</div>
+      <div class="volume-row">
+        <span class="material-symbols-outlined">volume_up</span>
+        <label>Movie</label>
+        <input type="range" id="movieVolume" min="0" max="100" value="100" oninput="setMovieVolume(this.value)" />
+        <span class="vol-value" id="movieVolVal">100%</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Quality</div>
+      <div id="qualitySummary" style="font-size:12px; font-family:monospace; color:var(--text-muted); line-height:1.8;">—</div>
+    </div>
+  </div>
+
+  <!-- STATS -->
+  <div class="sidebar-content" id="contentStats">
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-label">Bitrate</div>
+        <div class="stat-value" id="statBitrate">—</div>
+        <div class="bar-track"><div class="bar-fill" id="barBitrate" style="width:0%"></div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">FPS</div>
+        <div class="stat-value" id="statFps">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Resolution</div>
+        <div class="stat-value" id="statRes">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Latency</div>
+        <div class="stat-value" id="statRtt">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Codec</div>
+        <div class="stat-value" id="statCodec">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Packet Loss</div>
+        <div class="stat-value" id="statLoss">—</div>
+      </div>
+      <div class="stat-card" style="grid-column: 1 / -1;">
+        <div class="stat-label">Duration</div>
+        <div class="stat-value" id="statDuration">00:00:00</div>
       </div>
     </div>
   </div>
-
-  <!-- STATS CONTENT -->
-  <div class="sidebar-content" id="contentStats">
-    <div class="section-title">Connection Stats</div>
-
-    <div class="stat-row">
-      <span class="stat-label">Bitrate</span>
-      <span class="stat-value blue" id="statBitrate">— Mbps</span>
-    </div>
-    <div style="width: 100%; height: 4px; background: #f1f3f4; border-radius: 2px; margin-bottom: 8px;">
-      <div id="barBitrate" style="height: 100%; background: #1a73e8; border-radius: 2px; width: 0%; transition: width 0.3s;"></div>
-    </div>
-
-    <div class="stat-row">
-      <span class="stat-label">FPS</span>
-      <span class="stat-value green" id="statFps">—</span>
-    </div>
-    <div class="stat-row">
-      <span class="stat-label">Resolution</span>
-      <span class="stat-value" id="statRes">—</span>
-    </div>
-    <div class="stat-row">
-      <span class="stat-label">Packets Lost</span>
-      <span class="stat-value yellow" id="statLoss">—</span>
-    </div>
-    <div class="stat-row">
-      <span class="stat-label">RTT</span>
-      <span class="stat-value" id="statRtt">— ms</span>
-    </div>
-    <div class="stat-row">
-      <span class="stat-label">Codec</span>
-      <span class="stat-value" id="statCodec">—</span>
-    </div>
-    <div class="stat-row">
-      <span class="stat-label">Duration</span>
-      <span class="stat-value" id="statDuration">00:00:00</span>
-    </div>
-
-    <div style="margin-top:16px;">
-      <div class="section-title">Quality Summary</div>
-      <div id="qualitySummary" style="font-size:12px; font-family:monospace; color:#5f6368; line-height:1.6">—<br>—<br>—</div>
-    </div>
-  </div>
-
 </aside>
 
-<!-- MODE SELECTION MODAL -->
-<div class="modal-bg" id="modeModal">
-  <div class="modal" style="max-width: 540px;">
-    <div class="modal-header">
-      <h2>🎬 Choose Room Mode</h2>
-      <button class="close-btn" onclick="closeModeModal()">
-        <span class="material-symbols-outlined">close</span>
-      </button>
-    </div>
-    <div class="modal-body">
-      <div class="mode-cards">
-        <div class="mode-card selected" id="modeCardVoice" onclick="selectMode('voice')">
-          <span class="mode-icon">🎤</span>
-          <h3>With Voice & Video</h3>
-          <p class="mode-desc">Up to 5 participants</p>
-          <ul>
-            <li>🎤 Push-to-Talk voice</li>
-            <li>📹 Camera always on (720p)</li>
-            <li>🎬 Screen share (HD bass)</li>
-            <li>💬 Live chat</li>
-          </ul>
-        </div>
-        <div class="mode-card" id="modeCardWatch" onclick="selectMode('watch')">
-          <span class="mode-icon">👁️</span>
-          <h3>Watch Only</h3>
-          <p class="mode-desc">20+ viewers</p>
-          <ul>
-            <li>🎬 HD screen share</li>
-            <li>🔊 Bass HD audio</li>
-            <li>💬 Live chat</li>
-            <li>👥 Unlimited viewers</li>
-          </ul>
-        </div>
-      </div>
-
-      <!-- Voice-specific settings -->
-      <div class="voice-settings show" id="voiceSettingsPanel">
-        <div class="section-title">Voice & Video Settings</div>
-        <div style="display:flex; gap:12px;">
-          <div class="form-group" style="flex:1">
-            <label>Video Quality</label>
-            <select id="voiceVideoRes">
-              <option value="720p" selected>720p (1280×720)</option>
-              <option value="480p">480p (854×480)</option>
-              <option value="360p">360p (640×360)</option>
-            </select>
-          </div>
-          <div class="form-group" style="flex:1">
-            <label>Max Participants</label>
-            <select id="maxParticipantsSelect">
-              <option value="3">3 people</option>
-              <option value="4">4 people</option>
-              <option value="5" selected>5 people</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-group">
-          <label style="display:flex; justify-content:space-between">
-            Voice Video Bitrate
-            <span id="voiceBitrateLabel" style="font-weight:400; color:#5f6368">1 Mbps</span>
-          </label>
-          <input type="range" id="voiceBitrateSlider" min="0.3" max="2.5" value="1" step="0.1"
-            oninput="document.getElementById('voiceBitrateLabel').textContent = this.value + ' Mbps'" style="width:100%; accent-color:#1a73e8;" />
-        </div>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-flat btn-filled" style="background:#34a853;" onclick="joinStream()">
-        <span class="material-symbols-outlined" style="font-size:18px;">login</span>
-        Join Watch Party
-      </button>
-      <button class="btn-flat btn-filled" onclick="confirmModeAndStart()">
-        <span class="material-symbols-outlined" style="font-size:18px;">rocket_launch</span>
-        Start Session
-      </button>
-    </div>
-  </div>
-</div>
-
-<!-- QUALITY MODAL (Screen Share Settings) -->
+<!-- QUALITY MODAL -->
 <div class="modal-bg" id="qualityModal">
   <div class="modal">
     <div class="modal-header">
-      <h2>📺 Screen Share Settings</h2>
-      <button class="close-btn" onclick="closeQualityModal()">
-        <span class="material-symbols-outlined">close</span>
+      <h2>⚙️ Stream Settings</h2>
+      <button class="sidebar-close" onclick="closeQualityModal()">
+        <span class="material-symbols-outlined" style="font-size:20px;">close</span>
       </button>
     </div>
     <div class="modal-body">
-       <div id="screenSettings" style="display:flex; gap: 16px;">
-         <div class="form-group" style="flex:1">
-           <label>Share Resolution</label>
-           <select id="scrRes">
-             <option value="4k">4K (3840×2160)</option>
-             <option value="2k">2K (2560×1440)</option>
-             <option value="1080p" selected>1080p (1920×1080)</option>
-             <option value="720p">720p (1280×720)</option>
-           </select>
-         </div>
-         <div class="form-group" style="flex:1">
-           <label>Frame Rate</label>
-           <select id="scrFps">
-             <option value="60">60 FPS</option>
-             <option value="30" selected>30 FPS</option>
-           </select>
-         </div>
-       </div>
-
-       <div class="form-group" style="margin-top: 16px">
-         <label style="display:flex; justify-content:space-between">
-           Video Bitrate Limit
-           <span id="bitrateValLabel" style="font-weight:400; color:#5f6368">4 Mbps</span>
-         </label>
-         <input type="range" id="bitrateSlider" min="1" max="20" value="4" step="0.5"
-           oninput="document.getElementById('bitrateValLabel').textContent = this.value + ' Mbps'" style="width:100%; accent-color:#1a73e8;" />
-       </div>
+      <div style="display:flex; gap:12px;">
+        <div class="form-group" style="flex:1">
+          <label>Resolution</label>
+          <select id="scrRes">
+            <option value="4k">4K (3840×2160)</option>
+            <option value="2k">2K (2560×1440)</option>
+            <option value="1080p" selected>1080p (1920×1080)</option>
+            <option value="720p">720p (1280×720)</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex:1">
+          <label>Frame Rate</label>
+          <select id="scrFps">
+            <option value="60">60 FPS</option>
+            <option value="30" selected>30 FPS</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label style="display:flex; justify-content:space-between;">
+          Bitrate <span id="bitrateValLabel" style="font-weight:400;">4 Mbps</span>
+        </label>
+        <input type="range" id="bitrateSlider" min="1" max="12" value="4" step="0.5"
+          oninput="document.getElementById('bitrateValLabel').textContent = this.value + ' Mbps'"
+          style="accent-color:var(--neon-purple);" />
+      </div>
     </div>
     <div class="modal-footer">
-      <button class="btn-flat" onclick="closeQualityModal()">Cancel</button>
-      <button class="btn-flat btn-filled" onclick="applyQuality()">Save Settings</button>
+      <button class="btn-modal" onclick="closeQualityModal()">Cancel</button>
+      <button class="btn-modal primary" onclick="applyQuality()">Apply</button>
     </div>
   </div>
 </div>
@@ -868,118 +1117,72 @@
 <div id="toast"></div>
 
 <script>
-  // Clock update
-  setInterval(() => {
-    document.getElementById('clockDisplay').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  }, 1000);
-  document.getElementById('clockDisplay').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  // Clock
+  function updateClock() {
+    const now = new Date();
+    document.getElementById('clockDisplay').textContent = now.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+  }
+  updateClock();
+  setInterval(updateClock, 30000);
 
-  // Sidebar toggling
-  function toggleSidebar(tabName) {
-    const sidebar = document.getElementById('sidebar');
-    if (!sidebar.classList.contains('open')) {
-      sidebar.classList.add('open');
-      if(tabName) switchSidebarTab(tabName);
-    } else {
-      const currentActive = document.querySelector('.sidebar-tab.active').id.replace('tab', '').toLowerCase();
-      if ((!tabName || currentActive === tabName) && tabName !== 'setup') {
-        sidebar.classList.remove('open');
-      } else if (tabName) {
-        switchSidebarTab(tabName);
-      }
+  // Sidebar
+  window.toggleSidebar = (tab) => {
+    const sb = document.getElementById('sidebar');
+    if (sb.classList.contains('open')) {
+      const currentTab = document.querySelector('.sidebar-tab.active')?.textContent?.toLowerCase();
+      if (currentTab === tab) { sb.classList.remove('open'); return; }
     }
-  }
+    sb.classList.add('open');
+    switchSidebarTab(tab);
+  };
+  window.closeSidebar = () => document.getElementById('sidebar').classList.remove('open');
 
-  function closeSidebar() {
-    document.getElementById('sidebar').classList.remove('open');
-  }
+  window.switchSidebarTab = (tab) => {
+    document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.sidebar-content').forEach(c => c.classList.remove('active'));
+    const tabMap = { setup: 'tabSetup', chat: 'tabChat', stats: 'tabStats' };
+    const contentMap = { setup: 'contentSetup', chat: 'contentChat', stats: 'contentStats' };
+    document.getElementById(tabMap[tab])?.classList.add('active');
+    document.getElementById(contentMap[tab])?.classList.add('active');
+    const titles = { setup: 'Menu', chat: 'Live Chat', stats: 'Stream Stats' };
+    document.getElementById('sidebarTitle').textContent = titles[tab] || 'Menu';
+  };
 
-  function switchSidebarTab(name) {
-    document.querySelectorAll('.sidebar-tab').forEach(el => el.classList.remove('active'));
-    document.querySelectorAll('.sidebar-content').forEach(el => el.classList.remove('active'));
-    const cap = name.charAt(0).toUpperCase() + name.slice(1);
-    document.getElementById('tab' + cap).classList.add('active');
-    document.getElementById('content' + cap).classList.add('active');
-    const titles = { 'setup': 'Meeting Setup', 'chat': 'In-call messages', 'stats': 'Connection Details' };
-    document.getElementById('sidebarTitle').textContent = titles[name.toLowerCase()] || 'Menu';
-  }
+  // Fullscreen
+  window.toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+      document.getElementById('fsIcon').textContent = 'fullscreen_exit';
+    } else {
+      document.exitFullscreen();
+      document.getElementById('fsIcon').textContent = 'fullscreen';
+    }
+  };
 
-  // Mode selection
-  window.selectedMode = 'voice';
-
-  function selectMode(mode) {
-    window.selectedMode = mode;
-    document.getElementById('modeCardVoice').classList.toggle('selected', mode === 'voice');
-    document.getElementById('modeCardWatch').classList.toggle('selected', mode === 'watch');
-    document.getElementById('voiceSettingsPanel').classList.toggle('show', mode === 'voice');
-  }
-
-  // Volume controls
+  // Volume
   window.setMovieVolume = (val) => {
-    const v = document.getElementById('remoteVideo');
-    const a = document.getElementById('bgAudio');
-    if (v) v.volume = val / 100;
-    if (a) a.volume = val / 100;
+    const v = val / 100;
+    const video = document.getElementById('remoteVideo');
+    const audio = document.getElementById('bgAudio');
+    if (video) video.volume = v;
+    if (audio) audio.volume = v;
     document.getElementById('movieVolVal').textContent = val + '%';
   };
-  window.setVoiceVolume = (val) => {
-    document.getElementById('voiceVolVal').textContent = val + '%';
-    // app.js handles updating all voice audio elements
-    if (window.updateVoiceVolume) window.updateVoiceVolume(val / 100);
+
+  // Tile fullscreen
+  window.openTileFullscreen = (peerId, name, stream) => {
+    const overlay = document.getElementById('tileFsOverlay');
+    const video = document.getElementById('tileFsVideo');
+    video.srcObject = stream;
+    document.getElementById('tileFsName').textContent = name;
+    overlay.classList.add('active');
   };
-
-  // Participants grid toggle
-  window.toggleParticipantsGrid = () => {
-    document.getElementById('participantsGrid').classList.toggle('active');
+  window.closeTileFullscreen = () => {
+    document.getElementById('tileFsOverlay').classList.remove('active');
+    document.getElementById('tileFsVideo').srcObject = null;
   };
-
-  // Fullscreen Logic
-  function toggleFullscreen() {
-    const videoElem = document.getElementById("remoteVideo");
-    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
-      if (videoElem.requestFullscreen) videoElem.requestFullscreen();
-      else if (videoElem.webkitRequestFullscreen) videoElem.webkitRequestFullscreen();
-    } else {
-      if (document.exitFullscreen) document.exitFullscreen();
-      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
-    }
-  }
-
-  function onFullScreenChange() {
-    const fsIcon = document.getElementById('fsIcon');
-    if (!fsIcon) return;
-    if (document.fullscreenElement || document.webkitFullscreenElement) {
-      fsIcon.textContent = "fullscreen_exit";
-    } else {
-      fsIcon.textContent = "fullscreen";
-    }
-  }
-  document.addEventListener('fullscreenchange', onFullScreenChange);
-  document.addEventListener('webkitfullscreenchange', onFullScreenChange);
-
-  // Mobile Detection (called from app.js too)
-  window.detectMobile = () => {
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-    if (isMobile) {
-      document.getElementById('mobileBanner').classList.add('show');
-      if (isIOS) {
-        document.getElementById('mobileMsg').textContent = 'iPhone detected';
-        document.getElementById('mobileDetail').textContent = 'Screen sharing is not supported on iOS Safari. You can join as a viewer to watch & listen with HD bass audio.';
-        document.getElementById('btnStartHost').style.display = 'none';
-        document.getElementById('btnScreen').style.display = 'none';
-      } else {
-        document.getElementById('mobileMsg').textContent = 'Android detected';
-        document.getElementById('mobileDetail').textContent = 'Screen sharing may be limited on mobile. System audio capture depends on your device. For hosting, use a desktop.';
-      }
-    }
-    return { isMobile, isIOS };
-  };
-  // Run on load
-  window.addEventListener('load', () => { window.detectMobile(); });
 </script>
 
 <script type="module" src="app.js"></script>
-
 </body>
 </html>
