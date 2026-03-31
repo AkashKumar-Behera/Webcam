@@ -6,7 +6,7 @@
   <meta name="description" content="HD screen share watch party with face cam & emoji reactions. Watch movies, listen to music with friends." />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <link rel="manifest" href="manifest.json" />
-  <meta name="theme-color" content="#0a0a1a" />
+  <meta name="theme-color" content="#0a0a0a" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="apple-touch-icon" href="icon.png" />
@@ -17,20 +17,19 @@
 
   <style>
     :root {
-      --bg: #0a0a1a;
+      --bg: #0a0a0a;
       --surface: rgba(255,255,255,0.06);
       --surface-hover: rgba(255,255,255,0.1);
-      --glass: rgba(255,255,255,0.08);
-      --glass-border: rgba(255,255,255,0.12);
-      --glass-strong: rgba(255,255,255,0.14);
+      --glass: rgba(255,255,255,0.06);
+      --glass-border: rgba(255,255,255,0.1);
       --text: #f0f0f5;
-      --text-muted: rgba(255,255,255,0.5);
-      --neon-purple: #8B5CF6;
-      --neon-blue: #3B82F6;
-      --neon-cyan: #06B6D4;
-      --neon-pink: #EC4899;
-      --neon-green: #10B981;
+      --text-muted: rgba(255,255,255,0.45);
+      --accent: #10B981;
+      --accent-dim: rgba(16,185,129,0.15);
+      --accent-glow: rgba(16,185,129,0.3);
       --red: #ef4444;
+      --cyan: #06B6D4;
+      --purple: #8B5CF6;
       --radius: 16px;
       --radius-sm: 10px;
       --panel-width: 380px;
@@ -48,23 +47,24 @@
       position: relative;
     }
 
-    /* ── ANIMATED GRADIENT BACKGROUND ── */
+    /* ── STATIC RADIAL GRADIENT (Green + Black) ── */
     .bg-gradient {
       position: fixed;
       inset: 0;
       z-index: 0;
-      opacity: 0.35;
-      background: linear-gradient(135deg, #8B5CF6, #3B82F6, #06B6D4, #EC4899, #8B5CF6);
-      background-size: 400% 400%;
-      animation: gradientShift 20s ease infinite;
+      background: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(16,185,129,0.15) 0%, rgba(16,185,129,0.05) 40%, transparent 70%);
       pointer-events: none;
     }
-    @keyframes gradientShift {
-      0%   { background-position: 0% 50%; }
-      25%  { background-position: 100% 50%; }
-      50%  { background-position: 100% 0%; }
-      75%  { background-position: 0% 100%; }
-      100% { background-position: 0% 50%; }
+
+    /* ── DOT PATTERN OVERLAY (like sheryians.com) ── */
+    .bg-pattern {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      opacity: 0.4;
+      background-image: radial-gradient(rgba(255,255,255,0.08) 1px, transparent 1px);
+      background-size: 24px 24px;
+      pointer-events: none;
     }
 
     /* ── MAIN VIDEO AREA ── */
@@ -75,819 +75,534 @@
       flex-direction: column;
       height: 100%;
       z-index: 1;
-      transition: all 0.4s cubic-bezier(0.4,0,0.2,1);
     }
 
     #remoteVideo {
       width: 100%;
-      height: calc(100% - 80px);
+      height: calc(100% - 72px);
       object-fit: contain;
       background: transparent;
       cursor: pointer;
     }
-
-    /* Background audio element */
     #bgAudio { display: none; }
 
     /* ── NO SIGNAL ── */
     .no-signal {
       position: absolute;
-      inset: 0;
+      inset: 0 0 72px 0;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 16px;
+      gap: 14px;
       z-index: 2;
       pointer-events: none;
     }
     .no-signal.hidden { display: none; }
     .no-signal .ns-icon {
-      width: 64px; height: 64px;
-      border-radius: 16px;
-      background: var(--glass);
-      backdrop-filter: blur(12px);
+      width: 56px; height: 56px;
+      border-radius: 14px;
+      background: var(--surface);
       border: 1px solid var(--glass-border);
       display: flex; align-items: center; justify-content: center;
       animation: float 3s ease-in-out infinite;
     }
-    .no-signal h3 { font-size: 18px; font-weight: 600; color: var(--text); }
+    .no-signal h3 { font-size: 16px; font-weight: 600; }
     .no-signal p { font-size: 13px; color: var(--text-muted); }
     @keyframes float {
       0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-8px); }
+      50% { transform: translateY(-6px); }
     }
 
     /* ── OVERLAY BADGES ── */
     .overlay-top {
-      position: absolute; top: 16px; left: 16px; right: 16px;
+      position: absolute; top: 14px; left: 14px; right: 14px;
       display: flex; justify-content: space-between; align-items: flex-start;
       z-index: 10; pointer-events: none;
     }
     .overlay-top > * { pointer-events: auto; }
-
-    .badge-row { display: flex; gap: 8px; align-items: center; }
-
+    .badge-row { display: flex; gap: 8px; }
     .badge {
       display: flex; align-items: center; gap: 6px;
-      padding: 6px 14px;
-      background: rgba(0,0,0,0.5);
+      padding: 5px 12px;
+      background: rgba(0,0,0,0.55);
       backdrop-filter: blur(16px);
       border: 1px solid var(--glass-border);
       border-radius: 20px;
-      font-size: 12px; font-weight: 500;
-      transition: all 0.3s;
+      font-size: 11px; font-weight: 600;
+      letter-spacing: 0.5px;
     }
     .badge .dot {
-      width: 7px; height: 7px; border-radius: 50%;
+      width: 6px; height: 6px; border-radius: 50%;
       background: var(--text-muted);
       transition: background 0.3s;
     }
-    .badge .dot.connected { background: var(--neon-green); }
-    .badge .dot.connecting { background: #fbbf24; animation: pulse 1.5s infinite; }
-    .badge .dot.live { background: var(--red); animation: pulse 1.5s infinite; }
+    .badge .dot.connected { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+    .badge .dot.connecting { background: #fbbf24; animation: blink 1s infinite; }
+    .badge .dot.live { background: var(--red); animation: blink 1s infinite; }
+    @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
 
-    @keyframes pulse {
-      0% { box-shadow: 0 0 0 0 currentColor; }
-      70% { box-shadow: 0 0 0 6px transparent; }
-    }
-
-    .overlay-tags { display: flex; gap: 8px; }
+    .overlay-tags { display: flex; gap: 6px; }
     .overlay-tag {
-      padding: 5px 12px;
-      background: rgba(0,0,0,0.5);
+      padding: 4px 10px;
+      background: rgba(0,0,0,0.55);
       backdrop-filter: blur(16px);
       border: 1px solid var(--glass-border);
-      border-radius: 8px;
-      font-size: 11px; font-weight: 500;
-      font-family: 'Inter', monospace;
+      border-radius: 6px;
+      font-size: 10px; font-weight: 600;
+      letter-spacing: 0.8px;
     }
 
-    /* ── FACE CAM GRID (Floating) ── */
+    /* ── FACE CAM GRID ── */
     .cam-panel {
       position: absolute;
-      bottom: 96px;
-      right: 16px;
+      bottom: 88px; right: 14px;
       z-index: 15;
       display: none;
-      transition: all 0.4s cubic-bezier(0.4,0,0.2,1);
     }
-    .cam-panel.active { display: block; animation: slideInUp 0.4s ease; }
-
-    @keyframes slideInUp {
-      from { opacity: 0; transform: translateY(24px) scale(0.95); }
-      to { opacity: 1; transform: translateY(0) scale(1); }
+    .cam-panel.active { display: block; animation: slideUp 0.4s ease; }
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
     }
 
     .cam-grid {
-      display: grid;
-      gap: 8px;
-      max-width: 320px;
+      display: grid; gap: 6px; max-width: 300px;
     }
-    /* Auto grid layout based on tile count */
-    .cam-grid[data-count="1"] { grid-template-columns: 1fr; width: 240px; }
-    .cam-grid[data-count="2"] { grid-template-columns: 1fr 1fr; width: 300px; }
-    .cam-grid[data-count="3"] { grid-template-columns: 1fr 1fr; width: 300px; }
-    .cam-grid[data-count="4"] { grid-template-columns: 1fr 1fr; width: 320px; }
-    .cam-grid[data-count="5"] { grid-template-columns: 1fr 1fr 1fr; width: 360px; }
+    .cam-grid[data-count="1"] { grid-template-columns: 1fr; width: 200px; }
+    .cam-grid[data-count="2"] { grid-template-columns: 1fr 1fr; width: 280px; }
+    .cam-grid[data-count="3"] { grid-template-columns: 1fr 1fr; width: 280px; }
+    .cam-grid[data-count="4"] { grid-template-columns: 1fr 1fr; width: 300px; }
+    .cam-grid[data-count="5"] { grid-template-columns: 1fr 1fr 1fr; width: 340px; }
 
-    /* ── FACE CAM TILE ── */
     .cam-tile {
       position: relative;
       border-radius: var(--radius-sm);
       overflow: hidden;
       aspect-ratio: 4/3;
       cursor: pointer;
-      transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
-      /* neon border glow */
-      border: 2px solid transparent;
-      background-origin: border-box;
-      background-clip: padding-box, border-box;
+      transition: all 0.3s ease;
+      border: 1.5px solid rgba(16,185,129,0.3);
+      box-shadow: 0 0 12px rgba(16,185,129,0.1);
     }
-    .cam-tile::before {
-      content: '';
-      position: absolute;
-      inset: -2px;
-      border-radius: calc(var(--radius-sm) + 2px);
-      background: linear-gradient(135deg, var(--neon-purple), var(--neon-blue), var(--neon-cyan), var(--neon-pink));
-      background-size: 300% 300%;
-      animation: neonBorder 4s ease infinite;
-      z-index: -1;
+    .cam-tile:hover {
+      transform: scale(1.03);
+      border-color: var(--accent);
+      box-shadow: 0 0 20px var(--accent-glow);
     }
-    @keyframes neonBorder {
-      0%, 100% { background-position: 0% 50%; }
-      50% { background-position: 100% 50%; }
-    }
-    .cam-tile::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      border-radius: var(--radius-sm);
-      box-shadow: inset 0 0 20px rgba(0,0,0,0.4);
-      pointer-events: none;
-      z-index: 2;
-    }
-    .cam-tile:hover { transform: scale(1.04); z-index: 5; }
-    .cam-tile:hover::before {
-      filter: brightness(1.5);
-      box-shadow: 0 0 20px rgba(139,92,246,0.4);
-    }
-
-    .cam-tile video {
-      width: 100%; height: 100%;
-      object-fit: cover;
-      background: #1a1a2e;
-    }
+    .cam-tile video { width:100%; height:100%; object-fit:cover; background:#111; }
     .cam-tile .tile-avatar {
-      width: 100%; height: 100%;
-      display: flex; align-items: center; justify-content: center;
-      background: linear-gradient(135deg, #1a1a3e, #2a2a4e);
-      font-size: 28px; font-weight: 700;
+      width:100%; height:100%;
+      display:flex; align-items:center; justify-content:center;
+      background: linear-gradient(135deg, #111, #1a1a1a);
+      font-size:24px; font-weight:700; color: var(--accent);
     }
     .cam-tile .tile-label {
-      position: absolute;
-      bottom: 6px; left: 6px;
-      font-size: 10px; font-weight: 600;
-      background: rgba(0,0,0,0.6);
-      backdrop-filter: blur(8px);
-      padding: 3px 8px;
-      border-radius: 6px;
-      max-width: 85%;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-      z-index: 3;
+      position: absolute; bottom:4px; left:4px;
+      font-size:9px; font-weight:600;
+      background: rgba(0,0,0,0.65);
+      padding:2px 7px; border-radius:4px;
+      z-index:3;
     }
     .cam-tile .tile-actions {
-      position: absolute;
-      top: 4px; right: 4px;
-      display: flex; gap: 2px;
-      opacity: 0;
-      transition: opacity 0.2s;
-      z-index: 4;
+      position:absolute; top:3px; right:3px;
+      display:flex; gap:2px; opacity:0;
+      transition: opacity 0.2s; z-index:4;
     }
-    .cam-tile:hover .tile-actions { opacity: 1; }
+    .cam-tile:hover .tile-actions { opacity:1; }
     .tile-action-btn {
-      width: 26px; height: 26px;
-      border-radius: 50%;
-      background: rgba(0,0,0,0.6);
-      backdrop-filter: blur(8px);
-      border: none;
-      color: white;
-      cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
+      width:24px; height:24px; border-radius:50%;
+      background:rgba(0,0,0,0.6); border:none; color:white;
+      cursor:pointer; display:flex; align-items:center; justify-content:center;
       transition: all 0.2s;
     }
-    .tile-action-btn:hover { background: var(--neon-purple); transform: scale(1.1); }
-    .tile-action-btn .material-symbols-outlined { font-size: 15px; }
+    .tile-action-btn:hover { background:var(--accent); }
+    .tile-action-btn .material-symbols-outlined { font-size:14px; }
+    .cam-tile.pinned { grid-column:1/-1; aspect-ratio:16/9; border-color:var(--accent); }
 
-    .cam-tile.pinned {
-      grid-column: 1 / -1;
-      aspect-ratio: 16/9;
+    /* Tile fullscreen overlay */
+    .tile-fs-overlay {
+      position:fixed; inset:0; z-index:100;
+      background:rgba(0,0,0,0.9); backdrop-filter:blur(20px);
+      display:none; align-items:center; justify-content:center;
+      animation: fadeIn 0.25s;
     }
-    .cam-tile.pinned::before {
-      background: linear-gradient(135deg, var(--neon-green), var(--neon-cyan));
+    .tile-fs-overlay.active { display:flex; }
+    .tile-fs-overlay video { max-width:90vw; max-height:85vh; border-radius:var(--radius); border:2px solid var(--accent); }
+    .tile-fs-overlay .fs-close {
+      position:absolute; top:20px; right:20px;
+      width:40px; height:40px; border-radius:50%;
+      background:var(--surface); border:1px solid var(--glass-border);
+      color:white; cursor:pointer;
+      display:flex; align-items:center; justify-content:center;
     }
+    .tile-fs-overlay .fs-close:hover { background:var(--red); }
+    .tile-fs-overlay .fs-name {
+      position:absolute; bottom:30px;
+      font-size:15px; font-weight:600;
+      background:rgba(0,0,0,0.6); padding:6px 18px; border-radius:20px;
+    }
+    @keyframes fadeIn { from{opacity:0}to{opacity:1} }
 
-    /* ── FULLSCREEN TILE OVERLAY ── */
-    .tile-fullscreen-overlay {
-      position: fixed;
-      inset: 0;
-      z-index: 100;
-      background: rgba(0,0,0,0.85);
-      backdrop-filter: blur(20px);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      animation: fadeIn 0.3s ease;
-    }
-    .tile-fullscreen-overlay.active { display: flex; }
-    .tile-fullscreen-overlay video {
-      max-width: 90vw;
-      max-height: 85vh;
-      border-radius: var(--radius);
-      border: 2px solid;
-      border-image: linear-gradient(135deg, var(--neon-purple), var(--neon-cyan)) 1;
-    }
-    .tile-fullscreen-overlay .fs-close {
-      position: absolute;
-      top: 20px; right: 20px;
-      width: 44px; height: 44px;
-      border-radius: 50%;
-      background: var(--glass);
-      backdrop-filter: blur(16px);
-      border: 1px solid var(--glass-border);
-      color: white;
-      cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      transition: all 0.2s;
-    }
-    .tile-fullscreen-overlay .fs-close:hover { background: var(--red); }
-    .tile-fullscreen-overlay .fs-name {
-      position: absolute;
-      bottom: 30px;
-      font-size: 16px; font-weight: 600;
-      background: rgba(0,0,0,0.5);
-      backdrop-filter: blur(8px);
-      padding: 8px 20px;
-      border-radius: 20px;
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; }
-      to { opacity: 1; }
-    }
-
-    /* ── EMOJI REACTIONS OVERLAY ── */
+    /* ── EMOJI OVERLAY ── */
     .emoji-overlay {
-      position: absolute;
-      bottom: 100px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 25;
-      width: 300px;
-      height: 300px;
-      pointer-events: none;
-      overflow: visible;
+      position:absolute; bottom:90px; left:50%; transform:translateX(-50%);
+      z-index:25; width:300px; height:280px;
+      pointer-events:none; overflow:visible;
     }
     .emoji-float {
-      position: absolute;
-      bottom: 0;
-      font-size: 36px;
-      animation: emojiRise 3s ease-out forwards;
-      pointer-events: none;
-      filter: drop-shadow(0 0 8px rgba(255,255,255,0.3));
+      position:absolute; bottom:0; font-size:32px;
+      animation: emojiRise 2.8s ease-out forwards;
+      pointer-events:none;
     }
     @keyframes emojiRise {
-      0%   { opacity: 1; transform: translateY(0) scale(0.5) rotate(0deg); }
-      20%  { opacity: 1; transform: translateY(-40px) scale(1.2) rotate(-10deg); }
-      100% { opacity: 0; transform: translateY(-280px) scale(0.8) rotate(15deg); }
+      0%   { opacity:1; transform:translateY(0) scale(0.5); }
+      15%  { opacity:1; transform:translateY(-30px) scale(1.15); }
+      100% { opacity:0; transform:translateY(-260px) scale(0.7); }
     }
 
     /* ── BOTTOM CONTROL BAR ── */
     .controls-bar {
-      position: absolute;
-      bottom: 0; width: 100%;
-      height: 80px;
-      background: rgba(10,10,26,0.7);
-      backdrop-filter: blur(24px);
-      -webkit-backdrop-filter: blur(24px);
+      position:absolute; bottom:0; width:100%;
+      height:72px;
+      background: rgba(10,10,10,0.8);
+      backdrop-filter: blur(20px);
       border-top: 1px solid var(--glass-border);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 20px;
-      z-index: 20;
+      display:flex; align-items:center; justify-content:center;
+      padding: 0 16px;
+      z-index:20;
+      gap: 8px;
     }
-
-    .controls-left, .controls-right { display: flex; align-items: center; gap: 10px; min-width: 180px; }
-    .controls-right { justify-content: flex-end; }
-    .controls-center { display: flex; align-items: center; gap: 8px; flex: 1; justify-content: center; }
-
-    .time-text { font-size: 14px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--text-muted); }
-    .room-input {
-      background: var(--surface);
-      border: 1px solid var(--glass-border);
-      border-radius: 8px;
-      color: var(--text);
-      font-family: inherit;
-      font-size: 13px;
-      padding: 6px 12px;
-      width: 90px;
-      outline: none;
-      transition: all 0.2s;
-    }
-    .room-input:focus { border-color: var(--neon-purple); box-shadow: 0 0 0 2px rgba(139,92,246,0.2); }
-    .room-input::placeholder { color: var(--text-muted); }
 
     .icon-btn {
-      width: 44px; height: 44px;
-      border-radius: 50%;
-      background: var(--surface);
-      border: 1px solid var(--glass-border);
-      color: var(--text);
-      display: flex; align-items: center; justify-content: center;
-      cursor: pointer;
-      transition: all 0.25s cubic-bezier(0.4,0,0.2,1);
-      position: relative;
-      backdrop-filter: blur(8px);
+      width:42px; height:42px; border-radius:50%;
+      background:var(--surface);
+      border:1px solid var(--glass-border);
+      color:var(--text);
+      display:flex; align-items:center; justify-content:center;
+      cursor:pointer;
+      transition: all 0.2s ease;
     }
-    .icon-btn:hover { background: var(--surface-hover); transform: scale(1.08); border-color: var(--neon-purple); }
-    .icon-btn:active { transform: scale(0.95); }
-    .icon-btn .material-symbols-outlined { font-size: 22px; }
-    .icon-btn.off { background: var(--red); border-color: var(--red); color: white; }
-    .icon-btn.active { background: rgba(139,92,246,0.25); border-color: var(--neon-purple); color: var(--neon-purple); }
+    .icon-btn:hover { background:var(--surface-hover); border-color:var(--accent); }
+    .icon-btn:active { transform:scale(0.93); }
+    .icon-btn .material-symbols-outlined { font-size:21px; }
+    .icon-btn.off { background:var(--red); border-color:var(--red); color:white; }
+    .icon-btn.active { background:var(--accent-dim); border-color:var(--accent); color:var(--accent); }
 
-    .icon-btn .count-badge {
-      position: absolute;
-      top: -2px; right: -2px;
-      min-width: 18px; height: 18px;
-      border-radius: 9px;
-      background: var(--neon-purple);
-      color: white;
-      font-size: 10px; font-weight: 700;
-      display: flex; align-items: center; justify-content: center;
-      padding: 0 4px;
-    }
-
-    /* Emoji picker bar */
     .emoji-bar {
-      display: flex; gap: 4px;
-      background: var(--glass);
-      backdrop-filter: blur(16px);
-      border: 1px solid var(--glass-border);
-      border-radius: 24px;
-      padding: 4px 8px;
+      display:flex; gap:3px;
+      background:var(--surface);
+      border:1px solid var(--glass-border);
+      border-radius:22px;
+      padding:3px 6px;
     }
     .emoji-btn {
-      width: 36px; height: 36px;
-      border-radius: 50%;
-      border: none;
-      background: transparent;
-      font-size: 20px;
-      cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      transition: all 0.2s;
+      width:34px; height:34px; border-radius:50%;
+      border:none; background:transparent;
+      font-size:18px; cursor:pointer;
+      display:flex; align-items:center; justify-content:center;
+      transition: all 0.15s;
     }
-    .emoji-btn:hover { background: var(--surface-hover); transform: scale(1.3); }
-    .emoji-btn:active { transform: scale(0.9); }
+    .emoji-btn:hover { background:var(--surface-hover); transform:scale(1.25); }
+    .emoji-btn:active { transform:scale(0.9); }
 
-    .btn-live {
-      height: 42px;
-      padding: 0 20px;
-      border-radius: 21px;
-      background: linear-gradient(135deg, var(--neon-purple), var(--neon-blue));
-      color: white;
-      border: none;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 14px;
-      font-weight: 600;
-      font-family: inherit;
-      cursor: pointer;
-      transition: all 0.3s;
-      box-shadow: 0 4px 16px rgba(139,92,246,0.3);
+    .btn-connect {
+      height:42px; padding:0 22px; border-radius:21px;
+      background: var(--accent);
+      color: #000;
+      border:none;
+      display:flex; align-items:center; gap:7px;
+      font-size:14px; font-weight:700;
+      font-family:inherit; cursor:pointer;
+      transition: all 0.25s;
+      box-shadow: 0 0 20px var(--accent-glow);
     }
-    .btn-live:hover { transform: scale(1.04); box-shadow: 0 6px 24px rgba(139,92,246,0.5); }
-    .btn-live:active { transform: scale(0.97); }
-    .btn-live .material-symbols-outlined { font-size: 20px; }
-    .btn-live.end {
-      background: linear-gradient(135deg, var(--red), #dc2626);
-      box-shadow: 0 4px 16px rgba(239,68,68,0.3);
-    }
+    .btn-connect:hover { transform:scale(1.04); box-shadow: 0 0 30px var(--accent-glow); }
+    .btn-connect:active { transform:scale(0.97); }
+    .btn-connect .material-symbols-outlined { font-size:19px; }
+    .btn-connect.end { background:var(--red); box-shadow:0 0 20px rgba(239,68,68,0.3); color:white; }
 
     .btn-end {
-      width: 44px; height: 44px;
-      border-radius: 50%;
-      background: var(--red);
-      border: none;
-      color: white;
-      cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      transition: all 0.25s;
+      width:42px; height:42px; border-radius:50%;
+      background:var(--red); border:none; color:white;
+      cursor:pointer; display:flex; align-items:center; justify-content:center;
+      transition: all 0.2s;
     }
-    .btn-end:hover { background: #dc2626; transform: scale(1.08); }
-    .btn-end .material-symbols-outlined { font-size: 22px; }
+    .btn-end:hover { background:#dc2626; transform:scale(1.06); }
+    .btn-end .material-symbols-outlined { font-size:21px; }
+
+    /* ── CONNECT MODAL (Popup) ── */
+    .modal-bg {
+      position:fixed; inset:0;
+      background:rgba(0,0,0,0.65);
+      backdrop-filter:blur(8px);
+      z-index:50;
+      display:none; align-items:center; justify-content:center;
+    }
+    .modal-bg.open { display:flex; }
+
+    .modal {
+      background: rgba(18,18,18,0.97);
+      backdrop-filter:blur(24px);
+      border:1px solid var(--glass-border);
+      border-radius: var(--radius);
+      width:90%; max-width:420px;
+      animation: modalIn 0.3s ease;
+      overflow:hidden;
+    }
+    @keyframes modalIn {
+      from { opacity:0; transform:scale(0.94) translateY(12px); }
+      to { opacity:1; transform:scale(1) translateY(0); }
+    }
+
+    .modal-header {
+      padding:20px 24px;
+      display:flex; align-items:center; justify-content:space-between;
+      border-bottom:1px solid var(--glass-border);
+    }
+    .modal-header h2 { font-size:17px; font-weight:700; display:flex; align-items:center; gap:8px; }
+    .modal-close {
+      width:34px; height:34px; border-radius:50%;
+      background:var(--surface); border:1px solid var(--glass-border);
+      color:var(--text); cursor:pointer;
+      display:flex; align-items:center; justify-content:center;
+      transition: all 0.2s;
+    }
+    .modal-close:hover { background:var(--red); border-color:var(--red); }
+
+    .modal-body { padding:24px; }
+
+    .form-group { margin-bottom:18px; }
+    .form-group label {
+      display:block; font-size:11px; font-weight:700;
+      text-transform:uppercase; letter-spacing:1px;
+      color:var(--text-muted); margin-bottom:7px;
+    }
+    .form-input {
+      width:100%; padding:11px 16px;
+      background:var(--surface);
+      border:1px solid var(--glass-border);
+      border-radius:10px;
+      color:var(--text);
+      font-family:inherit; font-size:14px;
+      outline:none; transition: border 0.2s;
+    }
+    .form-input:focus { border-color:var(--accent); }
+    .form-input::placeholder { color:var(--text-muted); }
+
+    .form-select {
+      width:100%; padding:11px 16px;
+      background:var(--surface);
+      border:1px solid var(--glass-border);
+      border-radius:10px;
+      color:var(--text);
+      font-family:inherit; font-size:14px;
+      outline:none;
+    }
+    .form-select option { background:#1a1a1a; }
+
+    .form-row { display:flex; gap:10px; }
+    .form-row > * { flex:1; }
+
+    .modal-actions { display:flex; gap:10px; margin-top:24px; }
+
+    .btn-modal {
+      flex:1; padding:12px;
+      border-radius:12px;
+      border:1px solid var(--glass-border);
+      background:var(--surface);
+      color:var(--text);
+      font-family:inherit; font-size:14px; font-weight:600;
+      cursor:pointer;
+      display:flex; align-items:center; justify-content:center; gap:8px;
+      transition: all 0.2s;
+    }
+    .btn-modal:hover { background:var(--surface-hover); border-color:var(--accent); }
+    .btn-modal .material-symbols-outlined { font-size:19px; }
+
+    .btn-modal.host {
+      background:var(--accent);
+      border-color:var(--accent);
+      color:#000;
+    }
+    .btn-modal.host:hover { box-shadow:0 4px 20px var(--accent-glow); }
+
+    .btn-modal.join {
+      background:rgba(6,182,212,0.15);
+      border-color:var(--cyan);
+      color:var(--cyan);
+    }
+    .btn-modal.join:hover { background:rgba(6,182,212,0.25); }
 
     /* ── GLASSMORPHISM SIDEBAR ── */
     .sidebar {
-      width: 0;
-      background: rgba(15,15,30,0.75);
-      backdrop-filter: blur(32px);
-      -webkit-backdrop-filter: blur(32px);
-      border-left: 1px solid var(--glass-border);
-      transition: width 0.4s cubic-bezier(0.4,0,0.2,1);
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      z-index: 30;
+      width:0;
+      background: rgba(10,10,10,0.8);
+      backdrop-filter:blur(32px);
+      border-left:1px solid var(--glass-border);
+      transition:width 0.35s cubic-bezier(0.4,0,0.2,1);
+      overflow:hidden;
+      display:flex; flex-direction:column;
+      z-index:30;
     }
-    .sidebar.open { width: var(--panel-width); }
+    .sidebar.open { width:var(--panel-width); }
 
     .sidebar-header {
-      padding: 18px 24px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      border-bottom: 1px solid var(--glass-border);
-      flex-shrink: 0;
+      padding:16px 22px;
+      display:flex; align-items:center; justify-content:space-between;
+      border-bottom:1px solid var(--glass-border);
+      flex-shrink:0;
     }
-    .sidebar-header h2 { font-size: 18px; font-weight: 700; }
-    .sidebar-close {
-      width: 36px; height: 36px;
-      border-radius: 50%;
-      background: var(--surface);
-      border: 1px solid var(--glass-border);
-      color: var(--text);
-      cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      transition: all 0.2s;
-    }
-    .sidebar-close:hover { background: var(--red); border-color: var(--red); }
+    .sidebar-header h2 { font-size:16px; font-weight:700; }
 
     .sidebar-tabs {
-      display: flex;
-      border-bottom: 1px solid var(--glass-border);
-      flex-shrink: 0;
+      display:flex;
+      border-bottom:1px solid var(--glass-border);
+      flex-shrink:0;
     }
     .sidebar-tab {
-      flex: 1;
-      padding: 12px;
-      background: none;
-      border: none;
-      color: var(--text-muted);
-      font-family: inherit;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      border-bottom: 2px solid transparent;
+      flex:1; padding:11px; background:none; border:none;
+      color:var(--text-muted);
+      font-family:inherit; font-size:12px; font-weight:600;
+      cursor:pointer; letter-spacing:0.5px;
+      border-bottom:2px solid transparent;
       transition: all 0.2s;
     }
-    .sidebar-tab:hover { color: var(--text); background: var(--surface); }
-    .sidebar-tab.active { color: var(--neon-purple); border-bottom-color: var(--neon-purple); }
+    .sidebar-tab:hover { color:var(--text); background:var(--surface); }
+    .sidebar-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
 
     .sidebar-content {
-      flex: 1;
-      overflow-y: auto;
-      padding: 20px 24px;
-      display: none;
+      flex:1; overflow-y:auto; padding:18px 22px;
+      display:none;
     }
-    .sidebar-content.active { display: flex; flex-direction: column; gap: 20px; }
+    .sidebar-content.active { display:flex; flex-direction:column; gap:18px; }
 
     .section-title {
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 1.2px;
-      color: var(--text-muted);
-      margin-bottom: 10px;
+      font-size:10px; font-weight:700; text-transform:uppercase;
+      letter-spacing:1.2px; color:var(--text-muted); margin-bottom:8px;
     }
 
-    .setup-actions { display: flex; flex-direction: column; gap: 8px; }
-
-    .btn-action {
-      width: 100%;
-      padding: 12px 16px;
-      border-radius: var(--radius-sm);
-      border: 1px solid var(--glass-border);
-      background: var(--surface);
-      color: var(--text);
-      font-family: inherit;
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      transition: all 0.2s;
-    }
-    .btn-action:hover { background: var(--surface-hover); border-color: var(--neon-purple); transform: translateX(4px); }
-    .btn-action .material-symbols-outlined { font-size: 20px; color: var(--text-muted); }
-
-    .btn-action.primary {
-      background: linear-gradient(135deg, var(--neon-purple), var(--neon-blue));
-      border-color: transparent;
-      font-weight: 600;
-    }
-    .btn-action.primary:hover { transform: translateX(4px); box-shadow: 0 4px 16px rgba(139,92,246,0.3); }
-    .btn-action.primary .material-symbols-outlined { color: white; }
-
-    .btn-action.green {
-      background: linear-gradient(135deg, var(--neon-green), var(--neon-cyan));
-      border-color: transparent;
-      font-weight: 600;
-    }
-
-    /* Volume section */
+    /* Volume */
     .volume-row {
-      display: flex; align-items: center; gap: 10px;
+      display:flex; align-items:center; gap:10px;
     }
-    .volume-row .material-symbols-outlined { font-size: 20px; color: var(--text-muted); }
-    .volume-row label { font-size: 13px; font-weight: 500; min-width: 45px; }
+    .volume-row .material-symbols-outlined { font-size:19px; color:var(--text-muted); }
+    .volume-row label { font-size:13px; font-weight:500; min-width:45px; }
     .volume-row input[type=range] {
-      flex: 1; height: 4px;
-      -webkit-appearance: none;
-      appearance: none;
-      background: var(--glass-border);
-      border-radius: 2px;
-      outline: none;
+      flex:1; height:3px; -webkit-appearance:none; appearance:none;
+      background:var(--glass-border); border-radius:2px; outline:none;
     }
     .volume-row input[type=range]::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      width: 14px; height: 14px;
-      border-radius: 50%;
-      background: var(--neon-purple);
-      cursor: pointer;
-      box-shadow: 0 0 8px rgba(139,92,246,0.5);
+      -webkit-appearance:none; width:14px; height:14px; border-radius:50%;
+      background:var(--accent); cursor:pointer;
+      box-shadow: 0 0 8px var(--accent-glow);
     }
-    .volume-row .vol-value { font-size: 12px; color: var(--text-muted); min-width: 35px; text-align: right; }
+    .volume-row .vol-value { font-size:11px; color:var(--text-muted); min-width:32px; text-align:right; }
 
     /* Stats */
-    .stat-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
+    .stat-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
     .stat-card {
-      background: var(--surface);
-      border: 1px solid var(--glass-border);
-      border-radius: var(--radius-sm);
-      padding: 12px;
+      background:var(--surface); border:1px solid var(--glass-border);
+      border-radius:var(--radius-sm); padding:10px;
     }
-    .stat-label { font-size: 10px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.8px; }
-    .stat-value { font-size: 20px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
-    .stat-value .stat-unit { font-size: 11px; font-weight: 500; color: var(--text-muted); }
-    .stat-value.green { color: var(--neon-green); }
-    .stat-value.yellow { color: #fbbf24; }
-    .stat-value.red { color: var(--red); }
-
-    .bar-track {
-      height: 3px;
-      background: var(--glass-border);
-      border-radius: 2px;
-      margin-top: 8px;
-      overflow: hidden;
-    }
-    .bar-fill {
-      height: 100%;
-      background: linear-gradient(90deg, var(--neon-purple), var(--neon-cyan));
-      border-radius: 2px;
-      transition: width 0.5s;
-    }
+    .stat-label { font-size:9px; font-weight:700; text-transform:uppercase; color:var(--text-muted); letter-spacing:0.8px; }
+    .stat-value { font-size:18px; font-weight:700; margin-top:3px; font-variant-numeric:tabular-nums; }
+    .stat-value .stat-unit { font-size:10px; font-weight:500; color:var(--text-muted); }
+    .bar-track { height:2px; background:var(--glass-border); border-radius:1px; margin-top:6px; overflow:hidden; }
+    .bar-fill { height:100%; background:linear-gradient(90deg, var(--accent), var(--cyan)); border-radius:1px; transition:width 0.5s; }
 
     /* Chat */
     .chat-messages {
-      flex: 1;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      font-size: 13px;
-      padding-bottom: 8px;
+      flex:1; overflow-y:auto;
+      display:flex; flex-direction:column; gap:8px;
+      font-size:13px; padding-bottom:8px;
     }
-    .chat-msg {
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
-    }
-    .chat-msg-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-end;
-    }
-    .chat-sender { font-weight: 600; font-size: 12px; }
-    .chat-time { font-size: 10px; color: var(--text-muted); }
+    .chat-msg { display:flex; flex-direction:column; gap:2px; }
+    .chat-msg-header { display:flex; justify-content:space-between; align-items:flex-end; }
+    .chat-sender { font-weight:600; font-size:11px; }
+    .chat-time { font-size:9px; color:var(--text-muted); }
     .chat-bubble {
-      padding: 8px 14px;
-      border-radius: 12px;
-      line-height: 1.5;
-      word-break: break-word;
-      font-size: 13px;
+      padding:7px 13px; border-radius:10px;
+      line-height:1.5; word-break:break-word; font-size:13px;
     }
-    .chat-bubble.me { background: rgba(139,92,246,0.2); border-radius: 12px 12px 4px 12px; }
-    .chat-bubble.other { background: var(--surface); border-radius: 4px 12px 12px 12px; }
+    .chat-bubble.me { background:var(--accent-dim); border-radius:10px 10px 3px 10px; }
+    .chat-bubble.other { background:var(--surface); border-radius:3px 10px 10px 10px; }
 
-    .chat-input-bar {
-      display: flex; gap: 8px;
-      padding-top: 12px;
-      border-top: 1px solid var(--glass-border);
-    }
+    .chat-input-bar { display:flex; gap:8px; padding-top:10px; border-top:1px solid var(--glass-border); }
     .chat-input {
-      flex: 1;
-      padding: 10px 16px;
-      border: 1px solid var(--glass-border);
-      border-radius: 24px;
-      background: var(--surface);
-      color: var(--text);
-      font-family: inherit;
-      font-size: 13px;
-      outline: none;
-      transition: all 0.2s;
+      flex:1; padding:9px 14px;
+      border:1px solid var(--glass-border); border-radius:20px;
+      background:var(--surface); color:var(--text);
+      font-family:inherit; font-size:13px; outline:none;
     }
-    .chat-input:focus { border-color: var(--neon-purple); }
-    .chat-input::placeholder { color: var(--text-muted); }
+    .chat-input:focus { border-color:var(--accent); }
+    .chat-input::placeholder { color:var(--text-muted); }
     .chat-send {
-      width: 40px; height: 40px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, var(--neon-purple), var(--neon-blue));
-      border: none;
-      color: white;
-      cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      flex-shrink: 0;
-      transition: all 0.2s;
+      width:38px; height:38px; border-radius:50%;
+      background:var(--accent); border:none; color:#000;
+      cursor:pointer; display:flex; align-items:center; justify-content:center;
+      flex-shrink:0; transition:all 0.2s;
     }
-    .chat-send:hover { transform: scale(1.05); }
+    .chat-send:hover { transform:scale(1.05); }
 
-    /* ── QUALITY MODAL ── */
-    .modal-bg {
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,0.6);
-      backdrop-filter: blur(8px);
-      z-index: 50;
-      display: none;
-      align-items: center;
-      justify-content: center;
-    }
-    .modal-bg.open { display: flex; }
-    .modal {
-      background: rgba(20,20,40,0.95);
-      backdrop-filter: blur(32px);
-      border: 1px solid var(--glass-border);
-      border-radius: var(--radius);
-      width: 90%;
-      max-width: 480px;
-      max-height: 90vh;
-      overflow-y: auto;
-      animation: modalIn 0.3s ease;
-    }
-    @keyframes modalIn {
-      from { opacity: 0; transform: scale(0.95) translateY(10px); }
-      to { opacity: 1; transform: scale(1) translateY(0); }
-    }
-    .modal-header {
-      padding: 20px 24px;
-      display: flex; align-items: center; justify-content: space-between;
-      border-bottom: 1px solid var(--glass-border);
-    }
-    .modal-header h2 { font-size: 17px; font-weight: 700; }
-    .modal-body { padding: 24px; }
-    .modal-footer {
-      padding: 16px 24px;
-      border-top: 1px solid var(--glass-border);
-      display: flex; justify-content: flex-end; gap: 10px;
-    }
-    .form-group { margin-bottom: 16px; }
-    .form-group label { display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
-    .form-group select, .form-group input[type=range] {
-      width: 100%; padding: 10px 14px;
-      background: var(--surface);
-      border: 1px solid var(--glass-border);
-      border-radius: 8px;
-      color: var(--text);
-      font-family: inherit;
-      font-size: 14px;
-      outline: none;
-      transition: border 0.2s;
-    }
-    .form-group select:focus { border-color: var(--neon-purple); }
-    .form-group select option { background: #1a1a2e; }
-
-    .btn-modal {
-      padding: 10px 20px;
-      border-radius: 10px;
-      border: 1px solid var(--glass-border);
-      background: var(--surface);
-      color: var(--text);
-      font-family: inherit;
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .btn-modal:hover { background: var(--surface-hover); }
-    .btn-modal.primary {
-      background: linear-gradient(135deg, var(--neon-purple), var(--neon-blue));
-      border-color: transparent;
-      color: white;
-      font-weight: 600;
-    }
-    .btn-modal.primary:hover { box-shadow: 0 4px 16px rgba(139,92,246,0.4); }
-
-    /* ── TOAST ── */
+    /* Toast */
     #toast {
-      position: fixed;
-      bottom: 100px;
-      left: 50%;
-      transform: translateX(-50%) translateY(20px);
-      background: rgba(20,20,40,0.9);
-      backdrop-filter: blur(16px);
-      border: 1px solid var(--glass-border);
-      padding: 12px 24px;
-      border-radius: 12px;
-      font-size: 14px;
-      font-weight: 500;
-      z-index: 999;
-      opacity: 0;
-      pointer-events: none;
-      transition: all 0.3s ease;
-      white-space: nowrap;
+      position:fixed; bottom:90px; left:50%;
+      transform:translateX(-50%) translateY(16px);
+      background:rgba(18,18,18,0.92); backdrop-filter:blur(16px);
+      border:1px solid var(--glass-border);
+      padding:10px 22px; border-radius:10px;
+      font-size:13px; font-weight:500;
+      z-index:999; opacity:0; pointer-events:none;
+      transition: all 0.25s;
     }
-    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
 
-    /* ── MOBILE RESPONSIVE ── */
-    @media (max-width: 768px) {
-      .controls-left { min-width: auto; gap: 6px; }
-      .controls-right { min-width: auto; }
-      .room-input { width: 65px; font-size: 12px; padding: 5px 8px; }
-      .time-text { font-size: 12px; }
-      .controls-center { gap: 5px; }
-      .icon-btn { width: 38px; height: 38px; }
-      .icon-btn .material-symbols-outlined { font-size: 20px; }
-      .btn-live { height: 38px; padding: 0 14px; font-size: 13px; }
-      .btn-end { width: 38px; height: 38px; }
-      .emoji-bar { padding: 2px 4px; }
-      .emoji-btn { width: 30px; height: 30px; font-size: 16px; }
+    /* ── RESPONSIVE ── */
+    @media (max-width:768px) {
+      .controls-bar { height:64px; gap:5px; }
+      .icon-btn { width:36px; height:36px; }
+      .icon-btn .material-symbols-outlined { font-size:19px; }
+      .btn-connect { height:36px; padding:0 14px; font-size:12px; }
+      .btn-end { width:36px; height:36px; }
+      .emoji-bar { padding:2px 4px; }
+      .emoji-btn { width:28px; height:28px; font-size:15px; }
 
-      .sidebar.open { width: 100%; position: absolute; inset: 0; }
+      .sidebar.open { width:100%; position:absolute; inset:0; }
 
-      /* Mobile cam layout = bottom horizontal strip */
-      .cam-panel {
-        bottom: 80px;
-        right: 0; left: 0;
-        padding: 0 8px;
-      }
+      .cam-panel { bottom:70px; right:0; left:0; padding:0 6px; }
       .cam-grid {
-        display: flex !important;
-        overflow-x: auto;
-        gap: 6px;
-        max-width: 100% !important;
-        width: 100% !important;
-        padding-bottom: 4px;
-        scroll-snap-type: x mandatory;
+        display:flex !important; overflow-x:auto;
+        gap:5px; max-width:100%!important; width:100%!important;
+        scroll-snap-type:x mandatory;
       }
-      .cam-tile {
-        flex-shrink: 0;
-        width: 100px;
-        aspect-ratio: 3/4;
-        scroll-snap-align: start;
-      }
-      .cam-tile.pinned {
-        width: 160px;
-        aspect-ratio: 4/3;
-      }
+      .cam-tile { flex-shrink:0; width:90px; aspect-ratio:3/4; scroll-snap-align:start; }
+      .cam-tile.pinned { width:140px; aspect-ratio:4/3; }
     }
+    @media (max-width:480px) { .emoji-bar { display:none; } }
 
-    @media (max-width: 480px) {
-      .emoji-bar { display: none; }
-      .controls-bar { padding: 0 10px; height: 70px; }
-    }
-
-    /* Scrollbar */
-    ::-webkit-scrollbar { width: 4px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 2px; }
-    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+    ::-webkit-scrollbar { width:3px; }
+    ::-webkit-scrollbar-track { background:transparent; }
+    ::-webkit-scrollbar-thumb { background:var(--glass-border); border-radius:2px; }
   </style>
 </head>
 <body>
 
-<!-- Animated gradient background -->
-<div class="bg-gradient" id="bgGradient"></div>
+<div class="bg-gradient"></div>
+<div class="bg-pattern"></div>
 
-<main class="video-area" id="videoArea">
+<main class="video-area">
   <video id="remoteVideo" autoplay playsinline></video>
   <audio id="bgAudio"></audio>
 
-  <!-- No signal -->
   <div class="no-signal" id="noSignal">
     <div class="ns-icon">
-      <span class="material-symbols-outlined" style="font-size:28px; color:var(--neon-purple);">screen_share</span>
+      <span class="material-symbols-outlined" style="font-size:26px; color:var(--accent);">screen_share</span>
     </div>
     <h3>Waiting for Screen Share</h3>
-    <p>Open the menu to join or start a session</p>
+    <p>Click Connect to join or start a session</p>
   </div>
 
-  <!-- Top overlay badges -->
   <div class="overlay-top">
     <div class="badge-row">
       <div class="badge" id="connBadge">
@@ -900,21 +615,18 @@
       </div>
     </div>
     <div class="overlay-tags">
-      <span class="overlay-tag" id="sourceTag" style="display:none;">SCREEN</span>
+      <span class="overlay-tag" id="sourceTag" style="display:none;">—</span>
       <span class="overlay-tag" id="qualityTag" style="display:none;">—</span>
     </div>
   </div>
 
-  <!-- Face cam floating grid -->
   <div class="cam-panel" id="camPanel">
     <div class="cam-grid" id="camGrid" data-count="0"></div>
   </div>
 
-  <!-- Emoji reactions overlay -->
   <div class="emoji-overlay" id="emojiOverlay"></div>
 
-  <!-- Tile fullscreen overlay -->
-  <div class="tile-fullscreen-overlay" id="tileFsOverlay" onclick="closeTileFullscreen()">
+  <div class="tile-fs-overlay" id="tileFsOverlay" onclick="closeTileFullscreen()">
     <video id="tileFsVideo" autoplay playsinline muted></video>
     <button class="fs-close" onclick="closeTileFullscreen()">
       <span class="material-symbols-outlined">close</span>
@@ -922,64 +634,45 @@
     <span class="fs-name" id="tileFsName"></span>
   </div>
 
-  <!-- Bottom control bar -->
   <footer class="controls-bar">
-    <div class="controls-left">
-      <span class="time-text" id="clockDisplay">00:00</span>
-      <input id="userName" class="room-input" placeholder="Name" spellcheck="false" />
-      <input id="roomId" class="room-input" placeholder="Room Code" maxlength="12" spellcheck="false" />
+    <button class="icon-btn" id="btnCam" onclick="toggleCam()" title="Camera" style="display:none;">
+      <span class="material-symbols-outlined">videocam</span>
+    </button>
+    <button class="icon-btn" id="btnFullscreen" onclick="toggleFullscreen()" title="Fullscreen">
+      <span class="material-symbols-outlined" id="fsIcon">fullscreen</span>
+    </button>
+
+    <div class="emoji-bar">
+      <button class="emoji-btn" onclick="sendReaction('🎉')">🎉</button>
+      <button class="emoji-btn" onclick="sendReaction('❤️')">❤️</button>
+      <button class="emoji-btn" onclick="sendReaction('👍')">👍</button>
+      <button class="emoji-btn" onclick="sendReaction('😂')">😂</button>
+      <button class="emoji-btn" onclick="sendReaction('👏')">👏</button>
+      <button class="emoji-btn" onclick="sendReaction('🔥')">🔥</button>
     </div>
 
-    <div class="controls-center">
-      <button class="icon-btn" id="btnCam" onclick="toggleCam()" title="Toggle Camera">
-        <span class="material-symbols-outlined">videocam</span>
-      </button>
+    <button class="icon-btn" onclick="toggleSidebar('chat')" title="Chat">
+      <span class="material-symbols-outlined">chat</span>
+    </button>
+    <button class="icon-btn" onclick="toggleSidebar('stats')" title="Stats">
+      <span class="material-symbols-outlined">analytics</span>
+    </button>
 
-      <button class="icon-btn" id="btnFullscreen" onclick="toggleFullscreen()" title="Full Screen">
-        <span class="material-symbols-outlined" id="fsIcon">fullscreen</span>
-      </button>
-
-      <div class="emoji-bar" id="emojiBar">
-        <button class="emoji-btn" onclick="sendReaction('🎉')" title="Celebrate">🎉</button>
-        <button class="emoji-btn" onclick="sendReaction('❤️')" title="Love">❤️</button>
-        <button class="emoji-btn" onclick="sendReaction('👍')" title="Like">👍</button>
-        <button class="emoji-btn" onclick="sendReaction('😂')" title="Haha">😂</button>
-        <button class="emoji-btn" onclick="sendReaction('👏')" title="Clap">👏</button>
-        <button class="emoji-btn" onclick="sendReaction('🔥')" title="Fire">🔥</button>
-      </div>
-
-      <button class="icon-btn" onclick="toggleSidebar('chat')" title="Chat">
-        <span class="material-symbols-outlined">chat</span>
-      </button>
-      <button class="icon-btn" onclick="toggleSidebar('setup')" title="Menu">
-        <span class="material-symbols-outlined">more_vert</span>
-      </button>
-
-      <button class="btn-live" id="goLiveBtn" onclick="toggleStream()" title="Go Live">
-        <span class="material-symbols-outlined">podcasts</span> Go Live
-      </button>
-      <button class="btn-end" onclick="leaveCall()" title="Leave">
-        <span class="material-symbols-outlined">call_end</span>
-      </button>
-    </div>
-
-    <div class="controls-right">
-      <button class="icon-btn" onclick="toggleSidebar('stats')" title="Stats">
-        <span class="material-symbols-outlined">analytics</span>
-      </button>
-      <button class="icon-btn" onclick="openQualityModal()" title="Settings">
-        <span class="material-symbols-outlined">tune</span>
-      </button>
-    </div>
+    <button class="btn-connect" id="connectBtn" onclick="openConnectModal()">
+      <span class="material-symbols-outlined">link</span> Connect
+    </button>
+    <button class="btn-end" onclick="leaveCall()" title="Leave">
+      <span class="material-symbols-outlined">call_end</span>
+    </button>
   </footer>
 </main>
 
-<!-- GLASSMORPHISM SIDEBAR -->
+<!-- SIDEBAR -->
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-header">
     <h2 id="sidebarTitle">Menu</h2>
-    <button class="sidebar-close" onclick="closeSidebar()">
-      <span class="material-symbols-outlined" style="font-size:20px;">close</span>
+    <button class="modal-close" onclick="closeSidebar()">
+      <span class="material-symbols-outlined" style="font-size:18px;">close</span>
     </button>
   </div>
   <div class="sidebar-tabs">
@@ -988,36 +681,19 @@
     <button class="sidebar-tab" onclick="switchSidebarTab('stats')" id="tabStats">Stats</button>
   </div>
 
-  <!-- CHAT -->
   <div class="sidebar-content" id="contentChat">
     <div class="chat-messages" id="chatMessages">
-      <div style="text-align:center; color:var(--text-muted); margin-top:20px; font-size:12px;">Messages visible to everyone.</div>
+      <div style="text-align:center; color:var(--text-muted); margin-top:20px; font-size:11px;">Messages visible to everyone.</div>
     </div>
     <div class="chat-input-bar">
       <input class="chat-input" id="chatInput" placeholder="Type a message..." onkeypress="if(event.key==='Enter') window.sendChat()" />
       <button class="chat-send" onclick="window.sendChat()">
-        <span class="material-symbols-outlined" style="font-size:20px;">send</span>
+        <span class="material-symbols-outlined" style="font-size:18px;">send</span>
       </button>
     </div>
   </div>
 
-  <!-- SETUP -->
   <div class="sidebar-content active" id="contentSetup">
-    <div>
-      <div class="section-title">Actions</div>
-      <div class="setup-actions">
-        <button class="btn-action" onclick="generateRoom()">
-          <span class="material-symbols-outlined">autorenew</span> Generate Room Code
-        </button>
-        <button class="btn-action primary" onclick="startStream()">
-          <span class="material-symbols-outlined">cast</span> Start Host Session
-        </button>
-        <button class="btn-action green" onclick="joinStream()">
-          <span class="material-symbols-outlined">login</span> Join Watch Party
-        </button>
-      </div>
-    </div>
-
     <div>
       <div class="section-title">🔊 Volume</div>
       <div class="volume-row">
@@ -1027,89 +703,84 @@
         <span class="vol-value" id="movieVolVal">100%</span>
       </div>
     </div>
-
     <div>
       <div class="section-title">Quality</div>
-      <div id="qualitySummary" style="font-size:12px; font-family:monospace; color:var(--text-muted); line-height:1.8;">—</div>
+      <div id="qualitySummary" style="font-size:11px; font-family:monospace; color:var(--text-muted); line-height:1.8;">—</div>
     </div>
   </div>
 
-  <!-- STATS -->
   <div class="sidebar-content" id="contentStats">
     <div class="stat-grid">
-      <div class="stat-card">
-        <div class="stat-label">Bitrate</div>
-        <div class="stat-value" id="statBitrate">—</div>
-        <div class="bar-track"><div class="bar-fill" id="barBitrate" style="width:0%"></div></div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">FPS</div>
-        <div class="stat-value" id="statFps">—</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Resolution</div>
-        <div class="stat-value" id="statRes">—</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Latency</div>
-        <div class="stat-value" id="statRtt">—</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Codec</div>
-        <div class="stat-value" id="statCodec">—</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Packet Loss</div>
-        <div class="stat-value" id="statLoss">—</div>
-      </div>
-      <div class="stat-card" style="grid-column: 1 / -1;">
-        <div class="stat-label">Duration</div>
-        <div class="stat-value" id="statDuration">00:00:00</div>
-      </div>
+      <div class="stat-card"><div class="stat-label">Bitrate</div><div class="stat-value" id="statBitrate">—</div><div class="bar-track"><div class="bar-fill" id="barBitrate" style="width:0%"></div></div></div>
+      <div class="stat-card"><div class="stat-label">FPS</div><div class="stat-value" id="statFps">—</div></div>
+      <div class="stat-card"><div class="stat-label">Resolution</div><div class="stat-value" id="statRes">—</div></div>
+      <div class="stat-card"><div class="stat-label">Latency</div><div class="stat-value" id="statRtt">—</div></div>
+      <div class="stat-card"><div class="stat-label">Codec</div><div class="stat-value" id="statCodec">—</div></div>
+      <div class="stat-card"><div class="stat-label">Loss</div><div class="stat-value" id="statLoss">—</div></div>
+      <div class="stat-card" style="grid-column:1/-1;"><div class="stat-label">Duration</div><div class="stat-value" id="statDuration">00:00:00</div></div>
     </div>
   </div>
 </aside>
 
-<!-- QUALITY MODAL -->
-<div class="modal-bg" id="qualityModal">
+<!-- CONNECT MODAL (Popup) -->
+<div class="modal-bg" id="connectModal">
   <div class="modal">
     <div class="modal-header">
-      <h2>⚙️ Stream Settings</h2>
-      <button class="sidebar-close" onclick="closeQualityModal()">
-        <span class="material-symbols-outlined" style="font-size:20px;">close</span>
+      <h2><span class="material-symbols-outlined" style="color:var(--accent)">link</span> Connect</h2>
+      <button class="modal-close" onclick="closeConnectModal()">
+        <span class="material-symbols-outlined" style="font-size:18px;">close</span>
       </button>
     </div>
     <div class="modal-body">
-      <div style="display:flex; gap:12px;">
-        <div class="form-group" style="flex:1">
-          <label>Resolution</label>
-          <select id="scrRes">
-            <option value="4k">4K (3840×2160)</option>
-            <option value="2k">2K (2560×1440)</option>
-            <option value="1080p" selected>1080p (1920×1080)</option>
-            <option value="720p">720p (1280×720)</option>
+      <div class="form-group">
+        <label>Your Name</label>
+        <input class="form-input" id="userName" placeholder="Enter your name" spellcheck="false" />
+      </div>
+      <div class="form-group">
+        <label>Room Code</label>
+        <div style="display:flex; gap:8px;">
+          <input class="form-input" id="roomId" placeholder="Enter room code" maxlength="12" spellcheck="false" style="flex:1;" />
+          <button class="icon-btn" onclick="generateRoom()" title="Generate" style="flex-shrink:0;">
+            <span class="material-symbols-outlined">autorenew</span>
+          </button>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Cam Quality</label>
+          <select class="form-select" id="camQuality">
+            <option value="720p">720p</option>
+            <option value="480p" selected>480p</option>
+            <option value="360p">360p</option>
           </select>
         </div>
-        <div class="form-group" style="flex:1">
-          <label>Frame Rate</label>
-          <select id="scrFps">
-            <option value="60">60 FPS</option>
-            <option value="30" selected>30 FPS</option>
+        <div class="form-group">
+          <label>Screen Quality</label>
+          <select class="form-select" id="scrRes">
+            <option value="4k">4K</option>
+            <option value="2k">2K</option>
+            <option value="1080p" selected>1080p</option>
+            <option value="720p">720p</option>
           </select>
         </div>
       </div>
       <div class="form-group">
-        <label style="display:flex; justify-content:space-between;">
-          Bitrate <span id="bitrateValLabel" style="font-weight:400;">4 Mbps</span>
+        <label style="display:flex;justify-content:space-between;">
+          Screen Bitrate <span id="bitrateValLabel" style="font-weight:400;">4 Mbps</span>
         </label>
-        <input type="range" id="bitrateSlider" min="1" max="12" value="4" step="0.5"
+        <input type="range" class="form-input" id="bitrateSlider" min="1" max="12" value="4" step="0.5"
           oninput="document.getElementById('bitrateValLabel').textContent = this.value + ' Mbps'"
-          style="accent-color:var(--neon-purple);" />
+          style="padding:0; border:none; background:var(--glass-border); height:4px; border-radius:2px; cursor:pointer;" />
       </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-modal" onclick="closeQualityModal()">Cancel</button>
-      <button class="btn-modal primary" onclick="applyQuality()">Apply</button>
+
+      <div class="modal-actions">
+        <button class="btn-modal host" onclick="confirmHost()">
+          <span class="material-symbols-outlined">cast</span> Host
+        </button>
+        <button class="btn-modal join" onclick="confirmJoin()">
+          <span class="material-symbols-outlined">login</span> Join
+        </button>
+      </div>
     </div>
   </div>
 </div>
@@ -1117,70 +788,57 @@
 <div id="toast"></div>
 
 <script>
-  // Clock
-  function updateClock() {
-    const now = new Date();
-    document.getElementById('clockDisplay').textContent = now.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
-  }
-  updateClock();
-  setInterval(updateClock, 30000);
-
+  // Clock removed from control bar — not needed
   // Sidebar
   window.toggleSidebar = (tab) => {
     const sb = document.getElementById('sidebar');
     if (sb.classList.contains('open')) {
-      const currentTab = document.querySelector('.sidebar-tab.active')?.textContent?.toLowerCase();
-      if (currentTab === tab) { sb.classList.remove('open'); return; }
+      const cur = document.querySelector('.sidebar-tab.active')?.textContent?.toLowerCase();
+      if (cur === tab) { sb.classList.remove('open'); return; }
     }
     sb.classList.add('open');
     switchSidebarTab(tab);
   };
   window.closeSidebar = () => document.getElementById('sidebar').classList.remove('open');
-
   window.switchSidebarTab = (tab) => {
     document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.sidebar-content').forEach(c => c.classList.remove('active'));
-    const tabMap = { setup: 'tabSetup', chat: 'tabChat', stats: 'tabStats' };
-    const contentMap = { setup: 'contentSetup', chat: 'contentChat', stats: 'contentStats' };
-    document.getElementById(tabMap[tab])?.classList.add('active');
-    document.getElementById(contentMap[tab])?.classList.add('active');
-    const titles = { setup: 'Menu', chat: 'Live Chat', stats: 'Stream Stats' };
-    document.getElementById('sidebarTitle').textContent = titles[tab] || 'Menu';
+    const tMap = { setup:'tabSetup', chat:'tabChat', stats:'tabStats' };
+    const cMap = { setup:'contentSetup', chat:'contentChat', stats:'contentStats' };
+    document.getElementById(tMap[tab])?.classList.add('active');
+    document.getElementById(cMap[tab])?.classList.add('active');
+    document.getElementById('sidebarTitle').textContent = {setup:'Menu',chat:'Live Chat',stats:'Stats'}[tab]||'Menu';
   };
-
-  // Fullscreen
   window.toggleFullscreen = () => {
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
+      document.documentElement.requestFullscreen().catch(()=>{});
       document.getElementById('fsIcon').textContent = 'fullscreen_exit';
     } else {
       document.exitFullscreen();
       document.getElementById('fsIcon').textContent = 'fullscreen';
     }
   };
-
-  // Volume
-  window.setMovieVolume = (val) => {
-    const v = val / 100;
-    const video = document.getElementById('remoteVideo');
-    const audio = document.getElementById('bgAudio');
-    if (video) video.volume = v;
-    if (audio) audio.volume = v;
-    document.getElementById('movieVolVal').textContent = val + '%';
+  window.setMovieVolume = (v) => {
+    const vol = v/100;
+    const vid = document.getElementById('remoteVideo');
+    const aud = document.getElementById('bgAudio');
+    if(vid) vid.volume = vol;
+    if(aud) aud.volume = vol;
+    document.getElementById('movieVolVal').textContent = v+'%';
   };
-
-  // Tile fullscreen
-  window.openTileFullscreen = (peerId, name, stream) => {
-    const overlay = document.getElementById('tileFsOverlay');
-    const video = document.getElementById('tileFsVideo');
-    video.srcObject = stream;
+  window.openTileFullscreen = (id, name, stream) => {
+    const o = document.getElementById('tileFsOverlay');
+    document.getElementById('tileFsVideo').srcObject = stream;
     document.getElementById('tileFsName').textContent = name;
-    overlay.classList.add('active');
+    o.classList.add('active');
   };
   window.closeTileFullscreen = () => {
     document.getElementById('tileFsOverlay').classList.remove('active');
     document.getElementById('tileFsVideo').srcObject = null;
   };
+  // Connect modal
+  window.openConnectModal = () => document.getElementById('connectModal').classList.add('open');
+  window.closeConnectModal = () => document.getElementById('connectModal').classList.remove('open');
 </script>
 
 <script type="module" src="app.js"></script>
