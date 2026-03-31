@@ -62,6 +62,9 @@ let timerInterval = null;
 let startTime = 0;
 let prevBytesReceived = 0;
 
+// ★ PERF: Detect mobile once
+const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
 // ★ FIX: Track ALL Firebase listener unsubscribers to prevent duplicates
 let firebaseUnsubs = [];
 let bgAudioSet = false;
@@ -133,14 +136,24 @@ async function captureScreen() {
 
 /* ═══════════════════════════════════════════════
    CAPTURE FACE CAM (Video only)
+   ★ PERF: Lower quality on mobile to save battery
    ═══════════════════════════════════════════════ */
 async function captureFaceCam() {
-  const qual = document.getElementById("camQuality")?.value || "480p";
-  const { width, height } = RES_MAP[qual] || RES_MAP["480p"];
+  let camW, camH, camFps;
+
+  if (isMobile) {
+    // ★ PERF: Force low cam on mobile — 320×240 @ 15fps
+    camW = 320; camH = 240; camFps = 15;
+  } else {
+    const qual = document.getElementById("camQuality")?.value || "480p";
+    const r = RES_MAP[qual] || RES_MAP["480p"];
+    camW = r.width; camH = r.height; camFps = 24;
+  }
+
   try {
     localCamStream = await navigator.mediaDevices.getUserMedia({
       audio: false,
-      video: { width: { ideal: width }, height: { ideal: height }, frameRate: { ideal: 24 }, facingMode: "user" }
+      video: { width: { ideal: camW }, height: { ideal: camH }, frameRate: { ideal: camFps }, facingMode: "user" }
     });
   } catch (e) {
     console.warn("Camera not available:", e.message);
@@ -561,7 +574,7 @@ function startStats(pc) {
         if (document.getElementById("statRtt")) document.getElementById("statRtt").innerHTML = `${rtt}<span class="stat-unit"> ms</span>`;
       }
     } catch (_) {}
-  }, 2000); // ★ FIX: 2s instead of 1s to reduce CPU load
+  }, isMobile ? 4000 : 2000); // ★ PERF: 4s on mobile, 2s on desktop
 
   timerInterval = setInterval(() => {
     const s = Math.floor((Date.now() - startTime) / 1000);
