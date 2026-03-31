@@ -227,6 +227,7 @@ function createHostScreenPC(viewerId) {
     console.log(`[Screen][${viewerId}] PC:`, pc.connectionState);
     if (pc.connectionState === "connected") {
       applyBitratePerPC(pc, qualitySettings.bitrate);
+      boostScreenShareAudio(pc);
       showToast("👀 A viewer joined!");
     }
   };
@@ -271,6 +272,8 @@ function createViewerScreenPC() {
 async function applyBitratePerPC(pcInstance, mbps) {
   for (const sender of pcInstance.getSenders()) {
     if (!sender.track) continue;
+    // ONLY limit VIDEO bitrate — never cap audio (preserves HD bass quality)
+    if (sender.track.kind !== 'video') continue;
     const params = sender.getParameters();
     if (!params.encodings?.length) params.encodings = [{}];
     params.encodings[0].maxBitrate = mbps * 1_000_000;
@@ -278,8 +281,25 @@ async function applyBitratePerPC(pcInstance, mbps) {
   }
 }
 
+// Boost screen share audio to max Opus stereo quality (510kbps)
+// This ensures movie/song audio stays HD with full bass
+async function boostScreenShareAudio(pcInstance) {
+  for (const sender of pcInstance.getSenders()) {
+    if (!sender.track || sender.track.kind !== 'audio') continue;
+    const params = sender.getParameters();
+    if (!params.encodings?.length) params.encodings = [{}];
+    params.encodings[0].maxBitrate = 510_000;       // 510 kbps — max Opus stereo
+    params.encodings[0].networkPriority = 'high';    // Audio gets priority over video
+    params.encodings[0].priority = 'high';
+    try { await sender.setParameters(params); } catch (_) {}
+  }
+}
+
 async function applyBitrate(mbps) {
-  Object.values(screenPcMap).forEach(pc => applyBitratePerPC(pc, mbps));
+  Object.values(screenPcMap).forEach(pc => {
+    applyBitratePerPC(pc, mbps);
+    boostScreenShareAudio(pc);
+  });
 }
 
 /* ══════════════════════════════════════════════
