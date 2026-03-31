@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {
-  getDatabase, ref, set, get, onChildAdded, onValue, push, remove
+  getDatabase, ref, set, get, onChildAdded, onChildRemoved, onValue, push, remove
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 /* ─── FIREBASE ─── */
@@ -13,10 +13,11 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-/* ─── STUN + FREE TURN SERVERS ─── */
+/* ─── STUN + TURN SERVERS ─── */
 const servers = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
     { urls: "stun:82.25.104.130:3478" },
     { urls: "turn:82.25.104.130:3478", username: "akash", credential: "hostinger_vps_123" },
     { urls: "turn:82.25.104.130:5349", username: "akash", credential: "hostinger_vps_123" },
@@ -29,16 +30,36 @@ const servers = {
   rtcpMuxPolicy: "require"
 };
 
+/* ─── MOBILE DETECTION ─── */
+const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+
 /* ─── STATE ─── */
-let localStream, remoteStream, roomId;
+let localStream = null;       // screen share stream
+let remoteStream = null;      // received screen share
+let localVoiceStream = null;  // mic + camera stream
+let roomId = null;
 let isStreaming = false;
 let isHost = false;
 let isScreenSharing = false;
+let roomMode = "watch";       // "voice" or "watch"
+let micEnabled = true;
+let camEnabled = true;
 let statsInterval = null;
 let durationInterval = null;
 let startTime = null;
 
-/* ─── QUALITY SETTINGS ─── */
+/* ─── VOICE MESH STATE ─── */
+let voicePcMap = {};     // peerId → { pc, audioEl, videoEl }
+let myVoiceId = null;
+let voiceSettings = {
+  videoRes: "720p",
+  videoBitrate: 1,       // Mbps
+  maxParticipants: 5
+};
+let voiceVolume = 0.8;
+
+/* ─── QUALITY SETTINGS (Screen Share) ─── */
 let qualitySettings = {
   screen: { res: "1080p", fps: 30 },
   bitrate: 4
@@ -46,6 +67,7 @@ let qualitySettings = {
 
 /* ─── DOM ─── */
 const remoteVideo = document.getElementById("remoteVideo");
+const bgAudio = document.getElementById("bgAudio");
 const noSignal = document.getElementById("noSignal");
 const connDot = document.getElementById("connDot");
 const connLabel = document.getElementById("connLabel");
@@ -60,21 +82,58 @@ const RES_MAP = {
   "4k": { width: 3840, height: 2160 },
   "2k": { width: 2560, height: 1440 },
   "1080p": { width: 1920, height: 1080 },
-  "720p": { width: 1280, height: 720 }
+  "720p": { width: 1280, height: 720 },
+  "480p": { width: 854, height: 480 },
+  "360p": { width: 640, height: 360 }
 };
 
 /* ══════════════════════════════════════════════
-   SCREEN SHARE + MIC INIT (Host Only)
+   MODE MODAL FUNCTIONS
+   ══════════════════════════════════════════════ */
+window.openModeModal = () => {
+  document.getElementById("modeModal").classList.add("open");
+};
+window.closeModeModal = () => {
+  document.getElementById("modeModal").classList.remove("open");
+};
+
+window.confirmModeAndStart = async () => {
+  // Read mode from UI
+  roomMode = window.selectedMode || "voice";
+
+  if (roomMode === "voice") {
+    voiceSettings.videoRes = document.getElementById("voiceVideoRes").value;
+    voiceSettings.videoBitrate = parseFloat(document.getElementById("voiceBitrateSlider").value);
+    voiceSettings.maxParticipants = parseInt(document.getElementById("maxParticipantsSelect").value);
+  }
+
+  closeModeModal();
+  await window.startStream();
+};
+
+/* ══════════════════════════════════════════════
+   SCREEN SHARE INIT (Host Only) — PC #1
    ══════════════════════════════════════════════ */
 async function initMedia() {
   const { width, height } = RES_MAP[qualitySettings.screen.res];
   const fps = qualitySettings.screen.fps;
-  
+
   let screenStream;
   try {
     screenStream = await navigator.mediaDevices.getDisplayMedia({
-      video: { width: { ideal: width }, height: { ideal: height }, frameRate: { ideal: fps }, displaySurface: "monitor" },
-      audio: { echoCancellation: false, noiseSuppression: false, sampleRate: 48000, channelCount: 2 },
+      video: {
+        width: { ideal: width },
+        height: { ideal: height },
+        frameRate: { ideal: fps },
+        displaySurface: "monitor"
+      },
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        sampleRate: 48000,
+        channelCount: 2
+      },
       systemAudio: "include"
     });
   } catch (e) {
@@ -83,18 +142,18 @@ async function initMedia() {
   }
 
   localStream = new MediaStream();
-  
+
   screenStream.getVideoTracks().forEach(t => {
     t.onended = () => { if (isHost) leaveCall(); };
     localStream.addTrack(t);
   });
   screenStream.getAudioTracks().forEach(t => localStream.addTrack(t));
 
-  // Display Host's own screen locally
+  // Host preview (muted to prevent echo)
   remoteVideo.srcObject = localStream;
-  remoteVideo.muted = true; // prevent echoing host's own audio
+  remoteVideo.muted = true;
   remoteVideo.play().catch(() => {});
-  
+
   updateOverlayTags();
   noSignal.classList.add("hidden");
   isScreenSharing = true;
@@ -102,49 +161,94 @@ async function initMedia() {
 }
 
 /* ══════════════════════════════════════════════
-   PEER CONNECTION (1-to-Many Mesh)
+   VOICE + CAMERA INIT — for Voice Mesh (PC #2)
    ══════════════════════════════════════════════ */
-let pcMap = {}; // viewerId -> RTCPeerConnection
-let myViewerId = null; // Used by viewers
+async function initVoiceMedia() {
+  const { width, height } = RES_MAP[voiceSettings.videoRes];
 
-function createHostPC(viewerId) {
+  try {
+    localVoiceStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      },
+      video: {
+        width: { ideal: width },
+        height: { ideal: height },
+        frameRate: { ideal: 30 },
+        facingMode: "user"
+      }
+    });
+
+    // Show local video tile in participant grid
+    addLocalVideoTile();
+    return localVoiceStream;
+  } catch (e) {
+    showToast("⚠️ Mic/Camera access failed: " + e.message);
+    // Try audio only
+    try {
+      localVoiceStream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true },
+        video: false
+      });
+      addLocalVideoTile();
+      return localVoiceStream;
+    } catch (e2) {
+      showToast("❌ No mic access: " + e2.message);
+      return null;
+    }
+  }
+}
+
+/* ══════════════════════════════════════════════
+   SCREEN SHARE PEER CONNECTIONS (PC #1)
+   1-to-Many: Host → Viewers
+   ══════════════════════════════════════════════ */
+let screenPcMap = {}; // viewerId → RTCPeerConnection
+
+function createHostScreenPC(viewerId) {
   const pc = new RTCPeerConnection(servers);
-  pcMap[viewerId] = pc;
+  screenPcMap[viewerId] = pc;
 
   localStream.getTracks().forEach(track => {
     pc.addTrack(track, localStream);
   });
 
   pc.oniceconnectionstatechange = () => {
-    console.log(`[${viewerId}] ICE:`, pc.iceConnectionState);
-    if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed" || pc.iceConnectionState === "closed") {
+    console.log(`[Screen][${viewerId}] ICE:`, pc.iceConnectionState);
+    if (["disconnected", "failed", "closed"].includes(pc.iceConnectionState)) {
       pc.close();
-      delete pcMap[viewerId];
+      delete screenPcMap[viewerId];
     }
   };
 
   pc.onconnectionstatechange = () => {
-    console.log(`[${viewerId}] PC:`, pc.connectionState);
+    console.log(`[Screen][${viewerId}] PC:`, pc.connectionState);
     if (pc.connectionState === "connected") {
       applyBitratePerPC(pc, qualitySettings.bitrate);
-      showToast("👀 A new viewer joined!");
+      showToast("👀 A viewer joined!");
     }
   };
 
   return pc;
 }
 
-function createViewerPC() {
+function createViewerScreenPC() {
   const pc = new RTCPeerConnection(servers);
-  pcMap["host"] = pc;
+  screenPcMap["host"] = pc;
 
   pc.ontrack = e => {
     e.streams[0].getTracks().forEach(track => {
-      if (!remoteStream.getTracks().find(t => t.id === track.id))
+      if (!remoteStream.getTracks().find(t => t.id === track.id)) {
         remoteStream.addTrack(track);
+      }
     });
     noSignal.classList.add("hidden");
-    remoteVideo.play().catch(() => { });
+    remoteVideo.play().catch(() => {});
+
+    // Setup background audio — extract audio tracks into hidden audio element
+    setupBackgroundAudio(remoteStream);
   };
 
   pc.oniceconnectionstatechange = () => {
@@ -152,8 +256,13 @@ function createViewerPC() {
   };
 
   pc.onconnectionstatechange = () => {
-    if (pc.connectionState === "connected") { startStats(); startTimer(); showToast("📺 Connected to Party!"); }
-    if (pc.connectionState === "failed") { showToast("❌ Failed to connect"); }
+    if (pc.connectionState === "connected") {
+      startStats(); startTimer();
+      showToast("📺 Connected to Party!");
+    }
+    if (pc.connectionState === "failed") {
+      showToast("❌ Connection failed. Trying to reconnect...");
+    }
   };
 
   return pc;
@@ -165,34 +274,354 @@ async function applyBitratePerPC(pcInstance, mbps) {
     const params = sender.getParameters();
     if (!params.encodings?.length) params.encodings = [{}];
     params.encodings[0].maxBitrate = mbps * 1_000_000;
-    try { await sender.setParameters(params); } catch (_) { }
+    try { await sender.setParameters(params); } catch (_) {}
   }
 }
 
 async function applyBitrate(mbps) {
-  Object.values(pcMap).forEach(pc => applyBitratePerPC(pc, mbps));
+  Object.values(screenPcMap).forEach(pc => applyBitratePerPC(pc, mbps));
 }
 
 /* ══════════════════════════════════════════════
-   START STREAM (Host)
+   VOICE MESH PEER CONNECTIONS (PC #2)
+   All-to-All: Everyone ↔ Everyone
+   ══════════════════════════════════════════════ */
+
+function getPairKey(id1, id2) {
+  return [id1, id2].sort().join("__");
+}
+
+async function createVoiceConnection(peerId, peerName, isOfferer) {
+  const pairKey = getPairKey(myVoiceId, peerId);
+  const pc = new RTCPeerConnection(servers);
+
+  voicePcMap[peerId] = { pc, audioEl: null, peerName };
+
+  // Add our mic + camera tracks
+  if (localVoiceStream) {
+    localVoiceStream.getTracks().forEach(track => {
+      pc.addTrack(track, localVoiceStream);
+    });
+  }
+
+  // Handle incoming remote voice + video tracks
+  const remoteVoiceStream = new MediaStream();
+
+  pc.ontrack = (e) => {
+    e.streams[0].getTracks().forEach(track => {
+      if (!remoteVoiceStream.getTracks().find(t => t.id === track.id)) {
+        remoteVoiceStream.addTrack(track);
+      }
+    });
+
+    // Create/update audio element for this peer's voice
+    const audioTracks = remoteVoiceStream.getAudioTracks();
+    if (audioTracks.length > 0 && !voicePcMap[peerId]?.audioEl) {
+      const audioEl = new Audio();
+      audioEl.srcObject = new MediaStream(audioTracks);
+      audioEl.volume = voiceVolume;
+      audioEl.play().catch(() => {});
+      if (voicePcMap[peerId]) voicePcMap[peerId].audioEl = audioEl;
+    }
+
+    // Add/update video tile
+    addRemoteVideoTile(peerId, peerName, remoteVoiceStream);
+  };
+
+  // ICE candidates
+  const myIcePath = isOfferer
+    ? `rooms/${roomId}/voiceLinks/${pairKey}/offerCandidates`
+    : `rooms/${roomId}/voiceLinks/${pairKey}/answerCandidates`;
+
+  pc.onicecandidate = (e) => {
+    if (e.candidate) push(ref(db, myIcePath), e.candidate.toJSON());
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    console.log(`[Voice][${peerId}] ICE:`, pc.iceConnectionState);
+    if (["disconnected", "failed", "closed"].includes(pc.iceConnectionState)) {
+      cleanupVoicePeer(peerId);
+    }
+  };
+
+  pc.onconnectionstatechange = () => {
+    console.log(`[Voice][${peerId}] PC:`, pc.connectionState);
+    if (pc.connectionState === "connected") {
+      applyBitratePerPC(pc, voiceSettings.videoBitrate);
+      showToast(`🎤 Voice connected with ${peerName}`);
+    }
+  };
+
+  if (isOfferer) {
+    // I create the offer
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    await set(ref(db, `rooms/${roomId}/voiceLinks/${pairKey}/offer`), {
+      type: offer.type,
+      sdp: offer.sdp
+    });
+
+    // Listen for answer
+    onValue(ref(db, `rooms/${roomId}/voiceLinks/${pairKey}/answer`), async (snap) => {
+      if (!snap.val() || pc.signalingState === "stable") return;
+      try {
+        await pc.setRemoteDescription(new RTCSessionDescription(snap.val()));
+      } catch (e) {
+        console.warn("[Voice] setRemoteDesc error:", e);
+      }
+    });
+
+    // Listen for answer ICE candidates
+    onChildAdded(ref(db, `rooms/${roomId}/voiceLinks/${pairKey}/answerCandidates`), async (candSnap) => {
+      try { await pc.addIceCandidate(new RTCIceCandidate(candSnap.val())); } catch (_) {}
+    });
+  } else {
+    // Listen for offer, then answer
+    onValue(ref(db, `rooms/${roomId}/voiceLinks/${pairKey}/offer`), async (snap) => {
+      if (!snap.val() || pc.signalingState !== "stable") return;
+      try {
+        await pc.setRemoteDescription(new RTCSessionDescription(snap.val()));
+
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        await set(ref(db, `rooms/${roomId}/voiceLinks/${pairKey}/answer`), {
+          type: answer.type,
+          sdp: answer.sdp
+        });
+      } catch (e) {
+        console.warn("[Voice] offer/answer error:", e);
+      }
+    });
+
+    // Listen for offer ICE candidates
+    onChildAdded(ref(db, `rooms/${roomId}/voiceLinks/${pairKey}/offerCandidates`), async (candSnap) => {
+      try { await pc.addIceCandidate(new RTCIceCandidate(candSnap.val())); } catch (_) {}
+    });
+  }
+
+  updateParticipantCount();
+}
+
+function cleanupVoicePeer(peerId) {
+  const entry = voicePcMap[peerId];
+  if (!entry) return;
+
+  if (entry.pc) {
+    try { entry.pc.close(); } catch (_) {}
+  }
+  if (entry.audioEl) {
+    entry.audioEl.pause();
+    entry.audioEl.srcObject = null;
+  }
+
+  // Remove video tile
+  const tile = document.getElementById(`tile_${peerId}`);
+  if (tile) tile.remove();
+
+  delete voicePcMap[peerId];
+  updateParticipantCount();
+}
+
+async function joinVoiceMesh() {
+  // Get mic + camera
+  await initVoiceMedia();
+  if (!localVoiceStream) {
+    showToast("⚠️ Joining voice without mic/camera");
+    localVoiceStream = new MediaStream(); // empty stream fallback
+  }
+
+  // Generate a unique voice peer ID
+  myVoiceId = "vp_" + Math.random().toString(36).substr(2, 9);
+  const myName = document.getElementById("userName").value.trim() || "User_" + Math.floor(Math.random() * 1000);
+
+  // Register in Firebase
+  await set(ref(db, `rooms/${roomId}/voiceMembers/${myVoiceId}`), {
+    name: myName,
+    joined: Date.now()
+  });
+
+  // Get existing members first, then create connections
+  const membersSnap = await get(ref(db, `rooms/${roomId}/voiceMembers`));
+  const existingMembers = membersSnap.exists() ? membersSnap.val() : {};
+
+  for (const [peerId, peerData] of Object.entries(existingMembers)) {
+    if (peerId === myVoiceId) continue;
+
+    const isOfferer = myVoiceId < peerId;
+    await createVoiceConnection(peerId, peerData.name || "Unknown", isOfferer);
+  }
+
+  // Listen for NEW members joining after us
+  onChildAdded(ref(db, `rooms/${roomId}/voiceMembers`), async (snap) => {
+    const peerId = snap.key;
+    if (peerId === myVoiceId || voicePcMap[peerId]) return;
+
+    // Check participant limit
+    const currentCount = Object.keys(voicePcMap).length + 1; // +1 for self
+    if (currentCount >= voiceSettings.maxParticipants) {
+      console.log(`[Voice] Room full (${currentCount}/${voiceSettings.maxParticipants})`);
+      return;
+    }
+
+    const peerData = snap.val();
+    const isOfferer = myVoiceId < peerId;
+    await createVoiceConnection(peerId, peerData.name || "Unknown", isOfferer);
+  });
+
+  // Listen for members leaving
+  onChildRemoved(ref(db, `rooms/${roomId}/voiceMembers`), (snap) => {
+    const peerId = snap.key;
+    if (peerId === myVoiceId) return;
+
+    cleanupVoicePeer(peerId);
+    showToast(`👋 ${snap.val()?.name || "Someone"} left voice chat`);
+  });
+
+  // Activate voice UI
+  document.body.classList.add("voice-mode");
+  document.getElementById("modeBadge").style.display = "flex";
+  document.getElementById("modeBadgeText").textContent = `Voice (${voiceSettings.maxParticipants} max)`;
+  document.getElementById("voiceVolumeRow").style.display = "flex";
+
+  updateParticipantCount();
+  showToast("🎤 Voice + Video mesh active!");
+}
+
+/* ══════════════════════════════════════════════
+   PARTICIPANT VIDEO TILES (UI)
+   ══════════════════════════════════════════════ */
+
+function addLocalVideoTile() {
+  const grid = document.getElementById("gridTiles");
+  const existing = document.getElementById("tile_local");
+  if (existing) existing.remove();
+
+  const tile = document.createElement("div");
+  tile.className = "video-tile";
+  tile.id = "tile_local";
+
+  const myName = document.getElementById("userName").value.trim() || "You";
+
+  if (localVoiceStream && localVoiceStream.getVideoTracks().length > 0) {
+    const video = document.createElement("video");
+    video.autoplay = true;
+    video.playsInline = true;
+    video.muted = true;
+    video.srcObject = localVoiceStream;
+    video.style.transform = "scaleX(-1)"; // mirror
+    tile.appendChild(video);
+  } else {
+    const avatar = document.createElement("div");
+    avatar.className = "tile-avatar";
+    avatar.textContent = myName.charAt(0).toUpperCase();
+    tile.appendChild(avatar);
+  }
+
+  const nameSpan = document.createElement("span");
+  nameSpan.className = "tile-name";
+  nameSpan.textContent = myName + " (You)";
+  tile.appendChild(nameSpan);
+
+  const micIcon = document.createElement("span");
+  micIcon.className = "tile-mic material-symbols-outlined";
+  micIcon.id = "localTileMic";
+  micIcon.textContent = "mic";
+  tile.appendChild(micIcon);
+
+  grid.prepend(tile);
+  document.getElementById("participantsGrid").classList.add("active");
+  updateParticipantCount();
+}
+
+function addRemoteVideoTile(peerId, peerName, stream) {
+  const grid = document.getElementById("gridTiles");
+  let tile = document.getElementById(`tile_${peerId}`);
+
+  if (!tile) {
+    tile = document.createElement("div");
+    tile.className = "video-tile";
+    tile.id = `tile_${peerId}`;
+    grid.appendChild(tile);
+  } else {
+    tile.innerHTML = "";
+  }
+
+  const videoTracks = stream.getVideoTracks();
+  if (videoTracks.length > 0) {
+    const video = document.createElement("video");
+    video.autoplay = true;
+    video.playsInline = true;
+    video.muted = true; // video muted — audio comes from separate audioEl
+    video.srcObject = stream;
+    tile.appendChild(video);
+  } else {
+    const avatar = document.createElement("div");
+    avatar.className = "tile-avatar";
+    avatar.textContent = (peerName || "?").charAt(0).toUpperCase();
+    tile.appendChild(avatar);
+  }
+
+  const nameSpan = document.createElement("span");
+  nameSpan.className = "tile-name";
+  nameSpan.textContent = peerName || "Unknown";
+  tile.appendChild(nameSpan);
+
+  const micIcon = document.createElement("span");
+  micIcon.className = "tile-mic material-symbols-outlined";
+  micIcon.textContent = "mic";
+  tile.appendChild(micIcon);
+
+  updateParticipantCount();
+}
+
+function updateParticipantCount() {
+  const count = document.getElementById("gridTiles").children.length;
+  const el = document.getElementById("participantCount");
+  if (el) el.textContent = count;
+}
+
+/* ══════════════════════════════════════════════
+   VOICE VOLUME CONTROL
+   ══════════════════════════════════════════════ */
+window.updateVoiceVolume = (vol) => {
+  voiceVolume = vol;
+  Object.values(voicePcMap).forEach(entry => {
+    if (entry.audioEl) entry.audioEl.volume = vol;
+  });
+};
+
+/* ══════════════════════════════════════════════
+   START STREAM (Host) — with Mode Selection
    ══════════════════════════════════════════════ */
 window.startStream = async () => {
   roomId = document.getElementById("roomId").value.trim();
   if (!roomId) return alert("Enter a Room Code first");
 
   isHost = true;
+
+  // Screen share
   await initMedia();
-  if (!localStream) return;
+  if (!localStream) { isHost = false; return; }
 
   await new Promise(r => setTimeout(r, 500));
 
-  await set(ref(db, `rooms/${roomId}`), { created: Date.now() });
+  // Write room info to Firebase
+  await set(ref(db, `rooms/${roomId}`), {
+    created: Date.now(),
+    mode: roomMode,
+    maxVoiceParticipants: roomMode === "voice" ? voiceSettings.maxParticipants : 0,
+    voiceSettings: roomMode === "voice" ? {
+      videoRes: voiceSettings.videoRes,
+      videoBitrate: voiceSettings.videoBitrate
+    } : null
+  });
 
+  // Listen for viewer screen share connections (PC #1)
   onChildAdded(ref(db, `rooms/${roomId}/viewers`), async snap => {
     const viewerId = snap.key;
     if (!viewerId) return;
 
-    const pc = createHostPC(viewerId);
+    const pc = createHostScreenPC(viewerId);
     const offerCandidates = ref(db, `rooms/${roomId}/viewers/${viewerId}/offerCandidates`);
     const answerCandidates = ref(db, `rooms/${roomId}/viewers/${viewerId}/answerCandidates`);
 
@@ -202,7 +631,10 @@ window.startStream = async () => {
 
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
-    await set(ref(db, `rooms/${roomId}/viewers/${viewerId}/offer`), offer);
+    await set(ref(db, `rooms/${roomId}/viewers/${viewerId}/offer`), {
+      type: offer.type,
+      sdp: offer.sdp
+    });
 
     onValue(ref(db, `rooms/${roomId}/viewers/${viewerId}/answer`), async ansSnap => {
       if (!ansSnap.val() || pc.remoteDescription) return;
@@ -210,18 +642,25 @@ window.startStream = async () => {
     });
 
     onChildAdded(answerCandidates, async candSnap => {
-      try { await pc.addIceCandidate(new RTCIceCandidate(candSnap.val())); } catch (_) { }
+      try { await pc.addIceCandidate(new RTCIceCandidate(candSnap.val())); } catch (_) {}
     });
   });
 
   isStreaming = true;
-  goLiveBtn.textContent = "⬛ END LIVE";
+  goLiveBtn.innerHTML = `<span class="material-symbols-outlined">stop_circle</span> END`;
   goLiveBtn.classList.add("end");
   liveBadge.classList.add("active");
   window.startChatListener();
   startStats(); startTimer();
   updateConnStatus("connected");
-  showToast("🔴 Live! Waiting for viewers...");
+
+  // If voice mode, join voice mesh as host too
+  if (roomMode === "voice") {
+    await joinVoiceMesh();
+    showToast("🔴 Live with Voice! Waiting for participants...");
+  } else {
+    showToast("🔴 Live! Waiting for viewers...");
+  }
 };
 
 /* ══════════════════════════════════════════════
@@ -234,14 +673,27 @@ window.joinStream = async () => {
   const roomSnap = await get(ref(db, `rooms/${roomId}`));
   if (!roomSnap.exists()) return alert("Room not found. Make sure host has started.");
 
+  const roomData = roomSnap.val();
+  roomMode = roomData.mode || "watch";
+  const maxVoice = roomData.maxVoiceParticipants || 5;
+
+  if (roomMode === "voice" && roomData.voiceSettings) {
+    voiceSettings.videoRes = roomData.voiceSettings.videoRes || "720p";
+    voiceSettings.videoBitrate = roomData.voiceSettings.videoBitrate || 1;
+    voiceSettings.maxParticipants = maxVoice;
+  }
+
   isHost = false;
-  myViewerId = "v_" + Math.random().toString(36).substr(2, 9);
+  const myViewerId = "v_" + Math.random().toString(36).substr(2, 9);
   localStream = new MediaStream();
   remoteStream = new MediaStream();
-  if (remoteVideo) { remoteVideo.srcObject = remoteStream; remoteVideo.muted = false; }
+  if (remoteVideo) {
+    remoteVideo.srcObject = remoteStream;
+    remoteVideo.muted = false;
+  }
 
-  const pc = createViewerPC();
-
+  // JOIN SCREEN SHARE (PC #1 as viewer)
+  const pc = createViewerScreenPC();
   const offerCandidates = ref(db, `rooms/${roomId}/viewers/${myViewerId}/offerCandidates`);
   const answerCandidates = ref(db, `rooms/${roomId}/viewers/${myViewerId}/answerCandidates`);
 
@@ -258,192 +710,131 @@ window.joinStream = async () => {
     const existingSnap = await get(offerCandidates);
     if (existingSnap.exists()) {
       for (const c of Object.values(existingSnap.val())) {
-        try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch (_) { }
+        try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch (_) {}
       }
     }
 
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
-    await set(ref(db, `rooms/${roomId}/viewers/${myViewerId}/answer`), answer);
+    await set(ref(db, `rooms/${roomId}/viewers/${myViewerId}/answer`), {
+      type: answer.type,
+      sdp: answer.sdp
+    });
   });
 
   onChildAdded(offerCandidates, async candSnap => {
-    try { await pc.addIceCandidate(new RTCIceCandidate(candSnap.val())); } catch (_) { }
+    try { await pc.addIceCandidate(new RTCIceCandidate(candSnap.val())); } catch (_) {}
   });
 
   updateConnStatus("connecting");
   noSignal.classList.add("hidden");
   window.startChatListener();
-  
-  const btnMic = document.getElementById("btnMic");
-  const btnCam = document.getElementById("btnCam");
-  const btnScreen = document.getElementById("btnScreen");
-  const btnBgBlur = document.getElementById("btnBgBlur");
-  const localVideoPIP = document.querySelector(".pip-container");
-  
-  if(btnMic) btnMic.style.display = "none";
-  if(btnCam) btnCam.style.display = "none";
-  if(btnScreen) btnScreen.style.display = "none";
-  if(btnBgBlur) btnBgBlur.style.display = "none";
-  if(localVideoPIP) localVideoPIP.style.display = "none";
-  
-  document.getElementById("goLiveBtn").style.display = "none";
+
+  // Hide host-only buttons
+  document.getElementById("btnScreen").style.display = "none";
+  goLiveBtn.style.display = "none";
+
+  // If VOICE mode: join voice mesh too
+  if (roomMode === "voice") {
+    // Check if room is full
+    const membersSnap = await get(ref(db, `rooms/${roomId}/voiceMembers`));
+    const currentMembers = membersSnap.exists() ? Object.keys(membersSnap.val()).length : 0;
+
+    if (currentMembers >= maxVoice) {
+      showToast("🚫 Voice room is full! Joining as watch-only viewer.");
+      // Still connected to screen share, just no voice
+    } else {
+      await joinVoiceMesh();
+    }
+  } else {
+    // Watch-only: no voice controls needed
+    document.getElementById("modeBadge").style.display = "flex";
+    document.getElementById("modeBadgeText").textContent = "Watch Only";
+  }
 };
 
 /* ══════════════════════════════════════════════
    TOGGLE LIVE
    ══════════════════════════════════════════════ */
 window.toggleStream = async () => {
-  if (!isStreaming) await window.startStream();
+  if (!isStreaming) await window.openModeModal();
   else await window.leaveCall();
 };
 
 /* ══════════════════════════════════════════════
-   MIC TOGGLE
+   MIC TOGGLE (Voice Mode)
    ══════════════════════════════════════════════ */
 window.toggleMic = () => {
-  if (!localStream) return showToast("⚠️ No stream active");
-  const tracks = localStream.getAudioTracks();
+  if (!localVoiceStream) return showToast("⚠️ No voice stream active");
+  const tracks = localVoiceStream.getAudioTracks();
   if (!tracks.length) return showToast("⚠️ No mic found");
+
   micEnabled = !micEnabled;
   tracks.forEach(t => t.enabled = micEnabled);
-  updateMicBtn();
-};
 
-function updateMicBtn() {
   const btn = document.getElementById("btnMic");
-  btn.className = micEnabled ? "icon-btn active" : "icon-btn muted-state";
-  btn.innerHTML = micEnabled
-    ? `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/></svg>MIC ON`
-    : `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23M12 19v4M8 23h8"/></svg>MIC OFF`;
-}
-
-/* ══════════════════════════════════════════════
-   CAM TOGGLE
-   ══════════════════════════════════════════════ */
-window.toggleCam = () => {
-  const tracks = localStream?.getVideoTracks() || [];
-  if (!tracks.length) return;
-  camEnabled = !camEnabled;
-  tracks.forEach(t => t.enabled = camEnabled);
-  const btn = document.getElementById("btnCam");
-  btn.className = camEnabled ? "icon-btn active" : "icon-btn muted-state";
-  btn.innerHTML = camEnabled
-    ? `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>CAM ON`
-    : `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="1" y1="1" x2="23" y2="23"/><path d="M15.18 15.18A4.5 4.5 0 0 1 8.82 8.82M21 21l-9-9M3 3l18 18"/></svg>CAM OFF`;
-};
-
-/* ══════════════════════════════════════════════
-   CAMERA SWITCH (front/back)
-   ══════════════════════════════════════════════ */
-window.switchCamera = async (face) => {
-  if (!isHost || isScreenSharing) return;
-  currentCamera = face;
-
-  document.getElementById("btnCamFront").className = face === "front" ? "icon-btn active" : "icon-btn";
-  document.getElementById("btnCamBack").className = face === "back" ? "icon-btn active" : "icon-btn";
-
-  const facingMode = face === "back" ? "environment" : "user";
-  const { width, height } = RES_MAP[qualitySettings.cam.res];
-  const fps = qualitySettings.cam.fps;
-
-  try {
-    const newVideoStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode, width: { ideal: width }, height: { ideal: height }, frameRate: { ideal: fps } },
-      audio: false
-    });
-
-    // Stop old video
-    rawCameraStream?.getVideoTracks().forEach(t => t.stop());
-    rawCameraStream = newVideoStream;
-
-    // Update localStream video track
-    localStream.getVideoTracks().forEach(t => { t.stop(); localStream.removeTrack(t); });
-    newVideoStream.getVideoTracks().forEach(t => localStream.addTrack(t));
-
-    // Restart canvas pipeline with new source
-    stopCanvasPipeline();
-    startCanvasPipeline(localStream);
-
-    await new Promise(r => setTimeout(r, 300));
-
-    // Update WebRTC sender with new canvas track
-    if (canvasStream) {
-      const videoSender = pc?.getSenders().find(s => s.track?.kind === "video");
-      if (videoSender) await videoSender.replaceTrack(canvasStream.getVideoTracks()[0]);
-    }
-
-    showToast(face === "back" ? "📷 Back camera" : "🤳 Front camera");
-  } catch (e) {
-    showToast("❌ Camera switch failed: " + e.message);
+  const icon = btn.querySelector(".material-symbols-outlined");
+  if (micEnabled) {
+    btn.classList.remove("off");
+    icon.textContent = "mic";
+  } else {
+    btn.classList.add("off");
+    icon.textContent = "mic_off";
   }
 
-  updateOverlayTags();
+  // Update local tile mic indicator
+  const localMicIcon = document.getElementById("localTileMic");
+  if (localMicIcon) {
+    localMicIcon.textContent = micEnabled ? "mic" : "mic_off";
+    localMicIcon.classList.toggle("muted", !micEnabled);
+  }
 };
 
 /* ══════════════════════════════════════════════
-   MIRROR TOGGLE
-   Canvas mein baked — viewer ko bhi dikhta hai
+   CAMERA TOGGLE (Voice Mode)
    ══════════════════════════════════════════════ */
-window.toggleMirror = () => {
-  isMirrored = !isMirrored;
-  const btn = document.getElementById("btnMirror");
-  btn.className = isMirrored ? "icon-btn active" : "icon-btn";
-  showToast(isMirrored ? "↔️ Mirror ON (viewer ko bhi dikhega)" : "↔️ Mirror OFF");
-  // drawLoop mein isMirrored check hota hai — auto update
+window.toggleCam = () => {
+  if (!localVoiceStream) return;
+  const tracks = localVoiceStream.getVideoTracks();
+  if (!tracks.length) return showToast("⚠️ No camera found");
+
+  camEnabled = !camEnabled;
+  tracks.forEach(t => t.enabled = camEnabled);
+
+  const btn = document.getElementById("btnCam");
+  const icon = btn.querySelector(".material-symbols-outlined");
+  if (camEnabled) {
+    btn.classList.remove("off");
+    icon.textContent = "videocam";
+  } else {
+    btn.classList.add("off");
+    icon.textContent = "videocam_off";
+  }
+
+  // Update local tile — show/hide video
+  const localTile = document.getElementById("tile_local");
+  if (localTile) {
+    const video = localTile.querySelector("video");
+    if (video) video.style.display = camEnabled ? "" : "none";
+
+    let avatar = localTile.querySelector(".tile-avatar");
+    if (!camEnabled && !avatar) {
+      avatar = document.createElement("div");
+      avatar.className = "tile-avatar";
+      const name = document.getElementById("userName").value.trim() || "You";
+      avatar.textContent = name.charAt(0).toUpperCase();
+      localTile.insertBefore(avatar, localTile.firstChild);
+    }
+    if (avatar) avatar.style.display = camEnabled ? "none" : "";
+  }
 };
 
 /* ══════════════════════════════════════════════
-   SCREEN SHARE
+   SCREEN SHARE (Host Only, in-call)
    ══════════════════════════════════════════════ */
 window.startScreenShare = async () => {
   if (!isHost) return showToast("⚠️ Only host can share screen");
-
-  if (isScreenSharing) {
-    // Switch back to camera
-    isScreenSharing = false;
-    document.getElementById("btnScreen").className = "icon-btn";
-    await window.switchCamera(currentCamera);
-    return;
-  }
-
-  const screenStream = await initScreenShare();
-  if (!screenStream) return;
-
-  const screenVideoTrack = screenStream.getVideoTracks()[0];
-  const screenAudioTrack = screenStream.getAudioTracks()[0] || null;
-
-  // Stop canvas pipeline (no effects on screen share)
-  stopCanvasPipeline();
-
-  // Replace video in WebRTC
-  const videoSender = pc?.getSenders().find(s => s.track?.kind === "video");
-  if (videoSender) await videoSender.replaceTrack(screenVideoTrack);
-
-  // Replace audio with system audio if available
-  if (screenAudioTrack) {
-    const audioSender = pc?.getSenders().find(s => s.track?.kind === "audio");
-    if (audioSender) await audioSender.replaceTrack(screenAudioTrack);
-    showToast("🔊 Screen + system audio streaming!");
-  } else {
-    showToast("🖥️ Screen sharing (no system audio found)");
-  }
-
-  localVideo.srcObject = screenStream;
-  localVideo.style.transform = "";
-  localVideo.style.filter = "";
-
-  isScreenSharing = true;
-  document.getElementById("btnScreen").className = "icon-btn sharing";
-  sourceTag.textContent = "SCREEN";
-  qualityTag.textContent = `${qualitySettings.screen.res.toUpperCase()} ${qualitySettings.screen.fps}fps`;
-
-  screenVideoTrack.addEventListener("ended", async () => {
-    isScreenSharing = false;
-    document.getElementById("btnScreen").className = "icon-btn";
-    await window.switchCamera(currentCamera);
-    showToast("🖥️ Screen share ended");
-  });
+  showToast("📺 Screen is already being shared");
 };
 
 /* ══════════════════════════════════════════════
@@ -451,31 +842,117 @@ window.startScreenShare = async () => {
    ══════════════════════════════════════════════ */
 window.leaveCall = async () => {
   stopStats(); stopTimer();
-  
-  if (pcMap) {
-    Object.values(pcMap).forEach(p => p.close());
-    pcMap = {};
-  }
-  
-  if (localStream) localStream.getTracks().forEach(t => t.stop());
-  
-  if (roomId && isHost) await remove(ref(db, "rooms/" + roomId));
-  else if (roomId && !isHost && myViewerId) await remove(ref(db, `rooms/${roomId}/viewers/${myViewerId}`));
 
+  // Close all screen share PCs
+  Object.values(screenPcMap).forEach(p => { try { p.close(); } catch (_) {} });
+  screenPcMap = {};
+
+  // Close all voice PCs
+  Object.values(voicePcMap).forEach(entry => {
+    if (entry.pc) try { entry.pc.close(); } catch (_) {}
+    if (entry.audioEl) { entry.audioEl.pause(); entry.audioEl.srcObject = null; }
+  });
+  voicePcMap = {};
+
+  // Stop local streams
+  if (localStream) localStream.getTracks().forEach(t => t.stop());
+  if (localVoiceStream) localVoiceStream.getTracks().forEach(t => t.stop());
+
+  // Clean up Firebase
+  if (roomId && isHost) {
+    await remove(ref(db, "rooms/" + roomId));
+  } else if (roomId && myVoiceId) {
+    await remove(ref(db, `rooms/${roomId}/voiceMembers/${myVoiceId}`));
+  }
+
+  // Reset UI
   isStreaming = false; isScreenSharing = false;
+  document.body.classList.remove("voice-mode");
   noSignal.classList.remove("hidden");
   liveBadge.classList.remove("active");
-  goLiveBtn.textContent = "⬤ START SESSION";
+  document.getElementById("modeBadge").style.display = "none";
+  document.getElementById("participantsGrid").classList.remove("active");
+  document.getElementById("gridTiles").innerHTML = "";
+  document.getElementById("voiceVolumeRow").style.display = "none";
+  goLiveBtn.innerHTML = `<span class="material-symbols-outlined">podcasts</span> Go Live`;
   goLiveBtn.classList.remove("end");
+  goLiveBtn.style.display = "";
   updateConnStatus("disconnected");
   clearStats();
-  if (window.chatUnsubscribe) off(ref(db, `rooms/${roomId}/messages`), "child_added", window.chatUnsubscribe);
+
+  // Stop background audio
+  if (bgAudio) { bgAudio.pause(); bgAudio.srcObject = null; }
+
   showToast("👋 Session ended");
   setTimeout(() => location.reload(), 1500);
 };
 
 /* ══════════════════════════════════════════════
-   QUALITY MODAL
+   BACKGROUND AUDIO PLAYBACK
+   Uses hidden <audio> element + Media Session API
+   ══════════════════════════════════════════════ */
+function setupBackgroundAudio(stream) {
+  if (!stream) return;
+
+  const audioTracks = stream.getAudioTracks();
+  if (audioTracks.length === 0) return;
+
+  // Create a separate audio stream for background playback
+  const audioOnly = new MediaStream(audioTracks);
+  bgAudio.srcObject = audioOnly;
+  bgAudio.volume = remoteVideo.volume;
+  bgAudio.play().catch(() => {});
+
+  // Media Session API — tells OS that we're playing media
+  if ("mediaSession" in navigator) {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: "Watch Party — Live Stream",
+      artist: "Room: " + (roomId || "Unknown"),
+      album: "Live Party",
+      artwork: [
+        { src: "icon.png", sizes: "192x192", type: "image/png" },
+        { src: "icon.png", sizes: "512x512", type: "image/png" }
+      ]
+    });
+
+    navigator.mediaSession.setActionHandler("play", () => {
+      remoteVideo.play().catch(() => {});
+      bgAudio.play().catch(() => {});
+    });
+    navigator.mediaSession.setActionHandler("pause", () => {
+      // Don't actually pause — keep audio playing
+      bgAudio.play().catch(() => {});
+    });
+    navigator.mediaSession.setActionHandler("stop", null);
+    navigator.mediaSession.playbackState = "playing";
+  }
+
+  // Screen Wake Lock — prevent screen from sleeping
+  requestWakeLock();
+}
+
+async function requestWakeLock() {
+  if ("wakeLock" in navigator) {
+    try {
+      let wakeLock = await navigator.wakeLock.request("screen");
+      wakeLock.addEventListener("release", () => {
+        console.log("[WakeLock] Released");
+      });
+      // Re-acquire if page becomes visible again
+      document.addEventListener("visibilitychange", async () => {
+        if (document.visibilityState === "visible" && isStreaming) {
+          try { wakeLock = await navigator.wakeLock.request("screen"); } catch (_) {}
+        }
+      });
+      console.log("[WakeLock] Acquired");
+    } catch (e) {
+      console.warn("[WakeLock] Failed:", e);
+    }
+  }
+}
+
+/* ══════════════════════════════════════════════
+   QUALITY MODAL (Screen Share)
    ══════════════════════════════════════════════ */
 window.openQualityModal = () => {
   document.getElementById("qualityModal").classList.add("open");
@@ -512,13 +989,18 @@ function updateOverlayTags() {
    STATS
    ══════════════════════════════════════════════ */
 async function getStats() {
-  const activePc = Object.values(pcMap)[0];
+  const activePc = Object.values(screenPcMap)[0];
   if (!activePc) return;
   const stats = await activePc.getStats();
-  let bytesSent = 0, fps = 0, w = 0, h = 0, lost = 0, rtt = 0, codec = "—";
+  let bytesSent = 0, bytesReceived = 0, fps = 0, w = 0, h = 0, lost = 0, rtt = 0, codec = "—";
+
   stats.forEach(r => {
     if (r.type === "outbound-rtp" && r.kind === "video") {
       bytesSent = r.bytesSent || 0; fps = r.framesPerSecond || 0;
+      w = r.frameWidth || 0; h = r.frameHeight || 0; lost = r.packetsLost || 0;
+    }
+    if (r.type === "inbound-rtp" && r.kind === "video") {
+      bytesReceived = r.bytesReceived || 0; fps = r.framesPerSecond || 0;
       w = r.frameWidth || 0; h = r.frameHeight || 0; lost = r.packetsLost || 0;
     }
     if (r.type === "candidate-pair" && r.state === "succeeded")
@@ -526,12 +1008,14 @@ async function getStats() {
     if (r.type === "codec" && r.mimeType?.includes("video"))
       codec = r.mimeType.split("/")[1];
   });
+
+  const bytes = isHost ? bytesSent : bytesReceived;
   if (getStats._prev !== undefined) {
-    const mbps = ((bytesSent - getStats._prev) * 8 / 1_000_000).toFixed(2);
+    const mbps = ((bytes - getStats._prev) * 8 / 1_000_000).toFixed(2);
     document.getElementById("statBitrate").innerHTML = `${mbps}<span class="stat-unit">Mbps</span>`;
     document.getElementById("barBitrate").style.width = Math.min(parseFloat(mbps) / (qualitySettings.bitrate + 2) * 100, 100) + "%";
   }
-  getStats._prev = bytesSent;
+  getStats._prev = bytes;
   document.getElementById("statFps").textContent = fps ? Math.round(fps) : "—";
   document.getElementById("statRes").textContent = w && h ? `${w}×${h}` : "—";
   document.getElementById("statLoss").textContent = lost;
@@ -539,6 +1023,7 @@ async function getStats() {
   document.getElementById("statCodec").textContent = codec;
   document.getElementById("statRtt").className = "stat-value " + (rtt < 50 ? "green" : rtt < 150 ? "yellow" : "red");
 }
+
 function startStats() { if (statsInterval) return; statsInterval = setInterval(getStats, 1000); }
 function stopStats() { clearInterval(statsInterval); statsInterval = null; }
 function clearStats() {
@@ -611,7 +1096,7 @@ window.sendChat = () => {
   if (!roomId) return showToast("⚠️ Join or Start a room first!");
 
   const nameInput = document.getElementById("userName");
-  const senderName = nameInput && nameInput.value.trim() ? nameInput.value.trim() : "Viewer_" + Math.floor(Math.random()*1000);
+  const senderName = nameInput && nameInput.value.trim() ? nameInput.value.trim() : "Viewer_" + Math.floor(Math.random() * 1000);
 
   push(ref(db, `rooms/${roomId}/messages`), {
     sender: senderName,
@@ -625,37 +1110,45 @@ window.startChatListener = () => {
   const chatMessages = document.getElementById("chatMessages");
   if (!chatMessages) return;
   chatMessages.innerHTML = `<div style="text-align:center; color:#9aa0a6; margin-top:10px;">Messages are visible to everyone in the room.</div>`;
-  
+
   onChildAdded(ref(db, `rooms/${roomId}/messages`), snap => {
     const data = snap.val();
     if (!data) return;
-    
+
     const nameInput = document.getElementById("userName");
     const myName = nameInput && nameInput.value.trim() ? nameInput.value.trim() : "";
     const isMe = data.sender === myName && myName !== "";
-    
+
     const msgEl = document.createElement("div");
     msgEl.style.display = "flex";
     msgEl.style.flexDirection = "column";
     msgEl.style.gap = "2px";
-    
-    const timeStr = new Date(data.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-    
-    // Protect against XSS
+
+    const timeStr = new Date(data.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
     const safeSender = data.sender.replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const safeText = data.text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    
+
     msgEl.innerHTML = `
       <div style="display:flex; justify-content:space-between; align-items:flex-end;">
         <span style="font-weight:600; color: ${isMe ? '#8ab4f8' : '#e8eaed'};">${safeSender}</span>
         <span style="font-size:10px; color:#9aa0a6;">${timeStr}</span>
       </div>
-      <div style="background: ${isMe ? 'rgba(138, 180, 248, 0.15)' : '#3c4043'}; padding: 8px 12px; border-radius: ${isMe ? '12px 12px 4px 12px' : '4px 12px 12px 12px'}; line-height: 1.4; color: ${isMe ? '#e8eaed' : '#e8eaed'}; word-break: break-word;">
+      <div style="background: ${isMe ? 'rgba(138, 180, 248, 0.15)' : '#3c4043'}; padding: 8px 12px; border-radius: ${isMe ? '12px 12px 4px 12px' : '4px 12px 12px 12px'}; line-height: 1.4; color: #e8eaed; word-break: break-word;">
         ${safeText}
       </div>
     `;
-    
+
     chatMessages.appendChild(msgEl);
     chatMessages.scrollTop = chatMessages.scrollHeight;
   });
 };
+
+/* ══════════════════════════════════════════════
+   PWA SERVICE WORKER REGISTRATION
+   ══════════════════════════════════════════════ */
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").catch(e => {
+    console.warn("SW registration failed:", e);
+  });
+}

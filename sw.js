@@ -1,4 +1,4 @@
-const CACHE_NAME = 'watch-party-v1';
+const CACHE_NAME = 'watch-party-v2';
 const ASSETS = [
   '/',
   '/index.html',
@@ -29,9 +29,20 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-  e.respondWith(
-    caches.match(e.request).then((res) => {
-      return res || fetch(e.request);
-    })
-  );
+  // Network-first for HTML/JS, cache-first for assets
+  if (e.request.url.endsWith('.html') || e.request.url.endsWith('.js')) {
+    e.respondWith(
+      fetch(e.request).then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(e.request, copy));
+        return res;
+      }).catch(() => caches.match(e.request))
+    );
+  } else {
+    e.respondWith(
+      caches.match(e.request).then((res) => {
+        return res || fetch(e.request);
+      })
+    );
+  }
 });
