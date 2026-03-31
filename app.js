@@ -1,13 +1,14 @@
 /* ═══════════════════════════════════════════════════════
-   LIVE PARTY — WATCH TOGETHER v3.1
+   LIVE PARTY — WATCH TOGETHER v3.2
    Architecture:
    • PC #1: Screen Share (1-to-Many, Host → Viewers, HD audio)
    • PC #2: Face Cam Mesh (All-to-All, video only, no audio)
    • Chat + Emoji: Firebase Realtime Database
+   FIXES: duplicate msgs, Safari, audio quality, listener leaks
    ═══════════════════════════════════════════════════════ */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-app.js";
-import { getDatabase, ref, set, get, push, onValue, onChildAdded, remove }
+import { getDatabase, ref, set, get, push, onValue, onChildAdded, remove, off }
   from "https://www.gstatic.com/firebasejs/11.5.0/firebase-database.js";
 
 /* ── FIREBASE ── */
@@ -27,7 +28,8 @@ const servers = {
     { urls: "turn:82.25.104.130:3478", username: "akash", credential: "hostinger_vps_123" },
     { urls: "turn:82.25.104.130:3478?transport=tcp", username: "akash", credential: "hostinger_vps_123" },
     { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
-  ]
+  ],
+  iceCandidatePoolSize: 4
 };
 
 const RES_MAP = {
@@ -40,33 +42,32 @@ const RES_MAP = {
 };
 
 /* ── STATE ── */
-let localStream = null;      // host screen share
-let localCamStream = null;   // face cam (video only)
+let localStream = null;
+let localCamStream = null;
 let roomId = "";
 let isHost = false;
 let isStreaming = false;
 let camEnabled = true;
 
-// Face cam mesh
 let myPeerId = null;
-let camPcMap = {};     // peerId → { pc, peerName }
-let camStreams = {};    // peerId → MediaStream
+let camPcMap = {};
+let camStreams = {};
 let pinnedPeer = null;
 
-// Screen share (host side)
-let screenPcMap = {};  // viewerId → RTCPeerConnection
-// Screen share (viewer side)
+let screenPcMap = {};
 let viewerPc = null;
 
-// Stats
 let statsInterval = null;
 let timerInterval = null;
 let startTime = 0;
 let prevBytesReceived = 0;
-let chatListenerStarted = false;
+
+// ★ FIX: Track ALL Firebase listener unsubscribers to prevent duplicates
+let firebaseUnsubs = [];
+let bgAudioSet = false;
 
 /* ═══════════════════════════════════════════════
-   TOAST UTIL
+   TOAST
    ═══════════════════════════════════════════════ */
 function showToast(msg) {
   const t = document.getElementById("toast");
@@ -85,15 +86,9 @@ function updateConnStatus(state) {
   const label = document.getElementById("connLabel");
   if (!dot || !label) return;
   dot.className = "dot";
-  if (state === "connected") {
-    dot.classList.add("connected");
-    label.textContent = "CONNECTED";
-  } else if (state === "connecting") {
-    dot.classList.add("connecting");
-    label.textContent = "CONNECTING...";
-  } else {
-    label.textContent = "DISCONNECTED";
-  }
+  if (state === "connected") { dot.classList.add("connected"); label.textContent = "CONNECTED"; }
+  else if (state === "connecting") { dot.classList.add("connecting"); label.textContent = "CONNECTING..."; }
+  else { label.textContent = "DISCONNECTED"; }
 }
 
 /* ═══════════════════════════════════════════════
@@ -103,13 +98,22 @@ async function captureScreen() {
   const res = document.getElementById("scrRes")?.value || "1080p";
   const { width, height } = RES_MAP[res] || RES_MAP["1080p"];
 
-  localStream = await navigator.mediaDevices.getDisplayMedia({
+  const constraints = {
     video: { width: { ideal: width }, height: { ideal: height }, frameRate: { ideal: 30 } },
     audio: {
       channelCount: 2, sampleRate: 48000,
       autoGainControl: false, echoCancellation: false, noiseSuppression: false
     }
-  });
+  };
+
+  // Safari fallback: some versions don't support audio in getDisplayMedia
+  try {
+    localStream = await navigator.mediaDevices.getDisplayMedia(constraints);
+  } catch (e) {
+    // Retry without audio constraints for Safari
+    constraints.audio = true;
+    localStream = await navigator.mediaDevices.getDisplayMedia(constraints);
+  }
 
   const video = document.getElementById("remoteVideo");
   video.srcObject = localStream;
@@ -123,13 +127,12 @@ async function captureScreen() {
     bgAudio.play().catch(() => {});
   }
 
-  // Detect screen share stop
   localStream.getVideoTracks()[0].onended = () => window.leaveCall();
   return localStream;
 }
 
 /* ═══════════════════════════════════════════════
-   CAPTURE FACE CAM (Video only, no mic)
+   CAPTURE FACE CAM (Video only)
    ═══════════════════════════════════════════════ */
 async function captureFaceCam() {
   const qual = document.getElementById("camQuality")?.value || "480p";
@@ -148,7 +151,7 @@ async function captureFaceCam() {
 }
 
 /* ═══════════════════════════════════════════════
-   SCREEN SHARE PEER (PC #1) — Host side
+   SCREEN SHARE PC #1 — Host side
    ═══════════════════════════════════════════════ */
 function createHostScreenPC(viewerId) {
   const pc = new RTCPeerConnection(servers);
@@ -164,6 +167,7 @@ function createHostScreenPC(viewerId) {
       applyBitratePerPC(pc, mbps);
     }
     if (["failed", "closed"].includes(pc.connectionState)) {
+      try { pc.close(); } catch (_) {}
       delete screenPcMap[viewerId];
     }
   };
@@ -182,21 +186,21 @@ async function applyBitratePerPC(pc, mbps) {
 }
 
 /* ═══════════════════════════════════════════════
-   FACE CAM MESH (PC #2) — All-to-All, VIDEO ONLY
+   FACE CAM MESH PC #2 — VIDEO ONLY
    ═══════════════════════════════════════════════ */
 function getPairKey(a, b) { return [a, b].sort().join("__"); }
 
 async function createCamConnection(peerId, peerName, isOfferer) {
+  if (camPcMap[peerId]) return; // Already connected
+
   const pairKey = getPairKey(myPeerId, peerId);
   const pc = new RTCPeerConnection(servers);
   camPcMap[peerId] = { pc, peerName };
 
-  // Add only VIDEO tracks
   if (localCamStream) {
     localCamStream.getVideoTracks().forEach(t => pc.addTrack(t, localCamStream));
   }
 
-  // Receive remote video
   const remoteStream = new MediaStream();
   camStreams[peerId] = remoteStream;
 
@@ -209,7 +213,6 @@ async function createCamConnection(peerId, peerName, isOfferer) {
     addRemoteCamTile(peerId, peerName, remoteStream);
   };
 
-  // ICE candidates
   const myIcePath = isOfferer
     ? `rooms/${roomId}/camLinks/${pairKey}/offerCandidates`
     : `rooms/${roomId}/camLinks/${pairKey}/answerCandidates`;
@@ -224,45 +227,37 @@ async function createCamConnection(peerId, peerName, isOfferer) {
     }
   };
 
-  pc.onconnectionstatechange = () => {
-    if (pc.connectionState === "connected") {
-      showToast(`📹 ${peerName} joined`);
-    }
-  };
-
-  // Signaling
   if (isOfferer) {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
-    await set(ref(db, `rooms/${roomId}/camLinks/${pairKey}/offer`), {
-      type: offer.type, sdp: offer.sdp
-    });
+    await set(ref(db, `rooms/${roomId}/camLinks/${pairKey}/offer`), { type: offer.type, sdp: offer.sdp });
 
-    onValue(ref(db, `rooms/${roomId}/camLinks/${pairKey}/answer`), async (snap) => {
+    const unsub1 = onValue(ref(db, `rooms/${roomId}/camLinks/${pairKey}/answer`), async (snap) => {
       if (!snap.val() || pc.signalingState === "stable") return;
-      try { await pc.setRemoteDescription(new RTCSessionDescription(snap.val())); }
-      catch (e) { console.warn("[Cam] setRemoteDesc:", e); }
+      try { await pc.setRemoteDescription(new RTCSessionDescription(snap.val())); } catch (_) {}
     });
+    firebaseUnsubs.push(unsub1);
 
-    onChildAdded(ref(db, `rooms/${roomId}/camLinks/${pairKey}/answerCandidates`), async (cs) => {
+    const unsub2 = onChildAdded(ref(db, `rooms/${roomId}/camLinks/${pairKey}/answerCandidates`), async (cs) => {
       try { await pc.addIceCandidate(new RTCIceCandidate(cs.val())); } catch (_) {}
     });
+    firebaseUnsubs.push(unsub2);
   } else {
-    onValue(ref(db, `rooms/${roomId}/camLinks/${pairKey}/offer`), async (snap) => {
+    const unsub1 = onValue(ref(db, `rooms/${roomId}/camLinks/${pairKey}/offer`), async (snap) => {
       if (!snap.val() || pc.signalingState !== "stable") return;
       try {
         await pc.setRemoteDescription(new RTCSessionDescription(snap.val()));
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        await set(ref(db, `rooms/${roomId}/camLinks/${pairKey}/answer`), {
-          type: answer.type, sdp: answer.sdp
-        });
+        await set(ref(db, `rooms/${roomId}/camLinks/${pairKey}/answer`), { type: answer.type, sdp: answer.sdp });
       } catch (e) { console.warn("[Cam] answer:", e); }
     });
+    firebaseUnsubs.push(unsub1);
 
-    onChildAdded(ref(db, `rooms/${roomId}/camLinks/${pairKey}/offerCandidates`), async (cs) => {
+    const unsub2 = onChildAdded(ref(db, `rooms/${roomId}/camLinks/${pairKey}/offerCandidates`), async (cs) => {
       try { await pc.addIceCandidate(new RTCIceCandidate(cs.val())); } catch (_) {}
     });
+    firebaseUnsubs.push(unsub2);
   }
 
   updateCamCount();
@@ -276,7 +271,7 @@ function cleanupCamPeer(peerId) {
   delete camStreams[peerId];
   if (pinnedPeer === peerId) pinnedPeer = null;
   const tile = document.getElementById(`cam_${peerId}`);
-  if (tile) { tile.style.opacity = '0'; tile.style.transform = 'scale(0.8)'; setTimeout(() => tile.remove(), 300); }
+  if (tile) { tile.style.opacity = '0'; setTimeout(() => tile.remove(), 300); }
   updateCamCount();
 }
 
@@ -286,8 +281,7 @@ function cleanupCamPeer(peerId) {
 function addLocalCamTile() {
   const grid = document.getElementById("camGrid");
   if (!grid || document.getElementById("cam_local")) return;
-  const tile = createCamTile("local", "You", localCamStream, true);
-  grid.prepend(tile);
+  grid.prepend(createCamTile("local", "You", localCamStream, true));
   document.getElementById("camPanel").classList.add("active");
   document.getElementById("btnCam").style.display = "flex";
   updateCamCount();
@@ -326,13 +320,11 @@ function createCamTile(id, name, stream, isLocal) {
 
   const actions = document.createElement("div");
   actions.className = "tile-actions";
-
   const pinBtn = document.createElement("button");
   pinBtn.className = "tile-action-btn";
   pinBtn.innerHTML = '<span class="material-symbols-outlined">push_pin</span>';
   pinBtn.onclick = (e) => { e.stopPropagation(); togglePin(id); };
   actions.appendChild(pinBtn);
-
   if (!isLocal) {
     const fsBtn = document.createElement("button");
     fsBtn.className = "tile-action-btn";
@@ -341,7 +333,6 @@ function createCamTile(id, name, stream, isLocal) {
     actions.appendChild(fsBtn);
     tile.ondblclick = () => window.openTileFullscreen(id, name, stream);
   }
-
   tile.appendChild(actions);
   makeDraggable(tile);
   return tile;
@@ -352,13 +343,11 @@ function togglePin(id) {
   if (pinnedPeer === id) {
     pinnedPeer = null;
     grid.querySelectorAll(".cam-tile").forEach(t => t.classList.remove("pinned"));
-    showToast("📌 Unpinned");
   } else {
     pinnedPeer = id;
     grid.querySelectorAll(".cam-tile").forEach(t => t.classList.remove("pinned"));
     const tile = document.getElementById(`cam_${id}`);
     if (tile) { tile.classList.add("pinned"); grid.prepend(tile); }
-    showToast("📌 Pinned");
   }
   updateCamCount();
 }
@@ -404,35 +393,33 @@ function updateCamCount() {
 }
 
 /* ═══════════════════════════════════════════════
-   JOIN CAM MESH (called after host/join)
+   JOIN CAM MESH
    ═══════════════════════════════════════════════ */
 async function joinCamMesh() {
   await captureFaceCam();
   addLocalCamTile();
 
   myPeerId = "cp_" + Math.random().toString(36).substr(2, 9);
-  const myName = document.getElementById("userName")?.value.trim() || "User_" + Math.floor(Math.random()*1000);
+  const myName = document.getElementById("userName")?.value.trim() || "User";
 
-  await set(ref(db, `rooms/${roomId}/camMembers/${myPeerId}`), {
-    name: myName, joined: Date.now()
-  });
+  await set(ref(db, `rooms/${roomId}/camMembers/${myPeerId}`), { name: myName, joined: Date.now() });
 
   window.addEventListener("beforeunload", () => {
     remove(ref(db, `rooms/${roomId}/camMembers/${myPeerId}`));
   });
 
-  onChildAdded(ref(db, `rooms/${roomId}/camMembers`), async (snap) => {
+  const unsub = onChildAdded(ref(db, `rooms/${roomId}/camMembers`), async (snap) => {
     const peerId = snap.key;
     if (peerId === myPeerId || camPcMap[peerId]) return;
-    const peerData = snap.val();
-    const peerName = peerData?.name || "User";
+    const peerName = snap.val()?.name || "User";
     const isOfferer = myPeerId < peerId;
     if (isOfferer) {
       await createCamConnection(peerId, peerName, true);
     } else {
-      setTimeout(() => createCamConnection(peerId, peerName, false), 500);
+      setTimeout(() => createCamConnection(peerId, peerName, false), 600);
     }
   });
+  firebaseUnsubs.push(unsub);
 }
 
 /* ═══════════════════════════════════════════════
@@ -455,8 +442,7 @@ window.toggleCam = () => {
    ═══════════════════════════════════════════════ */
 window.sendReaction = (emoji) => {
   if (!roomId) return showToast("⚠️ Connect first");
-  const name = document.getElementById("userName")?.value.trim() || "User";
-  push(ref(db, `rooms/${roomId}/reactions`), { emoji, sender: name, time: Date.now() });
+  push(ref(db, `rooms/${roomId}/reactions`), { emoji, time: Date.now() });
   showEmojiFloat(emoji);
 };
 
@@ -474,15 +460,16 @@ function showEmojiFloat(emoji) {
 function startReactionListener() {
   if (!roomId) return;
   const ts = Date.now();
-  onChildAdded(ref(db, `rooms/${roomId}/reactions`), (snap) => {
+  const unsub = onChildAdded(ref(db, `rooms/${roomId}/reactions`), (snap) => {
     const d = snap.val();
     if (!d || d.time < ts) return;
     showEmojiFloat(d.emoji);
   });
+  firebaseUnsubs.push(unsub);
 }
 
 /* ═══════════════════════════════════════════════
-   CHAT
+   CHAT — ★ FIXED: no more duplicate messages
    ═══════════════════════════════════════════════ */
 window.sendChat = () => {
   const input = document.getElementById("chatInput");
@@ -494,19 +481,28 @@ window.sendChat = () => {
 };
 
 function startChatListener() {
-  if (chatListenerStarted || !roomId) return;
-  chatListenerStarted = true;
+  if (!roomId) return;
   const ts = Date.now();
   const myName = document.getElementById("userName")?.value.trim() || "User";
 
-  onChildAdded(ref(db, `rooms/${roomId}/chat`), (snap) => {
+  const unsub = onChildAdded(ref(db, `rooms/${roomId}/chat`), (snap) => {
     const d = snap.val();
     if (!d) return;
+    // ★ FIX: Skip old messages — only show messages AFTER we subscribed
+    if (d.time < ts - 2000) return;
+
     const container = document.getElementById("chatMessages");
     if (!container) return;
-    const isMe = d.sender === myName && d.time >= ts - 2000;
+
+    // ★ FIX: Prevent duplicate DOM entries
+    const msgId = snap.key;
+    if (document.getElementById(`msg_${msgId}`)) return;
+
+    const isMe = d.sender === myName;
     const wrap = document.createElement("div");
     wrap.className = "chat-msg";
+    wrap.id = `msg_${msgId}`;
+
     const hdr = document.createElement("div");
     hdr.className = "chat-msg-header";
     const snd = document.createElement("span");
@@ -517,13 +513,16 @@ function startChatListener() {
     time.className = "chat-time";
     time.textContent = new Date(d.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     hdr.appendChild(snd); hdr.appendChild(time);
+
     const bub = document.createElement("div");
     bub.className = `chat-bubble ${isMe ? "me" : "other"}`;
     bub.textContent = d.text;
+
     wrap.appendChild(hdr); wrap.appendChild(bub);
     container.appendChild(wrap);
     container.scrollTop = container.scrollHeight;
   });
+  firebaseUnsubs.push(unsub);
 }
 
 /* ═══════════════════════════════════════════════
@@ -547,26 +546,27 @@ function startStats(pc) {
         const bitrate = ((bytes - prevBytesReceived) * 8 / 1_000_000).toFixed(1);
         prevBytesReceived = bytes;
         const el = (id) => document.getElementById(id);
-        el("statBitrate").innerHTML = `${bitrate}<span class="stat-unit"> Mbps</span>`;
-        el("barBitrate").style.width = Math.min(bitrate / 12 * 100, 100) + "%";
-        el("statFps").textContent = Math.round(inbound.framesPerSecond || 0);
-        el("statRes").textContent = `${inbound.frameWidth||'—'}×${inbound.frameHeight||'—'}`;
-        el("statLoss").textContent = `${((inbound.packetsLost||0)/Math.max(inbound.packetsReceived||1,1)*100).toFixed(1)}%`;
-        el("qualitySummary").innerHTML =
+        if (el("statBitrate")) el("statBitrate").innerHTML = `${bitrate}<span class="stat-unit"> Mbps</span>`;
+        if (el("barBitrate")) el("barBitrate").style.width = Math.min(bitrate / 12 * 100, 100) + "%";
+        if (el("statFps")) el("statFps").textContent = Math.round(inbound.framesPerSecond || 0);
+        if (el("statRes")) el("statRes").textContent = `${inbound.frameWidth||'—'}×${inbound.frameHeight||'—'}`;
+        if (el("statLoss")) el("statLoss").textContent = `${((inbound.packetsLost||0)/Math.max(inbound.packetsReceived||1,1)*100).toFixed(1)}%`;
+        if (el("qualitySummary")) el("qualitySummary").innerHTML =
           `Res: ${inbound.frameWidth||'—'}×${inbound.frameHeight||'—'}<br>FPS: ${Math.round(inbound.framesPerSecond||0)}<br>Bitrate: ${bitrate} Mbps`;
         const tag = el("qualityTag");
         if (tag) { tag.style.display = ""; tag.textContent = inbound.frameHeight >= 1080 ? "1080p" : inbound.frameHeight >= 720 ? "720p" : `${inbound.frameHeight||'—'}p`; }
       }
       if (pair) {
         const rtt = Math.round((pair.currentRoundTripTime || 0) * 1000);
-        document.getElementById("statRtt").innerHTML = `${rtt}<span class="stat-unit"> ms</span>`;
+        if (document.getElementById("statRtt")) document.getElementById("statRtt").innerHTML = `${rtt}<span class="stat-unit"> ms</span>`;
       }
     } catch (_) {}
-  }, 1000);
+  }, 2000); // ★ FIX: 2s instead of 1s to reduce CPU load
 
   timerInterval = setInterval(() => {
     const s = Math.floor((Date.now() - startTime) / 1000);
-    document.getElementById("statDuration").textContent =
+    const el = document.getElementById("statDuration");
+    if (el) el.textContent =
       `${Math.floor(s/3600).toString().padStart(2,'0')}:${Math.floor((s%3600)/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
   }, 1000);
 }
@@ -574,7 +574,7 @@ function startStats(pc) {
 function stopStats() { clearInterval(statsInterval); clearInterval(timerInterval); }
 
 /* ═══════════════════════════════════════════════
-   ROOM CODE GENERATOR
+   ROOM CODE
    ═══════════════════════════════════════════════ */
 window.generateRoom = () => {
   const code = Math.random().toString(36).substr(2, 8).toUpperCase();
@@ -584,7 +584,7 @@ window.generateRoom = () => {
 };
 
 /* ═══════════════════════════════════════════════
-   HOST (Confirm from popup)
+   HOST
    ═══════════════════════════════════════════════ */
 window.confirmHost = async () => {
   roomId = document.getElementById("roomId")?.value.trim();
@@ -609,11 +609,10 @@ window.confirmHost = async () => {
   btn.classList.add("end");
   btn.onclick = () => window.leaveCall();
 
-  // Save room
   await set(ref(db, `rooms/${roomId}/host`), { name, created: Date.now() });
 
-  // Listen for viewers joining
-  onChildAdded(ref(db, `rooms/${roomId}/viewers`), async snap => {
+  // Listen for viewers
+  const unsub = onChildAdded(ref(db, `rooms/${roomId}/viewers`), async snap => {
     const viewerId = snap.key;
     if (!viewerId || screenPcMap[viewerId]) return;
 
@@ -627,15 +626,18 @@ window.confirmHost = async () => {
     await pc.setLocalDescription(offer);
     await set(ref(db, `rooms/${roomId}/viewers/${viewerId}/offer`), { type: offer.type, sdp: offer.sdp });
 
-    onValue(ref(db, `rooms/${roomId}/viewers/${viewerId}/answer`), async aSnap => {
+    const unsub2 = onValue(ref(db, `rooms/${roomId}/viewers/${viewerId}/answer`), async aSnap => {
       if (!aSnap.val() || pc.remoteDescription) return;
       try { await pc.setRemoteDescription(new RTCSessionDescription(aSnap.val())); } catch (_) {}
     });
+    firebaseUnsubs.push(unsub2);
 
-    onChildAdded(answerCands, async cSnap => {
+    const unsub3 = onChildAdded(answerCands, async cSnap => {
       try { await pc.addIceCandidate(new RTCIceCandidate(cSnap.val())); } catch (_) {}
     });
+    firebaseUnsubs.push(unsub3);
   });
+  firebaseUnsubs.push(unsub);
 
   startChatListener();
   startReactionListener();
@@ -644,7 +646,7 @@ window.confirmHost = async () => {
 };
 
 /* ═══════════════════════════════════════════════
-   JOIN (Confirm from popup)
+   JOIN — ★ FIXED: Safari compat, proper audio, no listener leaks
    ═══════════════════════════════════════════════ */
 window.confirmJoin = async () => {
   roomId = document.getElementById("roomId")?.value.trim();
@@ -658,8 +660,6 @@ window.confirmJoin = async () => {
   document.getElementById("noSignal")?.classList.add("hidden");
 
   const myViewerId = "v_" + Math.random().toString(36).substr(2, 9);
-
-  // Signal ready
   await set(ref(db, `rooms/${roomId}/viewers/${myViewerId}/ready`), true);
 
   const video = document.getElementById("remoteVideo");
@@ -669,18 +669,25 @@ window.confirmJoin = async () => {
   viewerPc = pc;
   const remoteStream = new MediaStream();
   video.srcObject = remoteStream;
+  bgAudioSet = false;
 
+  // ★ FIX: Proper ontrack — no arrow function bug
   pc.ontrack = (e) => {
-    e.streams[0].getTracks().forEach(track => {
+    const tracks = e.streams[0]?.getTracks() || [e.track];
+    tracks.forEach(track => {
       if (!remoteStream.getTracks().find(t => t.id === track.id)) {
         remoteStream.addTrack(track);
       }
     });
-    // BG audio for mobile
-    if (track => track.kind === 'audio') {
-      const bgAudio = document.getElementById("bgAudio");
-      bgAudio.srcObject = new MediaStream(remoteStream.getAudioTracks());
-      bgAudio.play().catch(() => {});
+    // ★ FIX: Set BG audio ONCE, not every ontrack call
+    if (!bgAudioSet) {
+      const audioTracks = remoteStream.getAudioTracks();
+      if (audioTracks.length > 0) {
+        bgAudioSet = true;
+        const bgAudio = document.getElementById("bgAudio");
+        bgAudio.srcObject = new MediaStream(audioTracks);
+        bgAudio.play().catch(() => {});
+      }
     }
   };
 
@@ -699,7 +706,7 @@ window.confirmJoin = async () => {
       showToast("🎬 Connected!");
     }
     if (pc.connectionState === "failed") {
-      showToast("❌ Connection failed. Try again.");
+      showToast("❌ Connection failed");
       updateConnStatus("disconnected");
     }
   };
@@ -709,32 +716,38 @@ window.confirmJoin = async () => {
 
   pc.onicecandidate = e => { if (e.candidate) push(answerCands, e.candidate.toJSON()); };
 
-  // Wait for host offer
-  onValue(ref(db, `rooms/${roomId}/viewers/${myViewerId}/offer`), async snap => {
-    if (!snap.val() || pc.remoteDescription) return;
+  // ★ FIX: Collect early ICE candidates, apply after remoteDescription is set
+  let pendingCandidates = [];
+  let remoteDescSet = false;
+
+  const unsub1 = onValue(ref(db, `rooms/${roomId}/viewers/${myViewerId}/offer`), async snap => {
+    if (!snap.val() || remoteDescSet) return;
     try {
       await pc.setRemoteDescription(new RTCSessionDescription(snap.val()));
+      remoteDescSet = true;
 
-      // Get any early ICE candidates
-      const earlySnap = await get(offerCands);
-      if (earlySnap.exists()) {
-        for (const c of Object.values(earlySnap.val())) {
-          try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch (_) {}
-        }
+      // Apply any ICE candidates that arrived before offer
+      for (const c of pendingCandidates) {
+        try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch (_) {}
       }
+      pendingCandidates = [];
 
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       await set(ref(db, `rooms/${roomId}/viewers/${myViewerId}/answer`), { type: answer.type, sdp: answer.sdp });
-    } catch (e) { console.error("[Join] Error:", e); }
+    } catch (e) { console.error("[Join]", e); }
   });
+  firebaseUnsubs.push(unsub1);
 
-  // Ongoing ICE candidates
-  onChildAdded(offerCands, async cSnap => {
-    if (pc.remoteDescription) {
-      try { await pc.addIceCandidate(new RTCIceCandidate(cSnap.val())); } catch (_) {}
+  const unsub2 = onChildAdded(offerCands, async cSnap => {
+    const candidate = cSnap.val();
+    if (remoteDescSet) {
+      try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (_) {}
+    } else {
+      pendingCandidates.push(candidate);
     }
   });
+  firebaseUnsubs.push(unsub2);
 
   startChatListener();
   startReactionListener();
@@ -742,29 +755,32 @@ window.confirmJoin = async () => {
 };
 
 /* ═══════════════════════════════════════════════
-   LEAVE CALL
+   LEAVE — ★ FIXED: Unsubscribe ALL Firebase listeners
    ═══════════════════════════════════════════════ */
 window.leaveCall = async () => {
   stopStats();
 
-  // Close screen PCs
+  // ★ FIX: Unsubscribe ALL Firebase listeners to prevent duplicates
+  firebaseUnsubs.forEach(unsub => { try { unsub(); } catch (_) {} });
+  firebaseUnsubs = [];
+
   Object.values(screenPcMap).forEach(pc => { try { pc.close(); } catch (_) {} });
   screenPcMap = {};
   if (viewerPc) { try { viewerPc.close(); } catch (_) {} viewerPc = null; }
 
-  // Close cam PCs
   Object.values(camPcMap).forEach(e => { try { e.pc.close(); } catch (_) {} });
   camPcMap = {}; camStreams = {};
 
-  // Stop local streams
   if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
   if (localCamStream) { localCamStream.getTracks().forEach(t => t.stop()); localCamStream = null; }
 
-  // Firebase cleanup
   if (roomId && myPeerId) remove(ref(db, `rooms/${roomId}/camMembers/${myPeerId}`));
 
-  // Reset UI
   document.getElementById("remoteVideo").srcObject = null;
+  const bgAudio = document.getElementById("bgAudio");
+  if (bgAudio) { bgAudio.srcObject = null; bgAudio.pause(); }
+  bgAudioSet = false;
+
   document.getElementById("noSignal")?.classList.remove("hidden");
   document.getElementById("liveBadge").style.display = "none";
   document.getElementById("sourceTag").style.display = "none";
@@ -782,22 +798,17 @@ window.leaveCall = async () => {
   pinnedPeer = null;
 
   isStreaming = false; isHost = false;
-  chatListenerStarted = false;
   showToast("👋 Disconnected");
 };
 
-/* ═══════════════════════════════════════════════
-   MEDIA SESSION
-   ═══════════════════════════════════════════════ */
+/* ── MEDIA SESSION ── */
 if ('mediaSession' in navigator) {
   navigator.mediaSession.metadata = new MediaMetadata({
-    title: 'Live Party', artist: 'Watch Together', album: 'Stream'
+    title: 'Live Party', artist: 'Watch Together'
   });
 }
 
-/* ═══════════════════════════════════════════════
-   SERVICE WORKER
-   ═══════════════════════════════════════════════ */
+/* ── SERVICE WORKER ── */
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("sw.js").catch(() => {});
