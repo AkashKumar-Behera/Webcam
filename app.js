@@ -24,13 +24,20 @@ const db = getDatabase(app);
 /* ── ICE / TURN ── */
 const servers = {
   iceServers: [
-    { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
-    { urls: "turn:82.25.104.130:3478", username: "akash", credential: "hostinger_vps_123" },
-    { urls: "turn:82.25.104.130:3478?transport=tcp", username: "akash", credential: "hostinger_vps_123" },
-    { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
+    { urls: [
+        "stun:stun.l.google.com:19302", 
+        "stun:stun1.l.google.com:19302",
+        "stun:stun2.l.google.com:19302",
+        "stun:stun3.l.google.com:19302",
+        "stun:stun4.l.google.com:19302"
+      ] 
+    },
+    // Primary User TURN
+    { urls: ["turn:82.25.104.130:3478", "turn:82.25.104.130:3478?transport=tcp"], username: "akash", credential: "hostinger_vps_123" },
+    // Robust Public TURN Fallbacks
+    { urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443", "turn:openrelay.metered.ca:443?transport=tcp"], username: "openrelayproject", credential: "openrelayproject" }
   ],
-  bundlePolicy: "max-bundle",
-  rtcpMuxPolicy: "require"
+  iceCandidatePoolSize: 10
 };
 
 const RES_MAP = {
@@ -238,15 +245,34 @@ window.confirmHost = async () => {
     await set(ref(db, `rooms/${roomId}/viewers/${viewerId}/offer`), { type: offer.type, sdp: offer.sdp });
 
     // Listen for Answer
+    let pendingViewerIce = [];
+    let hostRemoteDescReady = false;
+
     const unsubAnswer = onValue(ref(db, `rooms/${roomId}/viewers/${viewerId}/answer`), async rootSnap => {
-      if (!rootSnap.val() || pc.remoteDescription) return;
-      try { await pc.setRemoteDescription(new RTCSessionDescription(rootSnap.val())); } catch (_) {}
+      if (!rootSnap.val() || hostRemoteDescReady) return;
+      try { 
+        await pc.setRemoteDescription(new RTCSessionDescription(rootSnap.val())); 
+        hostRemoteDescReady = true;
+
+        // Apply any early ICE candidates
+        for (const c of pendingViewerIce) {
+          try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch (_) {}
+        }
+        pendingViewerIce = [];
+      } catch (e) {
+        console.error("Error setting remote description:", e);
+      }
     });
     firebaseUnsubs.push(unsubAnswer);
 
     // Listen for Viewer ICE
     const unsubIce = onChildAdded(answerCandsRef, async cSnap => {
-      try { await pc.addIceCandidate(new RTCIceCandidate(cSnap.val())); } catch (_) {}
+      const c = cSnap.val();
+      if (hostRemoteDescReady) {
+        try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch (_) {}
+      } else {
+        pendingViewerIce.push(c);
+      }
     });
     firebaseUnsubs.push(unsubIce);
   });
