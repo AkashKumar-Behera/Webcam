@@ -24,20 +24,14 @@ const db = getDatabase(app);
 /* ── ICE / TURN ── */
 const servers = {
   iceServers: [
-    { urls: [
-        "stun:stun.l.google.com:19302", 
-        "stun:stun1.l.google.com:19302",
-        "stun:stun2.l.google.com:19302",
-        "stun:stun3.l.google.com:19302",
-        "stun:stun4.l.google.com:19302"
-      ] 
-    },
-    // Primary User TURN
-    { urls: ["turn:82.25.104.130:3478", "turn:82.25.104.130:3478?transport=tcp"], username: "akash", credential: "hostinger_vps_123" },
-    // Robust Public TURN Fallbacks
-    { urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443", "turn:openrelay.metered.ca:443?transport=tcp"], username: "openrelayproject", credential: "openrelayproject" }
+    { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
+    // TURN on standard port
+    { urls: "turn:82.25.104.130:3478", username: "akash", credential: "hostinger_vps_123" },
+    { urls: "turn:82.25.104.130:3478?transport=tcp", username: "akash", credential: "hostinger_vps_123" },
+    // TURN on port 443 (NEVER blocked by mobile carriers)
+    { urls: "turn:82.25.104.130:443?transport=tcp", username: "akash", credential: "hostinger_vps_123" },
   ],
-  iceCandidatePoolSize: 10
+  iceCandidatePoolSize: 2
 };
 
 const RES_MAP = {
@@ -63,9 +57,28 @@ let startTime = 0;
 let prevBytesReceived = 0;
 let firebaseUnsubs = [];
 let bgAudioSet = false;
+let iceRestartCount = 0;
+const MAX_ICE_RESTARTS = 3;
 
 // Environment
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+/* ── ICE Debug Logger ── */
+function logIce(pc, label) {
+  pc.onicecandidate = null; // will be re-set by caller
+  pc.onicegatheringstatechange = () => {
+    console.log(`[ICE ${label}] gathering: ${pc.iceGatheringState}`);
+  };
+  pc.oniceconnectionstatechange = () => {
+    console.log(`[ICE ${label}] iceConnection: ${pc.iceConnectionState}`);
+  };
+}
+
+function logCandidate(c, label) {
+  if (!c) return;
+  const type = c.candidate?.match(/typ (\w+)/)?.[1] || '?';
+  console.log(`[ICE ${label}] candidate: ${type} | ${c.candidate?.substring(0, 80)}`);
+}
 
 /* ═══════════════════════════════════════════════
    UI UTILITIES
@@ -226,7 +239,10 @@ window.confirmHost = async () => {
       localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
     }
 
+    logIce(pc, `host→${viewerId.substring(0,6)}`);
+
     pc.onconnectionstatechange = () => {
+      console.log(`[Host→${viewerId.substring(0,6)}] connectionState: ${pc.connectionState}`);
       if (pc.connectionState === "connected") optimizeHostSender(pc);
       if (["failed", "closed"].includes(pc.connectionState)) {
         try { pc.close(); } catch (_) {}
@@ -238,7 +254,12 @@ window.confirmHost = async () => {
     const offerCandsRef = ref(db, `rooms/${roomId}/viewers/${viewerId}/offerCandidates`);
     const answerCandsRef = ref(db, `rooms/${roomId}/viewers/${viewerId}/answerCandidates`);
 
-    pc.onicecandidate = e => { if (e.candidate) push(offerCandsRef, e.candidate.toJSON()); };
+    pc.onicecandidate = e => {
+      if (e.candidate) {
+        logCandidate(e.candidate, `host→${viewerId.substring(0,6)}`);
+        push(offerCandsRef, e.candidate.toJSON());
+      }
+    };
 
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
@@ -348,8 +369,12 @@ window.confirmJoin = async () => {
     }
   };
 
+  logIce(pc, 'viewer');
+
   pc.onconnectionstatechange = () => {
+    console.log(`[Viewer] connectionState: ${pc.connectionState}`);
     if (pc.connectionState === "connected") {
+      iceRestartCount = 0; // reset on success
       updateConnStatus("connected");
       document.getElementById("noSignal").classList.add("hidden");
       document.getElementById("sourceTag").style.display = "";
@@ -360,17 +385,38 @@ window.confirmJoin = async () => {
       startStats(pc);
       showToast("🎬 Connected!");
     }
+    if (pc.connectionState === "disconnected") {
+      // Don't immediately fail — mobile networks recover
+      console.log("[Viewer] ICE disconnected, waiting for recovery...");
+      updateConnStatus("connecting");
+      showToast("⚡ Reconnecting...");
+    }
     if (pc.connectionState === "failed") {
-      showToast("❌ Connection failed");
-      updateConnStatus("disconnected");
-      leaveCall();
+      if (iceRestartCount < MAX_ICE_RESTARTS) {
+        iceRestartCount++;
+        console.log(`[Viewer] ICE restart attempt ${iceRestartCount}/${MAX_ICE_RESTARTS}`);
+        showToast(`🔄 Retrying... (${iceRestartCount}/${MAX_ICE_RESTARTS})`);
+        // ICE Restart — renegotiate candidates
+        pc.restartIce();
+      } else {
+        showToast("❌ Connection failed after retries");
+        updateConnStatus("disconnected");
+        leaveCall();
+      }
     }
   };
 
   const offerCandsRef = ref(db, `rooms/${roomId}/viewers/${myViewerId}/offerCandidates`);
   const answerCandsRef = ref(db, `rooms/${roomId}/viewers/${myViewerId}/answerCandidates`);
 
-  pc.onicecandidate = e => { if (e.candidate) push(answerCandsRef, e.candidate.toJSON()); };
+  pc.onicecandidate = e => {
+    if (e.candidate) {
+      logCandidate(e.candidate, 'viewer');
+      push(answerCandsRef, e.candidate.toJSON());
+    } else {
+      console.log('[Viewer] ICE gathering complete');
+    }
+  };
 
   let pendingIce = [];
   let remoteDescReady = false;
