@@ -886,10 +886,10 @@
   }
 
   // Mode selection
-  let selectedMode = 'voice';
+  window.selectedMode = 'voice';
 
   function selectMode(mode) {
-    selectedMode = mode;
+    window.selectedMode = mode;
     document.getElementById('modeCardVoice').classList.toggle('selected', mode === 'voice');
     document.getElementById('modeCardWatch').classList.toggle('selected', mode === 'watch');
     document.getElementById('voiceSettingsPanel').classList.toggle('show', mode === 'voice');
