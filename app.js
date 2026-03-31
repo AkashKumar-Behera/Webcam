@@ -415,32 +415,34 @@ window.startPTT = async () => {
       audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
     });
 
-    pttAudioCtx = new AudioContext();
+    pttAudioCtx = new AudioContext({ sampleRate: 48000 });
     const source = pttAudioCtx.createMediaStreamSource(pttMicStream);
     // Buffer: 4096 samples at 48kHz = ~85ms per chunk
     pttProcessor = pttAudioCtx.createScriptProcessor(4096, 1, 1);
 
-    const nativeSampleRate = pttAudioCtx.sampleRate;
-    const targetRate = 16000; // Downsample to 16kHz for bandwidth
-    const ratio = nativeSampleRate / targetRate;
+    const sampleRate = pttAudioCtx.sampleRate; // 48000 (matches screen share)
 
     pttProcessor.onaudioprocess = (e) => {
       if (!pttActive) return;
       const inputData = e.inputBuffer.getChannelData(0);
 
-      // Downsample to 16kHz mono
-      const outputLength = Math.floor(inputData.length / ratio);
-      const int16Data = new Int16Array(outputLength);
-      for (let i = 0; i < outputLength; i++) {
-        const srcIdx = Math.floor(i * ratio);
-        int16Data[i] = Math.max(-32768, Math.min(32767, inputData[srcIdx] * 32768));
+      // Send at native 48kHz — same as screen share audio
+      // No downsampling = no resampling needed on mobile = no quality drop
+      const int16Data = new Int16Array(inputData.length);
+      for (let i = 0; i < inputData.length; i++) {
+        int16Data[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
       }
 
+      // Packet: [4 bytes sampleRate] + [int16 PCM data]
+      const header = new Uint32Array([sampleRate]);
+      const packet = new Uint8Array(4 + int16Data.byteLength);
+      packet.set(new Uint8Array(header.buffer), 0);
+      packet.set(new Uint8Array(int16Data.buffer), 4);
+
       // Send to all peers via DataChannel
-      const buffer = int16Data.buffer;
       Object.values(voicePcMap).forEach(entry => {
         if (entry.dc && entry.dc.readyState === 'open') {
-          try { entry.dc.send(buffer); } catch (_) {}
+          try { entry.dc.send(packet.buffer); } catch (_) {}
         }
       });
     };
@@ -482,16 +484,20 @@ window.stopPTT = () => {
 // PTT Audio Receiver — plays incoming voice from DataChannel
 function handlePTTAudio(peerId, data) {
   if (!pttPlaybackCtx || pttPlaybackCtx.state === 'closed') {
-    pttPlaybackCtx = new AudioContext();
+    pttPlaybackCtx = new AudioContext({ sampleRate: 48000 });
   }
 
-  const int16 = new Int16Array(data);
+  // Read sample rate from 4-byte header
+  const view = new DataView(data);
+  const sampleRate = view.getUint32(0, true); // little-endian
+  const int16 = new Int16Array(data, 4); // audio data starts after header
+
   const float32 = new Float32Array(int16.length);
   for (let i = 0; i < int16.length; i++) {
     float32[i] = int16[i] / 32768;
   }
 
-  const buffer = pttPlaybackCtx.createBuffer(1, float32.length, 16000);
+  const buffer = pttPlaybackCtx.createBuffer(1, float32.length, sampleRate);
   buffer.getChannelData(0).set(float32);
 
   const source = pttPlaybackCtx.createBufferSource();
