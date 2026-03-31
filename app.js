@@ -547,7 +547,8 @@ function startStats(pc) {
       
       if (inbound) {
         const bytes = inbound.bytesReceived || 0;
-        const bitrate = ((bytes - prevBytesReceived) * 8 / 1_000_000).toFixed(1);
+        const timeDiffSeconds = intervalTime / 1000;
+        const bitrate = ((bytes - prevBytesReceived) * 8 / timeDiffSeconds / 1_000_000).toFixed(1);
         prevBytesReceived = bytes;
         
         const el = (id) => document.getElementById(id);
