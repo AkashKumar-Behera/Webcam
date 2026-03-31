@@ -65,6 +65,45 @@ window.denyViewer  =async(vid,name)=>{ await set(ref(db,`rooms/${roomId}/waitroo
 window.kickViewer  =async(vid,name)=>{ await set(ref(db,`rooms/${roomId}/viewers/${vid}/kicked`),true); setTimeout(()=>remove(ref(db,`rooms/${roomId}/viewers/${vid}`)),2000); try{screenPcMap[vid]?.close();}catch(_){} delete screenPcMap[vid]; delete connectedViewers[vid]; renderPeopleTab(); showToast(`👢 ${name} removed`); };
 window.applyBitrateNow=()=>{ Object.values(screenPcMap).forEach(pc=>{if(pc.connectionState==="connected")optimizeHostSender(pc);}); };
 
+window.pushHostSettings=()=>{
+  if(!isHost||!roomId)return;
+  const sRes=document.getElementById("scrRes")?.value||"1080p";
+  const sFps=document.getElementById("scrFps")?.value||"30";
+  const sBit=document.getElementById("bitrateSlider")?.value||"4";
+  const sDel=document.getElementById("streamDelaySlider")?.value||"0.05";
+  set(ref(db,`rooms/${roomId}/settings`),{quality:sRes,fps:sFps,bitrate:sBit,delay:sDel});
+};
+
+window.replaceScreenShareBtn=async()=>{
+  if(!isHost||!roomId)return;
+  const resStr=document.getElementById("scrRes")?.value||"1080p", fpsStr=document.getElementById("scrFps")?.value||"30";
+  const {width,height}=RES_MAP[resStr]||RES_MAP["1080p"], fps=parseInt(fpsStr)||30;
+  const con={video:{width:{ideal:width},height:{ideal:height},frameRate:{ideal:fps,max:fps}},audio:{channelCount:2,sampleRate:48000,autoGainControl:false,echoCancellation:false,noiseSuppression:false}};
+  let newStream;
+  try{ newStream=await navigator.mediaDevices.getDisplayMedia(con); }
+  catch{ con.audio=true; try{newStream=await navigator.mediaDevices.getDisplayMedia(con);}catch{con.audio=false;newStream=await navigator.mediaDevices.getDisplayMedia(con);} }
+  
+  if(!newStream) return;
+  const vt=newStream.getVideoTracks()[0]; if(vt&&"contentHint"in vt)vt.contentHint="detail";
+  
+  // Stop old tracks
+  if(localStream){ localStream.getTracks().forEach(t=>t.stop()); }
+  localStream=newStream;
+  const video=document.getElementById("remoteVideo"); video.srcObject=localStream;
+  vt.onended=()=>leaveCall();
+  
+  // Replace tracks in all active peer connections
+  Object.values(screenPcMap).forEach(pc=>{
+    const senders = pc.getSenders();
+    localStream.getTracks().forEach(track => {
+      const sender = senders.find(s => s.track && s.track.kind === track.kind);
+      if(sender){ sender.replaceTrack(track); }
+      else{ pc.addTrack(track, localStream); }
+    });
+  });
+  showToast("🔄 Screen updated successfully");
+};
+
 /* CAPTURE */
 async function captureScreen(){
   const resStr=document.getElementById("scrRes")?.value||"1080p", fpsStr=document.getElementById("scrFps")?.value||"30";
@@ -125,6 +164,7 @@ window.confirmHost=async()=>{
     firebaseUnsubs.push(unsubA,unsubI);
   }); firebaseUnsubs.push(unsubV);
   startHostStats(); startChatListener(); startReactionListener();
+  window.pushHostSettings();
   showToast("🎬 Live! Room: "+roomId);
 };
 
@@ -153,9 +193,25 @@ async function proceedJoin(myVid,userName){
   const pc=new RTCPeerConnection(servers); viewerPc=pc;
   const video=document.getElementById("remoteVideo"), remoteStream=new MediaStream();
   video.srcObject=remoteStream; video.muted=false;
+  
+  let currentDelayHint = 0.05;
+
   pc.ontrack=e=>{
     const track=e.track;
-    if(e.receiver){if(track.kind==="audio"){try{e.receiver.playoutDelayHint=0;}catch(_){}}else{try{e.receiver.playoutDelayHint=0.05;}catch(_){} if("contentHint"in track)track.contentHint="detail";}}
+    if(e.receiver){
+      if(track.kind==="audio"){try{e.receiver.playoutDelayHint=0;}catch(_){}}
+      else{
+        try{e.receiver.playoutDelayHint=currentDelayHint;}catch(_){}
+        if("contentHint"in track)track.contentHint="detail";
+        // Listen dynamically to buffer changes
+        const unsubDel=onValue(ref(db,`rooms/${roomId}/settings/delay`), s=>{
+          if(s.val()){
+             currentDelayHint=parseFloat(s.val());
+             try{e.receiver.playoutDelayHint=currentDelayHint;}catch(_){}
+          }
+        }); firebaseUnsubs.push(unsubDel);
+      }
+    }
     if(!remoteStream.getTracks().find(t=>t.id===track.id))remoteStream.addTrack(track);
     if(!bgAudioSet&&track.kind==="audio"){ bgAudioSet=true; const bg=document.getElementById("bgAudio"); bg.srcObject=new MediaStream([track]); video.muted=true; bg.play().then(()=>{if("mediaSession"in navigator)navigator.mediaSession.metadata=new MediaMetadata({title:`Live Room ${roomId}`,artist:"Watch Party",artwork:[{src:"icon.png",sizes:"192x192",type:"image/png"}]});}).catch(e=>console.warn(e)); }
   };
@@ -172,7 +228,25 @@ async function proceedJoin(myVid,userName){
   let pendIce=[],rdReady=false;
   const unsubO=onValue(ref(db,`rooms/${roomId}/viewers/${myVid}/offer`),async snap=>{if(!snap.val()||rdReady)return;try{await pc.setRemoteDescription(new RTCSessionDescription(snap.val()));rdReady=true;for(const c of pendIce){try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(_){}}pendIce=[];const ans=await pc.createAnswer();await pc.setLocalDescription(ans);await set(ref(db,`rooms/${roomId}/viewers/${myVid}/answer`),{type:ans.type,sdp:ans.sdp});}catch(e){console.error(e);}});
   const unsubI=onChildAdded(oRef,async s=>{const c=s.val();if(rdReady){try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(_){}}else pendIce.push(c);});
-  firebaseUnsubs.push(unsubO,unsubI);
+  
+  // Viewers list read (Universal people tab)
+  const unsubPV=onChildAdded(ref(db,`rooms/${roomId}/viewers`), s=>{
+    const vid=s.key; if(!vid)return;
+    get(ref(db,`rooms/${roomId}/viewers/${vid}/ready`)).then(sn=>{const n=sn.val()?.name||"Viewer"; connectedViewers[vid]={name:n}; renderPeopleTab();});
+  });
+  const unsubPR=onChildAdded(ref(db,`rooms/${roomId}/viewers`), ()=>renderPeopleTab()); // simplistic deletion handling
+  
+  // Sync Viewer's display of Host settings
+  document.getElementById("viewerHostSettings").style.display="block";
+  const unsubSet=onValue(ref(db, `rooms/${roomId}/settings`), snap=>{
+    const d=snap.val(); if(!d)return;
+    if(document.getElementById("vhsQuality")) document.getElementById("vhsQuality").textContent=d.quality;
+    if(document.getElementById("vhsFps")) document.getElementById("vhsFps").textContent=`${d.fps} fps`;
+    if(document.getElementById("vhsBitrate")) document.getElementById("vhsBitrate").textContent=`${d.bitrate} Mbps`;
+    if(document.getElementById("vhsDelay")) document.getElementById("vhsDelay").textContent=`${d.delay} s`;
+  });
+  
+  firebaseUnsubs.push(unsubO,unsubI,unsubPV,unsubPR,unsubSet);
   startChatListener(); startReactionListener();
 }
 
@@ -198,6 +272,29 @@ window.leaveCall=async()=>{
 /* CHAT */
 window.sendChat=()=>{ const inp=document.getElementById("chatInput"),msg=inp?.value.trim(); if(!msg||!roomId)return; const name=document.getElementById("userName")?.value.trim()||(isHost?"Host":"Viewer"); push(ref(db,`rooms/${roomId}/chat`),{sender:name,text:msg,time:Date.now()}); inp.value=""; };
 
+window.handleChatImageUpload=(input)=>{
+  if(!input.files||!input.files[0]||!roomId)return;
+  const file=input.files[0];
+  if(file.size>2000000){showToast("⚠️ Image too large (Max 2MB)");input.value="";return;} // basic guard
+  const reader=new FileReader();
+  reader.onload=(e)=>{
+    const img=new Image();
+    img.onload=()=>{
+      const canvas=document.createElement("canvas");
+      let w=img.width, h=img.height;
+      if(w>400){ h=h*(400/w); w=400; } // aggressive resize for firebase
+      canvas.width=w; canvas.height=h;
+      canvas.getContext("2d").drawImage(img,0,0,w,h);
+      const b64=canvas.toDataURL("image/jpeg",0.7);
+      const name=document.getElementById("userName")?.value.trim()||(isHost?"Host":"Viewer");
+      push(ref(db,`rooms/${roomId}/chat`),{sender:name,text:null,image:b64,time:Date.now()});
+    };
+    img.src=e.target.result;
+  };
+  reader.readAsDataURL(file);
+  input.value="";
+};
+
 function startChatListener(){
   if(!roomId)return; const ts=Date.now(); const myN=document.getElementById("userName")?.value.trim()||(isHost?"Host":"Viewer");
   const unsub=onChildAdded(ref(db,`rooms/${roomId}/chat`),snap=>{
@@ -206,9 +303,17 @@ function startChatListener(){
     const wrap=document.createElement("div"); wrap.className="chat-msg"; wrap.id=msgId;
     const isMe=d.sender===myN, time=new Date(d.time).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
     const col=nameToHsl(d.sender), init=d.sender[0]?.toUpperCase()||"?";
-    wrap.innerHTML=`<div class="chat-msg-header"><div class="chat-av" style="background:${col}">${init}</div><span class="chat-sender" style="color:${isMe?"var(--accent)":"var(--cyan)"}">${isMe?"You":esc(d.sender)}</span><span class="chat-time">${time}</span></div><div class="chat-bubble ${isMe?"me":"other"}">${esc(d.text)}</div>`;
-    const c=document.getElementById("chatMessages"); if(c){c.appendChild(wrap);c.scrollTop=c.scrollHeight;if(!document.getElementById("contentChat").classList.contains("active"))showToast(`${d.sender}: ${d.text}`);}
-    addFloatingChatMsg(isMe?"You":d.sender,d.text);
+    
+    let contentHtml = "";
+    if(d.image) contentHtml = `<img src="${d.image}" />`;
+    else contentHtml = esc(d.text);
+
+    wrap.innerHTML=`
+      <div class="chat-msg-header"><div class="chat-av" style="background:${col}">${init}</div><span class="chat-sender" style="color:${isMe?"var(--accent)":"var(--cyan)"}">${isMe?"You":esc(d.sender)}</span><span class="chat-time">${time}</span></div>
+      <div class="chat-bubble ${isMe?"me":"other"}">${contentHtml}</div>
+    `;
+    const c=document.getElementById("chatMessages"); if(c){c.appendChild(wrap);c.scrollTop=c.scrollHeight;if(!document.getElementById("contentChat").classList.contains("active"))showToast(`${d.sender} sent a message`);}
+    if(d.text) addFloatingChatMsg(isMe?"You":d.sender,d.text);
   }); firebaseUnsubs.push(unsub);
 }
 

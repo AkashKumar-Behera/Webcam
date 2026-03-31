@@ -48,25 +48,16 @@
     .vbtn{width:36px;height:36px;border-radius:50%;background:rgba(10,10,10,0.75);border:1px solid var(--glass-border);color:var(--text);display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0.75;transition:all .15s;}
     .vbtn:hover{background:rgba(30,30,30,0.9);opacity:1;}
     .vbtn .material-symbols-outlined{font-size:19px;}
-    /* EMOJI STRIP — vertical, right side of video */
-    .emoji-strip{position:absolute;right:56px;top:50%;transform:translateY(-50%);z-index:10;display:flex;flex-direction:column;align-items:center;gap:2px;}
-    .emoji-scroll-btn{width:30px;height:24px;background:rgba(10,10,10,0.6);border:1px solid var(--glass-border);border-radius:6px;color:var(--text-muted);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:.15s;}
-    .emoji-scroll-btn:hover{background:rgba(40,40,40,0.9);color:var(--text);}
-    .emoji-scroll-btn .material-symbols-outlined{font-size:14px;}
-    .emoji-strip-inner{display:flex;flex-direction:column;gap:3px;overflow:hidden;max-height:240px;}
-    .emj-btn{width:34px;height:34px;border-radius:10px;border:none;background:rgba(10,10,10,0.6);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;border:1px solid transparent;transition:.15s;}
-    .emj-btn:hover{background:rgba(40,40,40,0.9);border-color:var(--glass-border);transform:scale(1.2);}
-    .emj-btn:active{transform:scale(.9);}
     /* FULLSCREEN CHAT OVERLAY */
     .fs-chat-overlay{position:absolute;bottom:56px;left:12px;right:100px;pointer-events:none;z-index:20;display:none;}
     :fullscreen .fs-chat-overlay,:-webkit-full-screen .fs-chat-overlay{display:block;}
     .fs-chat-msg{display:inline-block;background:rgba(0,0,0,0.72);color:#fff;padding:6px 14px;border-radius:20px;font-size:13px;margin:4px 0;animation:fsChatIn 4s ease-out forwards;max-width:100%;}
     @keyframes fsChatIn{0%{opacity:0;transform:translateY(6px)}10%{opacity:1;transform:translateY(0)}70%{opacity:1}100%{opacity:0}}
     .fs-chat-msg b{color:var(--accent);}
-    /* EMOJI FLOAT */
-    .emoji-overlay{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);z-index:6;width:260px;height:200px;pointer-events:none;overflow:visible;}
-    .emoji-float{position:absolute;bottom:0;font-size:28px;animation:emojiRise 2s ease-out forwards;pointer-events:none;}
-    @keyframes emojiRise{0%{opacity:1;transform:translateY(0) scale(0.5)}15%{opacity:1;transform:translateY(-20px) scale(1.1)}100%{opacity:0;transform:translateY(-180px) scale(0.6)}}
+    /* EMOJI FLOAT (Now inside chat panel) */
+    .emoji-overlay{position:absolute;bottom:60px;left:0;right:0;height:240px;pointer-events:none;overflow:visible;z-index:10;}
+    .emoji-float{position:absolute;bottom:0;font-size:28px;animation:emojiRise 2.5s ease-out forwards;pointer-events:none;text-shadow:0 2px 4px rgba(0,0,0,0.5);}
+    @keyframes emojiRise{0%{opacity:1;transform:translateY(0) scale(0.5)}15%{opacity:1;transform:translateY(-20px) scale(1.1)}100%{opacity:0;transform:translateY(-220px) scale(0.7)}}
     /* SIDE PANEL */
     .side-panel{width:340px;display:flex;flex-direction:column;border-left:1px solid var(--glass-border);background:rgba(12,12,12,0.96);flex-shrink:0;}
     .panel-tabs{display:flex;border-bottom:1px solid var(--glass-border);flex-shrink:0;}
@@ -87,8 +78,20 @@
     .chat-bubble{padding:7px 12px;border-radius:10px;line-height:1.5;word-break:break-word;font-size:13px;margin-left:29px;}
     .chat-bubble.me{background:var(--accent-dim);border-radius:10px 10px 3px 10px;}
     .chat-bubble.other{background:var(--surface);border-radius:3px 10px 10px 10px;}
+    .chat-bubble img{max-width:100%;border-radius:6px;margin-top:4px;display:block;}
     .chat-system{text-align:center;color:var(--text-muted);font-size:10px;font-style:italic;padding:2px 0;}
-    .chat-bottom{padding:10px 14px;border-top:1px solid var(--glass-border);display:flex;gap:8px;flex-shrink:0;}
+    
+    .chat-bottom-area{display:flex;flex-direction:column;border-top:1px solid var(--glass-border);background:rgba(12,12,12,0.96);z-index:50;}
+    .chat-emoji-bar{display:none;padding:8px 14px;background:var(--surface);border-bottom:1px solid var(--glass-border);gap:4px;overflow-x:auto;-webkit-overflow-scrolling:touch;}
+    .chat-emoji-bar.open{display:flex;}
+    .chat-emoji-bar::-webkit-scrollbar{height:0px;display:none;}
+    .emj-btn{width:32px;height:32px;flex-shrink:0;border-radius:8px;border:none;background:transparent;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.15s;}
+    .emj-btn:hover{background:var(--surface-hover);transform:scale(1.1);}
+    
+    .chat-bottom{padding:10px 14px;display:flex;gap:6px;align-items:center;flex-shrink:0;}
+    .chat-attach{width:34px;height:34px;border-radius:50%;background:var(--surface);border:none;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.15s;flex-shrink:0;}
+    .chat-attach:hover{background:var(--surface-hover);color:var(--text);}
+    
     .chat-input{flex:1;padding:9px 14px;border:1px solid var(--glass-border);border-radius:20px;background:var(--surface);color:var(--text);font-family:inherit;font-size:13px;outline:none;}
     .chat-input:focus{border-color:var(--accent);}
     .chat-input::placeholder{color:var(--text-muted);}
@@ -270,21 +273,6 @@
           <span class="overlay-tag" id="qualityTag" style="display:none;">—</span>
         </div>
       </div>
-      <!-- Vertical emoji strip -->
-      <div class="emoji-strip" id="emojiStrip">
-        <button class="emoji-scroll-btn" onclick="emojiScroll(-1)"><span class="material-symbols-outlined">keyboard_arrow_up</span></button>
-        <div class="emoji-strip-inner" id="emojiStripInner">
-          <button class="emj-btn" onclick="sendReaction('🎉')">🎉</button>
-          <button class="emj-btn" onclick="sendReaction('❤️')">❤️</button>
-          <button class="emj-btn" onclick="sendReaction('👍')">👍</button>
-          <button class="emj-btn" onclick="sendReaction('😂')">😂</button>
-          <button class="emj-btn" onclick="sendReaction('👏')">👏</button>
-          <button class="emj-btn" onclick="sendReaction('🔥')">🔥</button>
-          <button class="emj-btn" onclick="sendReaction('😍')">😍</button>
-          <button class="emj-btn" onclick="sendReaction('💯')">💯</button>
-        </div>
-        <button class="emoji-scroll-btn" onclick="emojiScroll(1)"><span class="material-symbols-outlined">keyboard_arrow_down</span></button>
-      </div>
       <!-- Video control buttons -->
       <div class="video-btns">
         <button class="vbtn" onclick="toggleFullscreen()" title="Fullscreen"><span class="material-symbols-outlined" id="fsIcon">fullscreen</span></button>
@@ -292,7 +280,6 @@
       </div>
       <!-- Fullscreen floating chat overlay -->
       <div class="fs-chat-overlay" id="fullscreenChatOverlay"></div>
-      <div class="emoji-overlay" id="emojiOverlay"></div>
     </div>
   </div>
 
@@ -306,13 +293,33 @@
     </div>
 
     <!-- CHAT -->
-    <div class="panel-content active" id="contentChat">
+    <div class="panel-content active" id="contentChat" style="position:relative;">
+      <div class="emoji-overlay" id="emojiOverlay"></div>
       <div class="chat-messages" id="chatMessages">
         <div style="text-align:center;color:var(--text-muted);margin-top:30px;font-size:11px;">💬 Messages visible to everyone</div>
       </div>
-      <div class="chat-bottom">
-        <input class="chat-input" id="chatInput" placeholder="Type a message..." onkeypress="if(event.key==='Enter')sendChat()"/>
-        <button class="chat-send" onclick="sendChat()"><span class="material-symbols-outlined" style="font-size:17px;">send</span></button>
+      <div class="chat-bottom-area">
+        <div class="chat-emoji-bar" id="chatEmojiBar">
+          <button class="emj-btn" onclick="sendReaction('🎉')">🎉</button>
+          <button class="emj-btn" onclick="sendReaction('❤️')">❤️</button>
+          <button class="emj-btn" onclick="sendReaction('👍')">👍</button>
+          <button class="emj-btn" onclick="sendReaction('😂')">😂</button>
+          <button class="emj-btn" onclick="sendReaction('👏')">👏</button>
+          <button class="emj-btn" onclick="sendReaction('🔥')">🔥</button>
+          <button class="emj-btn" onclick="sendReaction('😍')">😍</button>
+          <button class="emj-btn" onclick="sendReaction('💯')">💯</button>
+        </div>
+        <div class="chat-bottom">
+          <button class="chat-attach" id="emojiToggleBtn" onclick="document.getElementById('chatEmojiBar').classList.toggle('open'); this.children[0].textContent = document.getElementById('chatEmojiBar').classList.contains('open') ? 'keyboard_arrow_down' : 'add_reaction';">
+            <span class="material-symbols-outlined" style="font-size:18px;">add_reaction</span>
+          </button>
+          <button class="chat-attach" onclick="document.getElementById('chatFileInput').click()">
+            <span class="material-symbols-outlined" style="font-size:18px;">image</span>
+          </button>
+          <input class="chat-input" id="chatInput" placeholder="Type a message..." onkeypress="if(event.key==='Enter')sendChat()"/>
+          <button class="chat-send" onclick="sendChat()"><span class="material-symbols-outlined" style="font-size:17px;">send</span></button>
+          <input type="file" id="chatFileInput" accept="image/*" style="display:none" onchange="window.handleChatImageUpload(this)">
+        </div>
       </div>
     </div>
 
@@ -344,16 +351,33 @@
             </div>
           </div>
         </div>
-        <!-- HOST-ONLY SETTINGS (hidden for viewers) -->
+        <!-- VIEWER SETTINGS DISPLAY -->
+        <div id="viewerHostSettings" style="display:none; background:rgba(6,182,212,0.05); padding:12px; border:1px solid rgba(6,182,212,0.2); border-radius:10px;">
+          <div class="section-title" style="color:var(--cyan); margin-bottom:8px;">Host's Video Settings</div>
+          <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;"><span style="color:var(--text-muted)">Quality:</span><span id="vhsQuality" style="font-weight:600">—</span></div>
+          <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;"><span style="color:var(--text-muted)">FPS:</span><span id="vhsFps" style="font-weight:600">—</span></div>
+          <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;"><span style="color:var(--text-muted)">Bitrate:</span><span id="vhsBitrate" style="font-weight:600">—</span></div>
+          <div style="display:flex; justify-content:space-between; font-size:12px;"><span style="color:var(--text-muted)">Stream Delay:</span><span id="vhsDelay" style="font-weight:600">—</span></div>
+        </div>
+
+        <!-- HOST-ONLY SETTINGS -->
         <div id="hostOnlySettings" style="display:none;">
-          <div class="section-title">Host Settings</div>
+          <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
+            Host Controls
+            <button onclick="window.replaceScreenShareBtn()" style="background:var(--surface); border:1px solid var(--glass-border); color:var(--text); padding:4px 8px; border-radius:6px; font-size:10px; cursor:pointer;">Change Screen</button>
+          </div>
           <div class="form-row">
-            <div class="form-group"><label>Quality</label><select class="form-select" id="scrResS" onchange="document.getElementById('scrRes').value=this.value"><option value="4k">4K</option><option value="2k">2K</option><option value="1080p" selected>1080p</option><option value="720p">720p</option></select></div>
-            <div class="form-group"><label>FPS</label><select class="form-select" id="scrFpsS" onchange="document.getElementById('scrFps').value=this.value"><option value="60">60 fps</option><option value="30" selected>30 fps</option><option value="24">24 fps</option></select></div>
+            <div class="form-group"><label>Quality</label><select class="form-select" id="scrResS" onchange="document.getElementById('scrRes').value=this.value; window.pushHostSettings();"><option value="4k">4K</option><option value="2k">2K</option><option value="1080p" selected>1080p</option><option value="720p">720p</option></select></div>
+            <div class="form-group"><label>FPS</label><select class="form-select" id="scrFpsS" onchange="document.getElementById('scrFps').value=this.value; window.pushHostSettings();"><option value="60">60 fps</option><option value="30" selected>30 fps</option><option value="24">24 fps</option></select></div>
           </div>
           <div class="form-group">
             <label style="display:flex;justify-content:space-between;">Bitrate <span id="bitrateValLabel">4 Mbps</span></label>
-            <input type="range" id="bitrateSliderS" min="1" max="12" value="4" step="0.5" oninput="document.getElementById('bitrateValLabel').textContent=this.value+' Mbps';document.getElementById('bitrateSlider').value=this.value;applyBitrateNow();" style="width:100%;height:4px;-webkit-appearance:none;appearance:none;background:var(--glass-border);border-radius:2px;cursor:pointer;outline:none;"/>
+            <input type="range" id="bitrateSliderS" min="1" max="12" value="4" step="0.5" oninput="document.getElementById('bitrateValLabel').textContent=this.value+' Mbps';document.getElementById('bitrateSlider').value=this.value;" onchange="applyBitrateNow(); window.pushHostSettings();" style="width:100%;height:4px;-webkit-appearance:none;appearance:none;background:var(--glass-border);border-radius:2px;cursor:pointer;outline:none;"/>
+          </div>
+          <div class="form-group">
+            <label style="display:flex;justify-content:space-between;">Stream Buffer <span id="delayValLabel" style="color:#fbbf24">0.05 s</span></label>
+            <input type="range" id="streamDelaySlider" min="0" max="2" value="0.05" step="0.1" oninput="document.getElementById('delayValLabel').textContent=this.value+' s';" onchange="window.pushHostSettings();" style="width:100%;height:4px;-webkit-appearance:none;appearance:none;background:var(--glass-border);border-radius:2px;cursor:pointer;outline:none;"/>
+            <div style="font-size:9px; color:var(--text-muted); margin-top:4px;">Increase buffer if users experience stuttering.</div>
           </div>
         </div>
         <div>
@@ -412,10 +436,6 @@ document.getElementById('remoteVideo')?.addEventListener('webkitendfullscreen',(
 window.togglePip=async()=>{const v=document.getElementById('remoteVideo');if(!v)return;if(document.pictureInPictureElement){await document.exitPictureInPicture();}else if(document.pictureInPictureEnabled){try{await v.requestPictureInPicture();}catch(_){}}};
 // Show PiP button if supported
 if(document.pictureInPictureEnabled)document.getElementById('pipBtn')?.style.removeProperty('display');
-
-/* EMOJI STRIP scroll */
-let emojiOffset=0;
-window.emojiScroll=dir=>{const inner=document.getElementById('emojiStripInner');if(!inner)return;emojiOffset=Math.max(0,Math.min(emojiOffset+dir*37,inner.scrollHeight-inner.clientHeight));inner.scrollTop=emojiOffset;};
 
 /* MODAL */
 window.toggleHostSettings=()=>{const b=document.getElementById('hostSettingsBody'),t=document.getElementById('hostToggle');b.classList.toggle('open');t.classList.toggle('open');};
