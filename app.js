@@ -12,13 +12,10 @@ import { getDatabase, ref, set, get, push, onValue, onChildAdded, remove }
 
 /* ── FIREBASE ── */
 const firebaseConfig = {
-  apiKey: "AIzaSyC9DF_8rB0VGJkh0JmI4veH-bCPjVsqP1E",
-  authDomain: "webrtc-d0526.firebaseapp.com",
-  databaseURL: "https://webrtc-d0526-default-rtdb.firebaseio.com",
-  projectId: "webrtc-d0526",
-  storageBucket: "webrtc-d0526.firebasestorage.app",
-  messagingSenderId: "1086279997400",
-  appId: "1:1086279997400:web:7a0c2e0e42b0bb777a91ff"
+  apiKey: "AIzaSyBGnFw13ko0b4KAs7plpFmHlg0GohowElA",
+  authDomain: "webrtc-cd5af.firebaseapp.com",
+  databaseURL: "https://webrtc-cd5af-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "webrtc-cd5af"
 };
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
@@ -26,7 +23,10 @@ const db = getDatabase(app);
 /* ── ICE / TURN ── */
 const servers = {
   iceServers: [
-    { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }
+    { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
+    { urls: "turn:82.25.104.130:3478", username: "akash", credential: "hostinger_vps_123" },
+    { urls: "turn:82.25.104.130:3478?transport=tcp", username: "akash", credential: "hostinger_vps_123" },
+    { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
   ]
 };
 
