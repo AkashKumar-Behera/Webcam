@@ -1,612 +1,265 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <title>Live Party — Watch Together</title>
-  <meta name="description" content="HD screen share watch party with chat & reactions. Watch movies, listen to music with friends." />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <link rel="manifest" href="manifest.json" />
-  <meta name="theme-color" content="#0a0a0a" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="description" content="HD screen share watch party with chat & reactions."/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+  <link rel="manifest" href="manifest.json"/>
+  <meta name="theme-color" content="#0a0a0a"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
   <meta name="mobile-web-app-capable" content="yes">
-  <link rel="apple-touch-icon" href="icon.png" />
+  <link rel="apple-touch-icon" href="icon.png"/>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL@20..48,100..700,0..1" rel="stylesheet" />
-
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL@20..48,100..700,0..1" rel="stylesheet"/>
   <style>
-    :root {
-      --bg: #0a0a0a;
-      --surface: rgba(255,255,255,0.06);
-      --surface-hover: rgba(255,255,255,0.1);
-      --glass-border: rgba(255,255,255,0.1);
-      --text: #f0f0f5;
-      --text-muted: rgba(255,255,255,0.45);
-      --accent: #10B981;
-      --accent-dim: rgba(16,185,129,0.15);
-      --accent-glow: rgba(16,185,129,0.3);
-      --red: #ef4444;
-      --cyan: #06B6D4;
-      --radius: 14px;
-      --radius-sm: 10px;
+    :root{--bg:#0a0a0a;--surface:rgba(255,255,255,0.06);--surface-hover:rgba(255,255,255,0.1);--glass-border:rgba(255,255,255,0.1);--text:#f0f0f5;--text-muted:rgba(255,255,255,0.45);--accent:#10B981;--accent-dim:rgba(16,185,129,0.15);--accent-glow:rgba(16,185,129,0.3);--red:#ef4444;--cyan:#06B6D4;--radius:14px;--radius-sm:10px;}
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{font-family:'Inter',-apple-system,sans-serif;background:var(--bg);color:var(--text);height:100vh;height:100dvh;overflow:hidden;}
+    .bg-gradient{position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(16,185,129,0.13) 0%,rgba(16,185,129,0.04) 40%,transparent 70%);}
+    .bg-pattern{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:0.35;background-image:radial-gradient(rgba(255,255,255,0.07) 1px,transparent 1px);background-size:24px 24px;}
+    .app-layout{display:flex;height:100vh;height:100dvh;position:relative;z-index:1;}
+    .main-col{flex:1;display:flex;flex-direction:column;min-width:0;}
+    .video-wrap{flex:1;position:relative;background:#000;overflow:hidden;min-height:0;}
+    #remoteVideo{width:100%;height:100%;object-fit:contain;background:transparent;}
+    #bgAudio{display:none;}
+    .no-signal{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;pointer-events:none;}
+    .no-signal.hidden{display:none;}
+    .no-signal .ns-icon{width:52px;height:52px;border-radius:12px;background:var(--surface);border:1px solid var(--glass-border);display:flex;align-items:center;justify-content:center;animation:float 3s ease-in-out infinite;}
+    .no-signal h3{font-size:15px;font-weight:600;}.no-signal p{font-size:12px;color:var(--text-muted);}
+    @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+    /* OVERLAY */
+    .overlay-top{position:absolute;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;z-index:5;pointer-events:none;}
+    .overlay-top>*{pointer-events:auto;}
+    .badge-row{display:flex;gap:6px;}
+    .badge{display:flex;align-items:center;gap:5px;padding:4px 10px;background:rgba(10,10,10,0.85);border:1px solid var(--glass-border);border-radius:16px;font-size:10px;font-weight:600;letter-spacing:0.5px;}
+    .badge .dot{width:5px;height:5px;border-radius:50%;background:var(--text-muted);}
+    .badge .dot.connected{background:var(--accent);box-shadow:0 0 4px var(--accent);}
+    .badge .dot.connecting{background:#fbbf24;animation:blink 1s infinite;}
+    .badge .dot.live{background:var(--red);animation:blink 1s infinite;}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+    .overlay-tags{display:flex;gap:5px;}
+    .overlay-tag{padding:3px 8px;background:rgba(10,10,10,0.85);border:1px solid var(--glass-border);border-radius:5px;font-size:9px;font-weight:600;letter-spacing:.8px;}
+    /* VIDEO BUTTONS (bottom-right) */
+    .video-btns{position:absolute;bottom:12px;right:12px;z-index:10;display:flex;flex-direction:column;gap:6px;}
+    .vbtn{width:36px;height:36px;border-radius:50%;background:rgba(10,10,10,0.75);border:1px solid var(--glass-border);color:var(--text);display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0.75;transition:all .15s;}
+    .vbtn:hover{background:rgba(30,30,30,0.9);opacity:1;}
+    .vbtn .material-symbols-outlined{font-size:19px;}
+    /* EMOJI STRIP — vertical, right side of video */
+    .emoji-strip{position:absolute;right:56px;top:50%;transform:translateY(-50%);z-index:10;display:flex;flex-direction:column;align-items:center;gap:2px;}
+    .emoji-scroll-btn{width:30px;height:24px;background:rgba(10,10,10,0.6);border:1px solid var(--glass-border);border-radius:6px;color:var(--text-muted);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:.15s;}
+    .emoji-scroll-btn:hover{background:rgba(40,40,40,0.9);color:var(--text);}
+    .emoji-scroll-btn .material-symbols-outlined{font-size:14px;}
+    .emoji-strip-inner{display:flex;flex-direction:column;gap:3px;overflow:hidden;max-height:240px;}
+    .emj-btn{width:34px;height:34px;border-radius:10px;border:none;background:rgba(10,10,10,0.6);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;border:1px solid transparent;transition:.15s;}
+    .emj-btn:hover{background:rgba(40,40,40,0.9);border-color:var(--glass-border);transform:scale(1.2);}
+    .emj-btn:active{transform:scale(.9);}
+    /* FULLSCREEN CHAT OVERLAY */
+    .fs-chat-overlay{position:absolute;bottom:56px;left:12px;right:100px;pointer-events:none;z-index:20;display:none;}
+    :fullscreen .fs-chat-overlay,:-webkit-full-screen .fs-chat-overlay{display:block;}
+    .fs-chat-msg{display:inline-block;background:rgba(0,0,0,0.72);color:#fff;padding:6px 14px;border-radius:20px;font-size:13px;margin:4px 0;animation:fsChatIn 4s ease-out forwards;max-width:100%;}
+    @keyframes fsChatIn{0%{opacity:0;transform:translateY(6px)}10%{opacity:1;transform:translateY(0)}70%{opacity:1}100%{opacity:0}}
+    .fs-chat-msg b{color:var(--accent);}
+    /* EMOJI FLOAT */
+    .emoji-overlay{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);z-index:6;width:260px;height:200px;pointer-events:none;overflow:visible;}
+    .emoji-float{position:absolute;bottom:0;font-size:28px;animation:emojiRise 2s ease-out forwards;pointer-events:none;}
+    @keyframes emojiRise{0%{opacity:1;transform:translateY(0) scale(0.5)}15%{opacity:1;transform:translateY(-20px) scale(1.1)}100%{opacity:0;transform:translateY(-180px) scale(0.6)}}
+    /* SIDE PANEL */
+    .side-panel{width:340px;display:flex;flex-direction:column;border-left:1px solid var(--glass-border);background:rgba(12,12,12,0.96);flex-shrink:0;}
+    .panel-tabs{display:flex;border-bottom:1px solid var(--glass-border);flex-shrink:0;}
+    .panel-tab{flex:1;padding:12px 6px;background:none;border:none;color:var(--text-muted);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;letter-spacing:.5px;text-transform:uppercase;border-bottom:2px solid transparent;transition:color .15s;position:relative;}
+    .panel-tab:hover{color:var(--text);}
+    .panel-tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+    .panel-content{flex:1;display:none;flex-direction:column;overflow:hidden;}
+    .panel-content.active{display:flex;}
+    /* BADGE on People tab */
+    .tab-badge{position:absolute;top:6px;right:6px;min-width:16px;height:16px;background:var(--red);color:#fff;border-radius:8px;font-size:10px;font-weight:700;display:none;align-items:center;justify-content:center;padding:0 3px;}
+    /* CHAT */
+    .chat-messages{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:8px;font-size:13px;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
+    .chat-msg{display:flex;flex-direction:column;gap:3px;}
+    .chat-msg-header{display:flex;align-items:center;gap:7px;}
+    .chat-av{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0;}
+    .chat-sender{font-weight:600;font-size:11px;flex:1;}
+    .chat-time{font-size:9px;color:var(--text-muted);}
+    .chat-bubble{padding:7px 12px;border-radius:10px;line-height:1.5;word-break:break-word;font-size:13px;margin-left:29px;}
+    .chat-bubble.me{background:var(--accent-dim);border-radius:10px 10px 3px 10px;}
+    .chat-bubble.other{background:var(--surface);border-radius:3px 10px 10px 10px;}
+    .chat-system{text-align:center;color:var(--text-muted);font-size:10px;font-style:italic;padding:2px 0;}
+    .chat-bottom{padding:10px 14px;border-top:1px solid var(--glass-border);display:flex;gap:8px;flex-shrink:0;}
+    .chat-input{flex:1;padding:9px 14px;border:1px solid var(--glass-border);border-radius:20px;background:var(--surface);color:var(--text);font-family:inherit;font-size:13px;outline:none;}
+    .chat-input:focus{border-color:var(--accent);}
+    .chat-input::placeholder{color:var(--text-muted);}
+    .chat-send{width:36px;height:36px;border-radius:50%;background:var(--accent);border:none;color:#000;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+    .chat-send:hover{opacity:.9;}
+    /* STATS */
+    .stats-wrap{padding:16px;display:flex;flex-direction:column;gap:12px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+    .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+    .stat-card{background:var(--surface);border:1px solid var(--glass-border);border-radius:var(--radius-sm);padding:10px;}
+    .stat-label{font-size:9px;font-weight:700;text-transform:uppercase;color:var(--text-muted);letter-spacing:.8px;}
+    .stat-value{font-size:18px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums;}
+    .stat-value .stat-unit{font-size:10px;font-weight:500;color:var(--text-muted);}
+    .bar-track{height:2px;background:var(--glass-border);border-radius:1px;margin-top:6px;overflow:hidden;}
+    .bar-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--cyan));border-radius:1px;transition:width .5s;}
+    /* SETTINGS */
+    .settings-wrap{padding:16px;display:flex;flex-direction:column;gap:18px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+    .section-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--text-muted);margin-bottom:6px;}
+    .form-group{margin-bottom:14px;}
+    .form-group label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px;}
+    .form-input{width:100%;padding:10px 14px;background:var(--surface);border:1px solid var(--glass-border);border-radius:8px;color:var(--text);font-family:inherit;font-size:13px;outline:none;}
+    .form-input:focus{border-color:var(--accent);}
+    .form-input::placeholder{color:var(--text-muted);}
+    .form-select{width:100%;padding:10px 14px;background:var(--surface);border:1px solid var(--glass-border);border-radius:8px;color:var(--text);font-family:inherit;font-size:13px;outline:none;}
+    .form-select option{background:#1a1a1a;}
+    .form-row{display:flex;gap:8px;}.form-row>*{flex:1;}
+    .volume-row{display:flex;align-items:center;gap:8px;}
+    .volume-row .material-symbols-outlined{font-size:18px;color:var(--text-muted);}
+    .volume-row label{font-size:12px;font-weight:500;min-width:42px;}
+    .volume-row input[type=range]{flex:1;height:3px;-webkit-appearance:none;appearance:none;background:var(--glass-border);border-radius:2px;outline:none;}
+    .volume-row input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--accent);cursor:pointer;}
+    .volume-row .vol-value{font-size:11px;color:var(--text-muted);min-width:30px;text-align:right;}
+    .action-btns{display:flex;flex-direction:column;gap:8px;}
+    .btn-action{width:100%;padding:12px;border-radius:10px;border:1px solid var(--glass-border);background:var(--surface);color:var(--text);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:background .15s;}
+    .btn-action:hover{background:var(--surface-hover);}
+    .btn-action .material-symbols-outlined{font-size:18px;}
+    .btn-action.host{background:var(--accent);border-color:var(--accent);color:#000;}
+    .btn-action.host:hover{opacity:.9;}
+    .btn-action.join{background:rgba(6,182,212,0.15);border-color:var(--cyan);color:var(--cyan);}
+    .btn-action.join:hover{background:rgba(6,182,212,0.25);}
+    .btn-action.end{background:var(--red);border-color:var(--red);color:white;}
+    .btn-action.share{background:rgba(16,185,129,0.1);border-color:var(--accent);color:var(--accent);}
+    .btn-action.share:hover{background:rgba(16,185,129,0.2);}
+    /* PEOPLE TAB */
+    .people-wrap{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:0;-webkit-overflow-scrolling:touch;}
+    .ppl-section{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);padding:10px 4px 6px;}
+    .ppl-item{display:flex;align-items:center;gap:10px;padding:8px 6px;border-radius:10px;transition:background .1s;}
+    .ppl-item:hover{background:var(--surface);}
+    .pending-item{background:rgba(251,191,36,0.05);border:1px solid rgba(251,191,36,0.2);border-radius:10px;margin-bottom:4px;}
+    .ppl-av{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:#fff;flex-shrink:0;}
+    .ppl-name{flex:1;font-size:13px;font-weight:500;}
+    .role-badge{font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;background:var(--accent-dim);color:var(--accent);letter-spacing:.5px;}
+    .ppl-btns{display:flex;gap:4px;}
+    .pa-btn{width:30px;height:30px;border-radius:8px;border:none;background:var(--surface);color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.15s;}
+    .pa-btn .material-symbols-outlined{font-size:16px;}
+    .pa-btn.approve{color:#4ade80;}.pa-btn.approve:hover{background:rgba(74,222,128,0.15);}
+    .pa-btn.deny{color:var(--red);}.pa-btn.deny:hover{background:rgba(239,68,68,0.15);}
+    .pa-btn.kick{color:#f59e0b;}.pa-btn.kick:hover{background:rgba(245,158,11,0.15);}
+    .ppl-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;height:100%;color:var(--text-muted);}
+    .ppl-empty .material-symbols-outlined{font-size:36px;}
+    .ppl-empty p{font-size:13px;}
+    /* TOAST */
+    #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(12px);background:rgba(18,18,18,0.95);border:1px solid var(--glass-border);padding:10px 22px;border-radius:10px;font-size:13px;font-weight:500;z-index:999;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;}
+    #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+    /* MODAL */
+    .modal-overlay{position:fixed;inset:0;z-index:500;background:rgba(0,0,0,0.82);display:flex;align-items:center;justify-content:center;padding:16px;}
+    .modal-overlay.hidden{display:none;}
+    .modal-card{background:#111;border:1px solid var(--glass-border);border-radius:20px;width:100%;max-width:420px;padding:28px 24px 24px;display:flex;flex-direction:column;gap:20px;box-shadow:0 32px 80px rgba(0,0,0,0.8);max-height:90vh;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+    .modal-header{text-align:center;}
+    .modal-logo{width:48px;height:48px;border-radius:14px;background:var(--accent-dim);border:1px solid var(--accent-glow);display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;}
+    .modal-logo .material-symbols-outlined{font-size:24px;color:var(--accent);}
+    .modal-header h1{font-size:20px;font-weight:800;}
+    .modal-header p{font-size:12px;color:var(--text-muted);margin-top:4px;}
+    .modal-divider{height:1px;background:var(--glass-border);}
+    .modal-section-title{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.4px;color:var(--text-muted);margin-bottom:10px;}
+    .modal-input{width:100%;padding:11px 14px;background:rgba(255,255,255,0.05);border:1px solid var(--glass-border);border-radius:10px;color:var(--text);font-family:inherit;font-size:14px;outline:none;transition:border-color .15s;}
+    .modal-input:focus{border-color:var(--accent);}
+    .modal-input::placeholder{color:var(--text-muted);}
+    .modal-room-row{display:flex;gap:8px;}
+    .modal-room-row .modal-input{flex:1;}
+    .modal-gen-btn{padding:11px 14px;background:var(--surface);border:1px solid var(--glass-border);border-radius:10px;color:var(--text-muted);font-family:inherit;cursor:pointer;display:flex;align-items:center;transition:.15s;flex-shrink:0;}
+    .modal-gen-btn:hover{background:var(--surface-hover);color:var(--text);}
+    .modal-gen-btn .material-symbols-outlined{font-size:18px;}
+    .modal-host-settings{border:1px solid var(--glass-border);border-radius:10px;overflow:hidden;}
+    .modal-host-toggle{width:100%;padding:10px 14px;background:var(--surface);border:none;color:var(--text-muted);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:space-between;text-align:left;transition:.15s;}
+    .modal-host-toggle:hover{background:var(--surface-hover);color:var(--text);}
+    .modal-host-toggle .material-symbols-outlined{font-size:16px;transition:transform .2s;}
+    .modal-host-toggle.open .material-symbols-outlined{transform:rotate(180deg);}
+    .modal-host-body{display:none;padding:14px;border-top:1px solid var(--glass-border);background:rgba(0,0,0,0.2);flex-direction:column;gap:12px;}
+    .modal-host-body.open{display:flex;}
+    .modal-actions{display:flex;flex-direction:column;gap:8px;}
+    .modal-btn{width:100%;padding:13px;border-radius:12px;border:1px solid var(--glass-border);background:var(--surface);color:var(--text);font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px;transition:all .15s;}
+    .modal-btn .material-symbols-outlined{font-size:20px;}
+    .modal-btn.host-btn{background:var(--accent);border-color:var(--accent);color:#000;}
+    .modal-btn.host-btn:hover{opacity:.9;}
+    .modal-btn.join-btn{background:rgba(6,182,212,0.12);border-color:var(--cyan);color:var(--cyan);}
+    .modal-btn.join-btn:hover{background:rgba(6,182,212,0.22);}
+    /* MOBILE */
+    @media(max-width:768px){
+      .bg-pattern{display:none;}
+      .app-layout{flex-direction:column;}
+      .main-col{flex:none;}
+      .video-wrap{height:35vh;border-radius:0;}
+      .side-panel{width:100%;flex:1;border-left:none;border-top:1px solid var(--glass-border);overflow:hidden;}
+      .emoji-float{animation-duration:1.5s;}
     }
-    * { margin:0; padding:0; box-sizing:border-box; }
-
-    body {
-      font-family: 'Inter', -apple-system, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      height: 100vh; height: 100dvh;
-      overflow: hidden;
-    }
-
-    /* ── BG ── */
-    .bg-gradient {
-      position:fixed; inset:0; z-index:0; pointer-events:none;
-      background: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(16,185,129,0.13) 0%, rgba(16,185,129,0.04) 40%, transparent 70%);
-    }
-    .bg-pattern {
-      position:fixed; inset:0; z-index:0; pointer-events:none; opacity:0.35;
-      background-image: radial-gradient(rgba(255,255,255,0.07) 1px, transparent 1px);
-      background-size: 24px 24px;
-    }
-
-    /* ═══════════ DESKTOP: 2-COLUMN LAYOUT ═══════════ */
-    .app-layout {
-      display: flex;
-      height: 100vh; height: 100dvh;
-      position: relative;
-      z-index: 1;
-    }
-
-    /* ── LEFT: VIDEO AREA ── */
-    .main-col {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      min-width: 0;
-    }
-
-    .video-wrap {
-      flex: 1;
-      position: relative;
-      background: #000;
-      border-radius: 0 0 var(--radius) 0;
-      overflow: hidden;
-      min-height: 0;
-    }
-    #remoteVideo {
-      width: 100%; height: 100%;
-      object-fit: contain;
-      background: transparent;
-    }
-    #bgAudio { display: none; }
-
-    .no-signal {
-      position:absolute; inset:0;
-      display:flex; flex-direction:column;
-      align-items:center; justify-content:center;
-      gap:12px; pointer-events:none;
-    }
-    .no-signal.hidden { display:none; }
-    .no-signal .ns-icon {
-      width:52px; height:52px; border-radius:12px;
-      background:var(--surface); border:1px solid var(--glass-border);
-      display:flex; align-items:center; justify-content:center;
-      animation: float 3s ease-in-out infinite;
-    }
-    .no-signal h3 { font-size:15px; font-weight:600; }
-    .no-signal p { font-size:12px; color:var(--text-muted); }
-    @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
-
-    /* Badges */
-    .overlay-top {
-      position:absolute; top:12px; left:12px; right:12px;
-      display:flex; justify-content:space-between; z-index:5; pointer-events:none;
-    }
-    .overlay-top > * { pointer-events:auto; }
-    .badge-row { display:flex; gap:6px; }
-    .badge {
-      display:flex; align-items:center; gap:5px;
-      padding:4px 10px;
-      background:rgba(10,10,10,0.85);
-      border:1px solid var(--glass-border);
-      border-radius:16px;
-      font-size:10px; font-weight:600; letter-spacing:0.5px;
-    }
-    .badge .dot { width:5px; height:5px; border-radius:50%; background:var(--text-muted); }
-    .badge .dot.connected { background:var(--accent); box-shadow:0 0 4px var(--accent); }
-    .badge .dot.connecting { background:#fbbf24; animation:blink 1s infinite; }
-    .badge .dot.live { background:var(--red); animation:blink 1s infinite; }
-    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
-    .overlay-tags { display:flex; gap:5px; }
-    .overlay-tag {
-      padding:3px 8px; background:rgba(10,10,10,0.85);
-      border:1px solid var(--glass-border); border-radius:5px;
-      font-size:9px; font-weight:600; letter-spacing:.8px;
-    }
-
-    /* Fullscreen button on video */
-    .btn-fullscreen {
-      position: absolute;
-      bottom: 12px;
-      right: 12px;
-      z-index: 10;
-      width: 36px; height: 36px;
-      border-radius: 50%;
-      background: rgba(10,10,10,0.75);
-      border: 1px solid var(--glass-border);
-      color: var(--text);
-      display: flex; align-items: center; justify-content: center;
-      cursor: pointer;
-      transition: background .15s, opacity .15s;
-      opacity: 0.7;
-    }
-    .btn-fullscreen:hover { background: rgba(30,30,30,0.9); opacity: 1; }
-    .btn-fullscreen .material-symbols-outlined { font-size: 20px; }
-
-    /* Emoji overlay */
-    .emoji-overlay {
-      position:absolute; bottom:10px; left:50%; transform:translateX(-50%);
-      z-index:6; width:260px; height:200px;
-      pointer-events:none; overflow:visible;
-    }
-    .emoji-float {
-      position:absolute; bottom:0; font-size:28px;
-      animation: emojiRise 2s ease-out forwards;
-      pointer-events:none;
-    }
-    @keyframes emojiRise {
-      0%   { opacity:1; transform:translateY(0) scale(0.5); }
-      15%  { opacity:1; transform:translateY(-20px) scale(1.1); }
-      100% { opacity:0; transform:translateY(-180px) scale(0.6); }
-    }
-
-    /* ── RIGHT: SIDE PANEL (always visible) ── */
-    .side-panel {
-      width: 340px;
-      display: flex;
-      flex-direction: column;
-      border-left: 1px solid var(--glass-border);
-      background: rgba(12,12,12,0.96);
-      flex-shrink: 0;
-    }
-
-    .panel-tabs {
-      display:flex; border-bottom:1px solid var(--glass-border); flex-shrink:0;
-    }
-    .panel-tab {
-      flex:1; padding:12px; background:none; border:none;
-      color:var(--text-muted);
-      font-family:inherit; font-size:11px; font-weight:600;
-      cursor:pointer; letter-spacing:.5px; text-transform:uppercase;
-      border-bottom:2px solid transparent;
-      transition: color .15s;
-    }
-    .panel-tab:hover { color:var(--text); }
-    .panel-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
-
-    .panel-content { flex:1; display:none; flex-direction:column; overflow:hidden; }
-    .panel-content.active { display:flex; }
-
-    /* Chat tab */
-    .chat-messages {
-      flex:1; overflow-y:auto; padding:14px 16px;
-      display:flex; flex-direction:column; gap:8px; font-size:13px;
-      /* iOS Safari scroll fix */
-      -webkit-overflow-scrolling: touch;
-      overscroll-behavior: contain;
-    }
-    .chat-msg { display:flex; flex-direction:column; gap:2px; }
-    .chat-msg-header { display:flex; justify-content:space-between; align-items:flex-end; }
-    .chat-sender { font-weight:600; font-size:11px; }
-    .chat-time { font-size:9px; color:var(--text-muted); }
-    .chat-bubble { padding:7px 12px; border-radius:10px; line-height:1.5; word-break:break-word; font-size:13px; }
-    .chat-bubble.me { background:var(--accent-dim); border-radius:10px 10px 3px 10px; }
-    .chat-bubble.other { background:var(--surface); border-radius:3px 10px 10px 10px; }
-    /* System/join message style */
-    .chat-system {
-      text-align:center; color:var(--text-muted);
-      font-size:10px; font-style:italic;
-      padding: 2px 0;
-    }
-
-    .chat-bottom {
-      padding:10px 14px;
-      border-top:1px solid var(--glass-border);
-      display:flex; flex-direction:column; gap:8px;
-      flex-shrink: 0;
-    }
-    .chat-input-row { display:flex; gap:8px; }
-    .chat-input {
-      flex:1; padding:9px 14px;
-      border:1px solid var(--glass-border); border-radius:20px;
-      background:var(--surface); color:var(--text);
-      font-family:inherit; font-size:13px; outline:none;
-    }
-    .chat-input:focus { border-color:var(--accent); }
-    .chat-input::placeholder { color:var(--text-muted); }
-    .chat-send {
-      width:36px; height:36px; border-radius:50%;
-      background:var(--accent); border:none; color:#000;
-      cursor:pointer; display:flex; align-items:center; justify-content:center;
-      flex-shrink:0;
-    }
-    .chat-send:hover { opacity:.9; }
-
-    .emoji-bar-panel {
-      display:flex; gap:2px; justify-content:center;
-    }
-    .emoji-btn {
-      width:32px; height:32px; border-radius:50%;
-      border:none; background:transparent;
-      font-size:17px; cursor:pointer;
-      display:flex; align-items:center; justify-content:center;
-    }
-    .emoji-btn:hover { background:var(--surface-hover); transform:scale(1.2); }
-    .emoji-btn:active { transform:scale(.9); }
-
-    /* Stats tab */
-    .stats-wrap { padding:16px; display:flex; flex-direction:column; gap:12px; overflow-y:auto; -webkit-overflow-scrolling: touch; }
-    .stat-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-    .stat-card {
-      background:var(--surface); border:1px solid var(--glass-border);
-      border-radius:var(--radius-sm); padding:10px;
-    }
-    .stat-label { font-size:9px; font-weight:700; text-transform:uppercase; color:var(--text-muted); letter-spacing:.8px; }
-    .stat-value { font-size:18px; font-weight:700; margin-top:3px; font-variant-numeric:tabular-nums; }
-    .stat-value .stat-unit { font-size:10px; font-weight:500; color:var(--text-muted); }
-    .bar-track { height:2px; background:var(--glass-border); border-radius:1px; margin-top:6px; overflow:hidden; }
-    .bar-fill { height:100%; background:linear-gradient(90deg,var(--accent),var(--cyan)); border-radius:1px; transition:width .5s; }
-
-    /* Settings tab */
-    .settings-wrap { padding:16px; display:flex; flex-direction:column; gap:18px; overflow-y:auto; -webkit-overflow-scrolling: touch; }
-    .section-title {
-      font-size:10px; font-weight:700; text-transform:uppercase;
-      letter-spacing:1.2px; color:var(--text-muted); margin-bottom:6px;
-    }
-    .form-group { margin-bottom:14px; }
-    .form-group label {
-      display:block; font-size:11px; font-weight:700;
-      text-transform:uppercase; letter-spacing:1px;
-      color:var(--text-muted); margin-bottom:6px;
-    }
-    .form-input {
-      width:100%; padding:10px 14px;
-      background:var(--surface); border:1px solid var(--glass-border);
-      border-radius:8px; color:var(--text);
-      font-family:inherit; font-size:13px; outline:none;
-    }
-    .form-input:focus { border-color:var(--accent); }
-    .form-input::placeholder { color:var(--text-muted); }
-    .form-select {
-      width:100%; padding:10px 14px;
-      background:var(--surface); border:1px solid var(--glass-border);
-      border-radius:8px; color:var(--text);
-      font-family:inherit; font-size:13px; outline:none;
-    }
-    .form-select option { background:#1a1a1a; }
-    .form-row { display:flex; gap:8px; }
-    .form-row > * { flex:1; }
-
-    .volume-row { display:flex; align-items:center; gap:8px; }
-    .volume-row .material-symbols-outlined { font-size:18px; color:var(--text-muted); }
-    .volume-row label { font-size:12px; font-weight:500; min-width:42px; }
-    .volume-row input[type=range] {
-      flex:1; height:3px; -webkit-appearance:none; appearance:none;
-      background:var(--glass-border); border-radius:2px; outline:none;
-    }
-    .volume-row input[type=range]::-webkit-slider-thumb {
-      -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
-      background:var(--accent); cursor:pointer;
-    }
-    .volume-row .vol-value { font-size:11px; color:var(--text-muted); min-width:30px; text-align:right; }
-
-    .action-btns { display:flex; flex-direction:column; gap:8px; }
-    .btn-action {
-      width:100%; padding:12px;
-      border-radius:10px; border:1px solid var(--glass-border);
-      background:var(--surface); color:var(--text);
-      font-family:inherit; font-size:13px; font-weight:600;
-      cursor:pointer;
-      display:flex; align-items:center; justify-content:center; gap:8px;
-      transition: background .15s;
-    }
-    .btn-action:hover { background:var(--surface-hover); }
-    .btn-action .material-symbols-outlined { font-size:18px; }
-    .btn-action.host { background:var(--accent); border-color:var(--accent); color:#000; }
-    .btn-action.host:hover { opacity:.9; }
-    .btn-action.join { background:rgba(6,182,212,0.15); border-color:var(--cyan); color:var(--cyan); }
-    .btn-action.join:hover { background:rgba(6,182,212,0.25); }
-    .btn-action.end { background:var(--red); border-color:var(--red); color:white; }
-    .btn-action.share { background:rgba(16,185,129,0.1); border-color:var(--accent); color:var(--accent); }
-    .btn-action.share:hover { background:rgba(16,185,129,0.2); }
-
-    /* Toast */
-    #toast {
-      position:fixed; bottom:24px; left:50%;
-      transform:translateX(-50%) translateY(12px);
-      background:rgba(18,18,18,0.95);
-      border:1px solid var(--glass-border);
-      padding:10px 22px; border-radius:10px;
-      font-size:13px; font-weight:500;
-      z-index:999; opacity:0; pointer-events:none;
-      transition: opacity .2s, transform .2s;
-    }
-    #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
-
-    /* ═══════════ ONBOARDING MODAL ═══════════ */
-    .modal-overlay {
-      position:fixed; inset:0; z-index:500;
-      background: rgba(0,0,0,0.82);
-      display:flex; align-items:center; justify-content:center;
-      padding: 16px;
-    }
-    .modal-overlay.hidden { display:none; }
-
-    .modal-card {
-      background: #111;
-      border: 1px solid var(--glass-border);
-      border-radius: 20px;
-      width: 100%;
-      max-width: 420px;
-      padding: 28px 24px 24px;
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-      box-shadow: 0 32px 80px rgba(0,0,0,0.8);
-      max-height: 90vh;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-
-    .modal-header {
-      text-align: center;
-    }
-    .modal-logo {
-      width: 48px; height: 48px;
-      border-radius: 14px;
-      background: var(--accent-dim);
-      border: 1px solid var(--accent-glow);
-      display: inline-flex; align-items: center; justify-content:center;
-      margin-bottom: 12px;
-    }
-    .modal-logo .material-symbols-outlined { font-size: 24px; color: var(--accent); }
-    .modal-header h1 { font-size: 20px; font-weight: 800; }
-    .modal-header p { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
-
-    .modal-divider {
-      height: 1px;
-      background: var(--glass-border);
-      margin: 0 -4px;
-    }
-
-    .modal-section-title {
-      font-size: 9px; font-weight: 700; text-transform: uppercase;
-      letter-spacing: 1.4px; color: var(--text-muted);
-      margin-bottom: 10px;
-    }
-
-    .modal-input {
-      width: 100%; padding: 11px 14px;
-      background: rgba(255,255,255,0.05);
-      border: 1px solid var(--glass-border);
-      border-radius: 10px;
-      color: var(--text); font-family: inherit; font-size: 14px;
-      outline: none; transition: border-color .15s;
-    }
-    .modal-input:focus { border-color: var(--accent); }
-    .modal-input::placeholder { color: var(--text-muted); }
-
-    .modal-room-row {
-      display: flex; gap: 8px;
-    }
-    .modal-room-row .modal-input { flex: 1; }
-    .modal-gen-btn {
-      padding: 11px 14px;
-      background: var(--surface); border: 1px solid var(--glass-border);
-      border-radius: 10px; color: var(--text-muted);
-      font-family: inherit; cursor: pointer;
-      display: flex; align-items: center;
-      transition: background .15s, color .15s;
-      flex-shrink: 0;
-    }
-    .modal-gen-btn:hover { background: var(--surface-hover); color: var(--text); }
-    .modal-gen-btn .material-symbols-outlined { font-size: 18px; }
-
-    /* Host advanced settings accordion inside modal */
-    .modal-host-settings {
-      border: 1px solid var(--glass-border);
-      border-radius: 10px;
-      overflow: hidden;
-    }
-    .modal-host-toggle {
-      width: 100%; padding: 10px 14px;
-      background: var(--surface); border: none; color: var(--text-muted);
-      font-family: inherit; font-size: 12px; font-weight: 600;
-      cursor: pointer; display: flex; align-items: center; justify-content: space-between;
-      text-align: left;
-      transition: background .15s, color .15s;
-    }
-    .modal-host-toggle:hover { background: var(--surface-hover); color: var(--text); }
-    .modal-host-toggle .material-symbols-outlined { font-size: 16px; transition: transform .2s; }
-    .modal-host-toggle.open .material-symbols-outlined { transform: rotate(180deg); }
-    .modal-host-body {
-      display: none;
-      padding: 14px;
-      border-top: 1px solid var(--glass-border);
-      background: rgba(0,0,0,0.2);
-      flex-direction: column;
-      gap: 12px;
-    }
-    .modal-host-body.open { display: flex; }
-
-    .modal-actions {
-      display: flex; flex-direction: column; gap: 8px;
-    }
-    .modal-btn {
-      width: 100%; padding: 13px;
-      border-radius: 12px; border: 1px solid var(--glass-border);
-      background: var(--surface); color: var(--text);
-      font-family: inherit; font-size: 14px; font-weight: 700;
-      cursor: pointer;
-      display: flex; align-items: center; justify-content: center; gap: 9px;
-      transition: all .15s;
-    }
-    .modal-btn .material-symbols-outlined { font-size: 20px; }
-    .modal-btn.host-btn {
-      background: var(--accent); border-color: var(--accent); color: #000;
-    }
-    .modal-btn.host-btn:hover { opacity: .9; }
-    .modal-btn.join-btn {
-      background: rgba(6,182,212,0.12); border-color: var(--cyan); color: var(--cyan);
-    }
-    .modal-btn.join-btn:hover { background: rgba(6,182,212,0.22); }
-
-    /* ═══════════ MOBILE: STACKED LAYOUT ═══════════ */
-    @media (max-width:768px) {
-      .bg-pattern { display:none; }
-
-      .app-layout { flex-direction:column; }
-
-      .main-col { flex: none; }
-      .video-wrap {
-        height: 35vh;
-        border-radius: 0;
-      }
-
-      .side-panel {
-        width:100%; flex:1;
-        border-left:none; border-top:1px solid var(--glass-border);
-        /* iOS fix: make it scroll its own content via children, not here */
-        overflow: hidden;
-      }
-
-      .emoji-float { animation-duration:1.5s; }
-    }
-
-    @media (max-width:480px) {
-      .video-wrap { height:30vh; }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      *,*::before,*::after { animation-duration:.01ms!important; transition-duration:.01ms!important; }
-    }
-
-    ::-webkit-scrollbar { width:3px; }
-    ::-webkit-scrollbar-track { background:transparent; }
-    ::-webkit-scrollbar-thumb { background:var(--glass-border); border-radius:2px; }
+    @media(max-width:480px){.video-wrap{height:30vh;}}
+    @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;}}
+    ::-webkit-scrollbar{width:3px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--glass-border);border-radius:2px;}
   </style>
 </head>
 <body>
-
 <div class="bg-gradient"></div>
 <div class="bg-pattern"></div>
 
-<!-- ═══════ ONBOARDING MODAL ═══════ -->
+<!-- ONBOARDING MODAL -->
 <div class="modal-overlay" id="modalOverlay">
   <div class="modal-card">
-    <!-- Header -->
     <div class="modal-header">
-      <div class="modal-logo">
-        <span class="material-symbols-outlined">screen_share</span>
-      </div>
-      <h1>Live Party 🍿</h1>
-      <p>Watch together in real-time</p>
+      <div class="modal-logo"><span class="material-symbols-outlined">screen_share</span></div>
+      <h1>Live Party 🍿</h1><p>Watch together in real-time</p>
     </div>
-
     <div class="modal-divider"></div>
-
-    <!-- Identity -->
     <div>
-      <div class="modal-section-title">Your Identity</div>
-      <input class="modal-input" id="modalName" placeholder="Your name (e.g. Akash)" autocomplete="off" spellcheck="false" />
+      <div class="modal-section-title">Your Name</div>
+      <input class="modal-input" id="modalName" placeholder="e.g. Akash" autocomplete="off" spellcheck="false"/>
     </div>
-
-    <!-- Room -->
     <div>
       <div class="modal-section-title">Room Code</div>
       <div class="modal-room-row">
-        <input class="modal-input" id="modalRoom" placeholder="Enter or generate a code" maxlength="12" autocomplete="off" spellcheck="false" />
-        <button class="modal-gen-btn" onclick="modalGenerateRoom()" title="Generate random room code">
-          <span class="material-symbols-outlined">autorenew</span>
-        </button>
+        <input class="modal-input" id="modalRoom" placeholder="Enter or generate a code" maxlength="12" autocomplete="off" spellcheck="false"/>
+        <button class="modal-gen-btn" onclick="modalGenerateRoom()"><span class="material-symbols-outlined">autorenew</span></button>
       </div>
     </div>
-
     <div class="modal-divider"></div>
-
-    <!-- Host advanced settings (collapsed by default) -->
     <div>
       <div class="modal-host-settings">
         <button class="modal-host-toggle" id="hostToggle" onclick="toggleHostSettings()">
-          <span>⚙️ Host Settings (optional)</span>
-          <span class="material-symbols-outlined">expand_more</span>
+          <span>⚙️ Host Settings (optional)</span><span class="material-symbols-outlined">expand_more</span>
         </button>
         <div class="modal-host-body" id="hostSettingsBody">
           <div>
-            <div class="modal-section-title">Screen Quality &amp; FPS</div>
+            <div class="modal-section-title">Quality &amp; FPS</div>
             <div class="form-row">
-              <div>
-                <select class="form-select" id="scrRes">
-                  <option value="4k">4K</option>
-                  <option value="2k">2K</option>
-                  <option value="1080p" selected>1080p</option>
-                  <option value="720p">720p</option>
-                </select>
-              </div>
-              <div>
-                <select class="form-select" id="scrFps">
-                  <option value="60">60 fps</option>
-                  <option value="30" selected>30 fps</option>
-                  <option value="24">24 fps</option>
-                </select>
-              </div>
+              <select class="form-select" id="scrRes"><option value="4k">4K</option><option value="2k">2K</option><option value="1080p" selected>1080p</option><option value="720p">720p</option></select>
+              <select class="form-select" id="scrFps"><option value="60">60 fps</option><option value="30" selected>30 fps</option><option value="24">24 fps</option></select>
             </div>
           </div>
           <div>
-            <div class="modal-section-title" style="display:flex; justify-content:space-between;">
-              Bitrate <span id="modalBitrateLabel">4 Mbps</span>
-            </div>
-            <input type="range" id="bitrateSlider" min="1" max="12" value="4" step="0.5"
-              oninput="document.getElementById('modalBitrateLabel').textContent = this.value + ' Mbps';
-                       document.getElementById('bitrateValLabel').textContent = this.value + ' Mbps';"
-              style="width:100%; height:4px; -webkit-appearance:none; appearance:none; background:var(--glass-border); border-radius:2px; cursor:pointer; outline:none;" />
+            <div class="modal-section-title" style="display:flex;justify-content:space-between;">Bitrate <span id="modalBitrateLabel">4 Mbps</span></div>
+            <input type="range" id="bitrateSlider" min="1" max="12" value="4" step="0.5" oninput="document.getElementById('modalBitrateLabel').textContent=this.value+' Mbps';document.getElementById('bitrateValLabel').textContent=this.value+' Mbps';" style="width:100%;height:4px;-webkit-appearance:none;appearance:none;background:var(--glass-border);border-radius:2px;cursor:pointer;outline:none;"/>
           </div>
         </div>
       </div>
     </div>
-
-    <!-- CTA Buttons -->
     <div class="modal-actions">
-      <button class="modal-btn host-btn" onclick="modalStartHost()">
-        <span class="material-symbols-outlined">cast</span> Start Host Session
-      </button>
-      <button class="modal-btn join-btn" onclick="modalJoin()">
-        <span class="material-symbols-outlined">login</span> Join Watch Party
-      </button>
+      <button class="modal-btn host-btn" onclick="modalStartHost()"><span class="material-symbols-outlined">cast</span> Start Host Session</button>
+      <button class="modal-btn join-btn" onclick="modalJoin()"><span class="material-symbols-outlined">login</span> Join Watch Party</button>
     </div>
   </div>
 </div>
 
-<!-- ═══════ MAIN APP ═══════ -->
+<!-- MAIN APP -->
 <div class="app-layout">
-  <!-- LEFT: VIDEO -->
   <div class="main-col">
     <div class="video-wrap">
       <video id="remoteVideo" autoplay playsinline></video>
       <audio id="bgAudio"></audio>
-
       <div class="no-signal" id="noSignal">
-        <div class="ns-icon">
-          <span class="material-symbols-outlined" style="font-size:24px; color:var(--accent);">screen_share</span>
-        </div>
-        <h3>Waiting for Screen Share</h3>
-        <p>Connect to join or host a session</p>
+        <div class="ns-icon"><span class="material-symbols-outlined" style="font-size:24px;color:var(--accent);">screen_share</span></div>
+        <h3>Waiting for Screen Share</h3><p>Connect to join or host a session</p>
       </div>
-
       <div class="overlay-top">
         <div class="badge-row">
           <div class="badge"><span class="dot" id="connDot"></span><span id="connLabel">DISCONNECTED</span></div>
@@ -617,48 +270,53 @@
           <span class="overlay-tag" id="qualityTag" style="display:none;">—</span>
         </div>
       </div>
-
-      <!-- Fullscreen button -->
-      <button class="btn-fullscreen" id="btnFullscreen" onclick="toggleFullscreen()" title="Fullscreen">
-        <span class="material-symbols-outlined" id="fsIcon">fullscreen</span>
-      </button>
-
+      <!-- Vertical emoji strip -->
+      <div class="emoji-strip" id="emojiStrip">
+        <button class="emoji-scroll-btn" onclick="emojiScroll(-1)"><span class="material-symbols-outlined">keyboard_arrow_up</span></button>
+        <div class="emoji-strip-inner" id="emojiStripInner">
+          <button class="emj-btn" onclick="sendReaction('🎉')">🎉</button>
+          <button class="emj-btn" onclick="sendReaction('❤️')">❤️</button>
+          <button class="emj-btn" onclick="sendReaction('👍')">👍</button>
+          <button class="emj-btn" onclick="sendReaction('😂')">😂</button>
+          <button class="emj-btn" onclick="sendReaction('👏')">👏</button>
+          <button class="emj-btn" onclick="sendReaction('🔥')">🔥</button>
+          <button class="emj-btn" onclick="sendReaction('😍')">😍</button>
+          <button class="emj-btn" onclick="sendReaction('💯')">💯</button>
+        </div>
+        <button class="emoji-scroll-btn" onclick="emojiScroll(1)"><span class="material-symbols-outlined">keyboard_arrow_down</span></button>
+      </div>
+      <!-- Video control buttons -->
+      <div class="video-btns">
+        <button class="vbtn" onclick="toggleFullscreen()" title="Fullscreen"><span class="material-symbols-outlined" id="fsIcon">fullscreen</span></button>
+        <button class="vbtn" id="pipBtn" onclick="togglePip()" title="Picture-in-Picture" style="display:none"><span class="material-symbols-outlined">picture_in_picture</span></button>
+      </div>
+      <!-- Fullscreen floating chat overlay -->
+      <div class="fs-chat-overlay" id="fullscreenChatOverlay"></div>
       <div class="emoji-overlay" id="emojiOverlay"></div>
     </div>
   </div>
 
-  <!-- RIGHT: SIDE PANEL -->
+  <!-- SIDE PANEL -->
   <div class="side-panel">
     <div class="panel-tabs">
       <button class="panel-tab active" onclick="switchTab('chat')" id="tabChat">Chat</button>
       <button class="panel-tab" onclick="switchTab('stats')" id="tabStats">Stats</button>
       <button class="panel-tab" onclick="switchTab('settings')" id="tabSettings">Settings</button>
+      <button class="panel-tab" onclick="switchTab('people')" id="tabPeople" style="position:relative;">People<span class="tab-badge" id="peopleBadge">0</span></button>
     </div>
 
-    <!-- CHAT TAB -->
+    <!-- CHAT -->
     <div class="panel-content active" id="contentChat">
       <div class="chat-messages" id="chatMessages">
-        <div style="text-align:center; color:var(--text-muted); margin-top:30px; font-size:11px;">💬 Messages visible to everyone</div>
+        <div style="text-align:center;color:var(--text-muted);margin-top:30px;font-size:11px;">💬 Messages visible to everyone</div>
       </div>
       <div class="chat-bottom">
-        <div class="emoji-bar-panel">
-          <button class="emoji-btn" onclick="sendReaction('🎉')">🎉</button>
-          <button class="emoji-btn" onclick="sendReaction('❤️')">❤️</button>
-          <button class="emoji-btn" onclick="sendReaction('👍')">👍</button>
-          <button class="emoji-btn" onclick="sendReaction('😂')">😂</button>
-          <button class="emoji-btn" onclick="sendReaction('👏')">👏</button>
-          <button class="emoji-btn" onclick="sendReaction('🔥')">🔥</button>
-        </div>
-        <div class="chat-input-row">
-          <input class="chat-input" id="chatInput" placeholder="Type a message..." onkeypress="if(event.key==='Enter') sendChat()" />
-          <button class="chat-send" onclick="sendChat()">
-            <span class="material-symbols-outlined" style="font-size:17px;">send</span>
-          </button>
-        </div>
+        <input class="chat-input" id="chatInput" placeholder="Type a message..." onkeypress="if(event.key==='Enter')sendChat()"/>
+        <button class="chat-send" onclick="sendChat()"><span class="material-symbols-outlined" style="font-size:17px;">send</span></button>
       </div>
     </div>
 
-    <!-- STATS TAB -->
+    <!-- STATS -->
     <div class="panel-content" id="contentStats">
       <div class="stats-wrap">
         <div class="stat-grid">
@@ -666,267 +324,116 @@
           <div class="stat-card"><div class="stat-label">FPS</div><div class="stat-value" id="statFps">—</div></div>
           <div class="stat-card"><div class="stat-label">Resolution</div><div class="stat-value" id="statRes">—</div></div>
           <div class="stat-card"><div class="stat-label">Latency</div><div class="stat-value" id="statRtt">—</div></div>
-          <div class="stat-card"><div class="stat-label">Codec</div><div class="stat-value" id="statCodec">—</div></div>
+          <div class="stat-card"><div class="stat-label">Status</div><div class="stat-value" id="statCodec">—</div></div>
           <div class="stat-card"><div class="stat-label">Packet Loss</div><div class="stat-value" id="statLoss">—</div></div>
           <div class="stat-card" style="grid-column:1/-1;"><div class="stat-label">Duration</div><div class="stat-value" id="statDuration">00:00:00</div></div>
         </div>
       </div>
     </div>
 
-    <!-- SETTINGS TAB -->
+    <!-- SETTINGS -->
     <div class="panel-content" id="contentSettings">
       <div class="settings-wrap">
         <div>
           <div class="section-title">Connection</div>
-          <div class="form-group">
-            <label>Your Name</label>
-            <input class="form-input" id="userName" placeholder="Enter name" spellcheck="false" />
-          </div>
-          <div class="form-group">
-            <label>Room Code</label>
-            <div style="display:flex; gap:6px;">
-              <input class="form-input" id="roomId" placeholder="Enter room code" maxlength="12" spellcheck="false" style="flex:1;" />
-              <button class="btn-action" onclick="generateRoom()" style="width:42px; padding:0; flex-shrink:0;">
-                <span class="material-symbols-outlined">autorenew</span>
-              </button>
+          <div class="form-group"><label>Your Name</label><input class="form-input" id="userName" placeholder="Enter name" spellcheck="false"/></div>
+          <div class="form-group"><label>Room Code</label>
+            <div style="display:flex;gap:6px;">
+              <input class="form-input" id="roomId" placeholder="Enter room code" maxlength="12" spellcheck="false" style="flex:1;"/>
+              <button class="btn-action" onclick="generateRoom()" style="width:42px;padding:0;flex-shrink:0;"><span class="material-symbols-outlined">autorenew</span></button>
             </div>
           </div>
         </div>
-
-        <div>
+        <!-- HOST-ONLY SETTINGS (hidden for viewers) -->
+        <div id="hostOnlySettings" style="display:none;">
           <div class="section-title">Host Settings</div>
           <div class="form-row">
-            <div class="form-group">
-              <label>Screen Quality</label>
-              <!-- Note: #scrRes / #scrFps are in the modal; these hidden inputs sync the value -->
-              <select class="form-select" id="scrResSettings" onchange="document.getElementById('scrRes').value=this.value">
-                <option value="4k">4K</option>
-                <option value="2k">2K</option>
-                <option value="1080p" selected>1080p</option>
-                <option value="720p">720p</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>Screen FPS</label>
-              <select class="form-select" id="scrFpsSettings" onchange="document.getElementById('scrFps').value=this.value">
-                <option value="60">60 fps</option>
-                <option value="30" selected>30 fps</option>
-                <option value="24">24 fps</option>
-              </select>
-            </div>
+            <div class="form-group"><label>Quality</label><select class="form-select" id="scrResS" onchange="document.getElementById('scrRes').value=this.value"><option value="4k">4K</option><option value="2k">2K</option><option value="1080p" selected>1080p</option><option value="720p">720p</option></select></div>
+            <div class="form-group"><label>FPS</label><select class="form-select" id="scrFpsS" onchange="document.getElementById('scrFps').value=this.value"><option value="60">60 fps</option><option value="30" selected>30 fps</option><option value="24">24 fps</option></select></div>
           </div>
           <div class="form-group">
-            <label style="display:flex; justify-content:space-between;">
-              Bitrate <span id="bitrateValLabel">4 Mbps</span>
-            </label>
-            <input type="range" id="bitrateSliderSettings" min="1" max="12" value="4" step="0.5"
-              oninput="document.getElementById('bitrateValLabel').textContent = this.value + ' Mbps';
-                       document.getElementById('bitrateSlider').value = this.value;"
-              style="width:100%; height:4px; -webkit-appearance:none; appearance:none; background:var(--glass-border); border-radius:2px; cursor:pointer; outline:none;" />
+            <label style="display:flex;justify-content:space-between;">Bitrate <span id="bitrateValLabel">4 Mbps</span></label>
+            <input type="range" id="bitrateSliderS" min="1" max="12" value="4" step="0.5" oninput="document.getElementById('bitrateValLabel').textContent=this.value+' Mbps';document.getElementById('bitrateSlider').value=this.value;applyBitrateNow();" style="width:100%;height:4px;-webkit-appearance:none;appearance:none;background:var(--glass-border);border-radius:2px;cursor:pointer;outline:none;"/>
           </div>
         </div>
-
         <div>
           <div class="section-title">🔊 Volume</div>
-          <div class="volume-row">
-            <span class="material-symbols-outlined">volume_up</span>
-            <label>Movie</label>
-            <input type="range" id="movieVolume" min="0" max="100" value="100" oninput="setMovieVolume(this.value)" />
-            <span class="vol-value" id="movieVolVal">100%</span>
-          </div>
+          <div class="volume-row"><span class="material-symbols-outlined">volume_up</span><label>Movie</label><input type="range" id="movieVolume" min="0" max="100" value="100" oninput="setMovieVolume(this.value)"/><span class="vol-value" id="movieVolVal">100%</span></div>
         </div>
-
         <div>
           <div class="section-title">Actions</div>
           <div class="action-btns" id="actionBtns">
-            <button class="btn-action host" onclick="confirmHost()">
-              <span class="material-symbols-outlined">cast</span> Start Host Session
-            </button>
-            <button class="btn-action join" onclick="confirmJoin()">
-              <span class="material-symbols-outlined">login</span> Join Watch Party
-            </button>
+            <button class="btn-action host" onclick="confirmHost()"><span class="material-symbols-outlined">cast</span> Start Host Session</button>
+            <button class="btn-action join" onclick="confirmJoin()"><span class="material-symbols-outlined">login</span> Join Watch Party</button>
           </div>
         </div>
-
         <div>
           <div class="section-title">Share</div>
-          <button class="btn-action share" onclick="shareRoom()">
-            <span class="material-symbols-outlined">share</span> Share Room Link
-          </button>
+          <button class="btn-action share" onclick="shareRoom()"><span class="material-symbols-outlined">share</span> Share Room Link</button>
         </div>
+      </div>
+    </div>
+
+    <!-- PEOPLE -->
+    <div class="panel-content" id="contentPeople">
+      <div class="people-wrap" id="peopleList">
+        <div class="ppl-empty"><span class="material-symbols-outlined">group</span><p>No one yet</p></div>
       </div>
     </div>
   </div>
 </div>
-
 <div id="toast"></div>
 
 <script>
-  /* ── TAB SWITCHING ── */
-  window.switchTab = (tab) => {
-    document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.panel-content').forEach(c => c.classList.remove('active'));
-    document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1))?.classList.add('active');
-    document.getElementById('content' + tab.charAt(0).toUpperCase() + tab.slice(1))?.classList.add('active');
-  };
+const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)&&!window.MSStream;
 
-  /* ── VOLUME ── */
-  window.setMovieVolume = (v) => {
-    const vol = v / 100;
-    const vid = document.getElementById('remoteVideo');
-    const aud = document.getElementById('bgAudio');
-    if (vid) vid.volume = vol;
-    if (aud) aud.volume = vol;
-    document.getElementById('movieVolVal').textContent = v + '%';
-  };
+window.switchTab=tab=>{
+  document.querySelectorAll('.panel-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.panel-content').forEach(c=>c.classList.remove('active'));
+  document.getElementById('tab'+tab[0].toUpperCase()+tab.slice(1))?.classList.add('active');
+  document.getElementById('content'+tab[0].toUpperCase()+tab.slice(1))?.classList.add('active');
+};
+window.setMovieVolume=v=>{const vol=v/100;const vid=document.getElementById('remoteVideo'),aud=document.getElementById('bgAudio');if(vid)vid.volume=vol;if(aud)aud.volume=vol;document.getElementById('movieVolVal').textContent=v+'%';};
 
-  /* ── FULLSCREEN ── */
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+/* FULLSCREEN */
+window.toggleFullscreen=()=>{
+  const video=document.getElementById('remoteVideo'),wrap=document.querySelector('.video-wrap'),icon=document.getElementById('fsIcon');
+  if(isIOS){if(video?.webkitEnterFullscreen)video.webkitEnterFullscreen();return;}
+  const inFs=document.fullscreenElement||document.webkitFullscreenElement;
+  if(!inFs){if(wrap.requestFullscreen)wrap.requestFullscreen();else if(wrap.webkitRequestFullscreen)wrap.webkitRequestFullscreen();if(icon)icon.textContent='fullscreen_exit';}
+  else{if(document.exitFullscreen)document.exitFullscreen();else if(document.webkitExitFullscreen)document.webkitExitFullscreen();if(icon)icon.textContent='fullscreen';}
+};
+document.addEventListener('fullscreenchange',()=>{const i=document.getElementById('fsIcon');if(i)i.textContent=document.fullscreenElement?'fullscreen_exit':'fullscreen';});
+document.addEventListener('webkitfullscreenchange',()=>{const i=document.getElementById('fsIcon');if(i)i.textContent=document.webkitFullscreenElement?'fullscreen_exit':'fullscreen';});
+document.getElementById('remoteVideo')?.addEventListener('webkitbeginfullscreen',()=>{const i=document.getElementById('fsIcon');if(i)i.textContent='fullscreen_exit';});
+document.getElementById('remoteVideo')?.addEventListener('webkitendfullscreen',()=>{const i=document.getElementById('fsIcon');if(i)i.textContent='fullscreen';});
 
-  window.toggleFullscreen = () => {
-    const video = document.getElementById('remoteVideo');
-    const wrap  = document.querySelector('.video-wrap');
-    const icon  = document.getElementById('fsIcon');
+/* PiP manual button */
+window.togglePip=async()=>{const v=document.getElementById('remoteVideo');if(!v)return;if(document.pictureInPictureElement){await document.exitPictureInPicture();}else if(document.pictureInPictureEnabled){try{await v.requestPictureInPicture();}catch(_){}}};
+// Show PiP button if supported
+if(document.pictureInPictureEnabled)document.getElementById('pipBtn')?.style.removeProperty('display');
 
-    // ── iOS Safari: ONLY the <video> element supports native fullscreen ──
-    // div.requestFullscreen() is silently ignored on iPhone/iPad.
-    if (isIOS) {
-      if (video && video.webkitEnterFullscreen) {
-        video.webkitEnterFullscreen();
-        // webkitfullscreenchange fires on the video element on iOS
-      }
-      return;
-    }
+/* EMOJI STRIP scroll */
+let emojiOffset=0;
+window.emojiScroll=dir=>{const inner=document.getElementById('emojiStripInner');if(!inner)return;emojiOffset=Math.max(0,Math.min(emojiOffset+dir*37,inner.scrollHeight-inner.clientHeight));inner.scrollTop=emojiOffset;};
 
-    // ── All other browsers: standard API on the wrapper div ──
-    const inFs = document.fullscreenElement || document.webkitFullscreenElement;
-    if (!inFs) {
-      if (wrap.requestFullscreen)        wrap.requestFullscreen();
-      else if (wrap.webkitRequestFullscreen) wrap.webkitRequestFullscreen();
-      if (icon) icon.textContent = 'fullscreen_exit';
-    } else {
-      if (document.exitFullscreen)            document.exitFullscreen();
-      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
-      if (icon) icon.textContent = 'fullscreen';
-    }
-  };
+/* MODAL */
+window.toggleHostSettings=()=>{const b=document.getElementById('hostSettingsBody'),t=document.getElementById('hostToggle');b.classList.toggle('open');t.classList.toggle('open');};
+window.modalGenerateRoom=()=>{document.getElementById('modalRoom').value=Math.random().toString(36).substr(2,6).toUpperCase();};
+function closeModal(){document.getElementById('modalOverlay').classList.add('hidden');}
+function syncFromModal(){const name=document.getElementById('modalName').value.trim(),room=document.getElementById('modalRoom').value.trim();if(name){document.getElementById('userName').value=name;localStorage.setItem('watchparty_name',name);}if(room)document.getElementById('roomId').value=room;return{name,room};}
+function flashRed(id){const el=document.getElementById(id);if(!el)return;el.style.borderColor='var(--red)';el.focus();setTimeout(()=>el.style.borderColor='',1500);}
+window.modalStartHost=()=>{const{name}=syncFromModal();if(!name)return flashRed('modalName');closeModal();window.confirmHost();};
+window.modalJoin=()=>{const{name,room}=syncFromModal();if(!name)return flashRed('modalName');if(!room)return flashRed('modalRoom');closeModal();window.confirmJoin();};
 
-  // Standard fullscreen change events (non-iOS)
-  document.addEventListener('fullscreenchange', () => {
-    const icon = document.getElementById('fsIcon');
-    if (icon) icon.textContent = document.fullscreenElement ? 'fullscreen_exit' : 'fullscreen';
-  });
-  document.addEventListener('webkitfullscreenchange', () => {
-    const icon = document.getElementById('fsIcon');
-    if (icon) icon.textContent = document.webkitFullscreenElement ? 'fullscreen_exit' : 'fullscreen';
-  });
+window.shareRoom=()=>{const r=document.getElementById('roomId')?.value.trim();if(!r)return;const url=`${location.origin}${location.pathname}?room=${encodeURIComponent(r)}`;if(navigator.share){navigator.share({title:'Join my Watch Party! 🍿',url}).catch(()=>{});}else{navigator.clipboard?.writeText(url).then(()=>{const t=document.getElementById('toast');t.textContent='🔗 Link copied!';t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);});}};
 
-  // iOS: <video> fires its own fullscreen events
-  document.getElementById('remoteVideo')?.addEventListener('webkitbeginfullscreen', () => {
-    const icon = document.getElementById('fsIcon');
-    if (icon) icon.textContent = 'fullscreen_exit';
-  });
-  document.getElementById('remoteVideo')?.addEventListener('webkitendfullscreen', () => {
-    const icon = document.getElementById('fsIcon');
-    if (icon) icon.textContent = 'fullscreen';
-  });
-
-  /* ── MODAL: HOST SETTINGS TOGGLE ── */
-  window.toggleHostSettings = () => {
-    const body = document.getElementById('hostSettingsBody');
-    const toggle = document.getElementById('hostToggle');
-    body.classList.toggle('open');
-    toggle.classList.toggle('open');
-  };
-
-  /* ── MODAL: GENERATE ROOM ── */
-  window.modalGenerateRoom = () => {
-    const code = Math.random().toString(36).substr(2, 6).toUpperCase();
-    document.getElementById('modalRoom').value = code;
-  };
-
-  /* ── MODAL: CLOSE & SYNC FIELDS ── */
-  function closeModal() {
-    document.getElementById('modalOverlay').classList.add('hidden');
-  }
-
-  function syncFromModal() {
-    const name = document.getElementById('modalName').value.trim();
-    const room = document.getElementById('modalRoom').value.trim();
-    // Sync to main settings fields
-    if (name) {
-      document.getElementById('userName').value = name;
-      localStorage.setItem('watchparty_name', name);
-    }
-    if (room) document.getElementById('roomId').value = room;
-    return { name, room };
-  }
-
-  /* ── MODAL: START HOST ── */
-  window.modalStartHost = () => {
-    const { name, room } = syncFromModal();
-    if (!name) {
-      document.getElementById('modalName').focus();
-      document.getElementById('modalName').style.borderColor = 'var(--red)';
-      setTimeout(() => document.getElementById('modalName').style.borderColor = '', 1500);
-      return;
-    }
-    closeModal();
-    window.confirmHost();
-  };
-
-  /* ── MODAL: JOIN ── */
-  window.modalJoin = () => {
-    const { name, room } = syncFromModal();
-    if (!name) {
-      document.getElementById('modalName').focus();
-      document.getElementById('modalName').style.borderColor = 'var(--red)';
-      setTimeout(() => document.getElementById('modalName').style.borderColor = '', 1500);
-      return;
-    }
-    if (!room) {
-      document.getElementById('modalRoom').focus();
-      document.getElementById('modalRoom').style.borderColor = 'var(--red)';
-      setTimeout(() => document.getElementById('modalRoom').style.borderColor = '', 1500);
-      return;
-    }
-    closeModal();
-    window.confirmJoin();
-  };
-
-  /* ── SHARE ROOM ── */
-  window.shareRoom = () => {
-    const room = document.getElementById('roomId').value.trim();
-    if (!room) return window.showToast?.('⚠️ Start a session first');
-    const url = `${location.origin}${location.pathname}?room=${encodeURIComponent(room)}`;
-    if (navigator.share) {
-      navigator.share({ title: 'Join my Watch Party!', url }).catch(() => {});
-    } else {
-      navigator.clipboard?.writeText(url).then(() => window.showToast?.('🔗 Link copied!'));
-    }
-  };
-
-  /* ── ON LOAD: Pre-fill from localStorage & URL params ── */
-  window.addEventListener('DOMContentLoaded', () => {
-    const params = new URLSearchParams(location.search);
-    const roomFromUrl = params.get('room');
-    const savedName = localStorage.getItem('watchparty_name');
-
-    if (savedName) {
-      document.getElementById('modalName').value = savedName;
-      document.getElementById('userName').value = savedName;
-    }
-
-    if (roomFromUrl) {
-      document.getElementById('modalRoom').value = roomFromUrl;
-      document.getElementById('roomId').value = roomFromUrl;
-    }
-
-    // If coming from a shared link with a room, auto-open modal
-    // (modal is always shown on load anyway, but pre-filled)
-  });
+window.addEventListener('DOMContentLoaded',()=>{
+  const params=new URLSearchParams(location.search),roomFromUrl=params.get('room'),savedName=localStorage.getItem('watchparty_name');
+  if(savedName){document.getElementById('modalName').value=savedName;document.getElementById('userName').value=savedName;}
+  if(roomFromUrl){document.getElementById('modalRoom').value=roomFromUrl;document.getElementById('roomId').value=roomFromUrl;}
+});
 </script>
-
 <script type="module" src="app.js"></script>
 </body>
 </html>
