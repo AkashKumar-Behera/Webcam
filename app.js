@@ -24,12 +24,12 @@ const db = getDatabase(app);
 /* ── ICE / TURN ── */
 const servers = {
   iceServers: [
-    { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
-    // TURN on standard port
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:82.25.104.130:3478" },
     { urls: "turn:82.25.104.130:3478", username: "akash", credential: "hostinger_vps_123" },
+    { urls: "turn:82.25.104.130:5349", username: "akash", credential: "hostinger_vps_123" },
     { urls: "turn:82.25.104.130:3478?transport=tcp", username: "akash", credential: "hostinger_vps_123" },
-    // TURN on port 443 (NEVER blocked by mobile carriers)
-    { urls: "turn:82.25.104.130:443?transport=tcp", username: "akash", credential: "hostinger_vps_123" },
+    { urls: "turn:82.25.104.130:5349?transport=tcp", username: "akash", credential: "hostinger_vps_123" }
   ],
   iceCandidatePoolSize: 2
 };
