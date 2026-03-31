@@ -92,6 +92,29 @@ function showToast(msg) {
   t._timer = setTimeout(() => t.classList.remove("show"), 3000);
 }
 
+function addSystemMsg(text) {
+  const container = document.getElementById("chatMessages");
+  if (!container) return;
+  const el = document.createElement("div");
+  el.className = "chat-system";
+  el.textContent = text;
+  container.appendChild(el);
+  container.scrollTop = container.scrollHeight;
+}
+
+window.shareRoom = () => {
+  const room = document.getElementById("roomId")?.value.trim() || roomId;
+  if (!room) return showToast("⚠️ Start a session first");
+  const url = `${location.origin}${location.pathname}?room=${encodeURIComponent(room)}`;
+  if (navigator.share) {
+    navigator.share({ title: 'Join my Watch Party! 🍿', url }).catch(() => {});
+  } else {
+    navigator.clipboard?.writeText(url)
+      .then(() => showToast("🔗 Link copied!"))
+      .catch(() => showToast("Link: " + url));
+  }
+};
+
 function updateConnStatus(state) {
   const dot = document.getElementById("connDot");
   const label = document.getElementById("connLabel");
@@ -205,6 +228,9 @@ window.confirmHost = async () => {
     document.getElementById("roomId").value = roomId;
   }
 
+  // Save name to localStorage
+  if (userName) localStorage.setItem('watchparty_name', userName);
+
   try { await captureScreen(); }
   catch (e) { return showToast("⚠️ Screen share cancelled"); }
 
@@ -216,7 +242,7 @@ window.confirmHost = async () => {
   
   updateConnStatus("connected");
   changeActionBtns("session");
-  window.switchTab("settings"); // Keep them on settings to adjust volume/etc or switch to chat manually
+  window.switchTab("chat");
 
   // Register Host in DB
   const roomRef = ref(db, `rooms/${roomId}`);
@@ -229,6 +255,12 @@ window.confirmHost = async () => {
   const unsubViewers = onChildAdded(ref(db, `rooms/${roomId}/viewers`), async snap => {
     const viewerId = snap.key;
     if (!viewerId || screenPcMap[viewerId]) return;
+
+    // Show join message in chat (fetch ready key which has the name)
+    get(ref(db, `rooms/${roomId}/viewers/${viewerId}/ready`)).then(readySnap => {
+      const viewerJoinName = readySnap.val()?.name || "Someone";
+      addSystemMsg(`👋 ${viewerJoinName} joined the party`);
+    }).catch(() => addSystemMsg(`👋 Someone joined the party`));
 
     // Create RTCPeerConnection for viewer
     const pc = new RTCPeerConnection(servers);
@@ -314,6 +346,9 @@ window.confirmJoin = async () => {
   const userName = document.getElementById("userName").value.trim() || "Viewer";
 
   if (!roomId) return showToast("⚠️ Enter Room Code");
+
+  // Save name to localStorage
+  if (userName) localStorage.setItem('watchparty_name', userName);
 
   isHost = false;
   bgAudioSet = false;

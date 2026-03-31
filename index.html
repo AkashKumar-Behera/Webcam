@@ -128,6 +128,25 @@
       font-size:9px; font-weight:600; letter-spacing:.8px;
     }
 
+    /* Fullscreen button on video */
+    .btn-fullscreen {
+      position: absolute;
+      bottom: 12px;
+      right: 12px;
+      z-index: 10;
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: rgba(10,10,10,0.75);
+      border: 1px solid var(--glass-border);
+      color: var(--text);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      transition: background .15s, opacity .15s;
+      opacity: 0.7;
+    }
+    .btn-fullscreen:hover { background: rgba(30,30,30,0.9); opacity: 1; }
+    .btn-fullscreen .material-symbols-outlined { font-size: 20px; }
+
     /* Emoji overlay */
     .emoji-overlay {
       position:absolute; bottom:10px; left:50%; transform:translateX(-50%);
@@ -176,6 +195,9 @@
     .chat-messages {
       flex:1; overflow-y:auto; padding:14px 16px;
       display:flex; flex-direction:column; gap:8px; font-size:13px;
+      /* iOS Safari scroll fix */
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
     }
     .chat-msg { display:flex; flex-direction:column; gap:2px; }
     .chat-msg-header { display:flex; justify-content:space-between; align-items:flex-end; }
@@ -184,11 +206,18 @@
     .chat-bubble { padding:7px 12px; border-radius:10px; line-height:1.5; word-break:break-word; font-size:13px; }
     .chat-bubble.me { background:var(--accent-dim); border-radius:10px 10px 3px 10px; }
     .chat-bubble.other { background:var(--surface); border-radius:3px 10px 10px 10px; }
+    /* System/join message style */
+    .chat-system {
+      text-align:center; color:var(--text-muted);
+      font-size:10px; font-style:italic;
+      padding: 2px 0;
+    }
 
     .chat-bottom {
       padding:10px 14px;
       border-top:1px solid var(--glass-border);
       display:flex; flex-direction:column; gap:8px;
+      flex-shrink: 0;
     }
     .chat-input-row { display:flex; gap:8px; }
     .chat-input {
@@ -220,7 +249,7 @@
     .emoji-btn:active { transform:scale(.9); }
 
     /* Stats tab */
-    .stats-wrap { padding:16px; display:flex; flex-direction:column; gap:12px; overflow-y:auto; }
+    .stats-wrap { padding:16px; display:flex; flex-direction:column; gap:12px; overflow-y:auto; -webkit-overflow-scrolling: touch; }
     .stat-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
     .stat-card {
       background:var(--surface); border:1px solid var(--glass-border);
@@ -233,7 +262,7 @@
     .bar-fill { height:100%; background:linear-gradient(90deg,var(--accent),var(--cyan)); border-radius:1px; transition:width .5s; }
 
     /* Settings tab */
-    .settings-wrap { padding:16px; display:flex; flex-direction:column; gap:18px; overflow-y:auto; }
+    .settings-wrap { padding:16px; display:flex; flex-direction:column; gap:18px; overflow-y:auto; -webkit-overflow-scrolling: touch; }
     .section-title {
       font-size:10px; font-weight:700; text-transform:uppercase;
       letter-spacing:1.2px; color:var(--text-muted); margin-bottom:6px;
@@ -292,6 +321,8 @@
     .btn-action.join { background:rgba(6,182,212,0.15); border-color:var(--cyan); color:var(--cyan); }
     .btn-action.join:hover { background:rgba(6,182,212,0.25); }
     .btn-action.end { background:var(--red); border-color:var(--red); color:white; }
+    .btn-action.share { background:rgba(16,185,129,0.1); border-color:var(--accent); color:var(--accent); }
+    .btn-action.share:hover { background:rgba(16,185,129,0.2); }
 
     /* Toast */
     #toast {
@@ -305,6 +336,134 @@
       transition: opacity .2s, transform .2s;
     }
     #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+    /* ═══════════ ONBOARDING MODAL ═══════════ */
+    .modal-overlay {
+      position:fixed; inset:0; z-index:500;
+      background: rgba(0,0,0,0.82);
+      display:flex; align-items:center; justify-content:center;
+      padding: 16px;
+    }
+    .modal-overlay.hidden { display:none; }
+
+    .modal-card {
+      background: #111;
+      border: 1px solid var(--glass-border);
+      border-radius: 20px;
+      width: 100%;
+      max-width: 420px;
+      padding: 28px 24px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      box-shadow: 0 32px 80px rgba(0,0,0,0.8);
+      max-height: 90vh;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .modal-header {
+      text-align: center;
+    }
+    .modal-logo {
+      width: 48px; height: 48px;
+      border-radius: 14px;
+      background: var(--accent-dim);
+      border: 1px solid var(--accent-glow);
+      display: inline-flex; align-items: center; justify-content:center;
+      margin-bottom: 12px;
+    }
+    .modal-logo .material-symbols-outlined { font-size: 24px; color: var(--accent); }
+    .modal-header h1 { font-size: 20px; font-weight: 800; }
+    .modal-header p { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+    .modal-divider {
+      height: 1px;
+      background: var(--glass-border);
+      margin: 0 -4px;
+    }
+
+    .modal-section-title {
+      font-size: 9px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 1.4px; color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+
+    .modal-input {
+      width: 100%; padding: 11px 14px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--glass-border);
+      border-radius: 10px;
+      color: var(--text); font-family: inherit; font-size: 14px;
+      outline: none; transition: border-color .15s;
+    }
+    .modal-input:focus { border-color: var(--accent); }
+    .modal-input::placeholder { color: var(--text-muted); }
+
+    .modal-room-row {
+      display: flex; gap: 8px;
+    }
+    .modal-room-row .modal-input { flex: 1; }
+    .modal-gen-btn {
+      padding: 11px 14px;
+      background: var(--surface); border: 1px solid var(--glass-border);
+      border-radius: 10px; color: var(--text-muted);
+      font-family: inherit; cursor: pointer;
+      display: flex; align-items: center;
+      transition: background .15s, color .15s;
+      flex-shrink: 0;
+    }
+    .modal-gen-btn:hover { background: var(--surface-hover); color: var(--text); }
+    .modal-gen-btn .material-symbols-outlined { font-size: 18px; }
+
+    /* Host advanced settings accordion inside modal */
+    .modal-host-settings {
+      border: 1px solid var(--glass-border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .modal-host-toggle {
+      width: 100%; padding: 10px 14px;
+      background: var(--surface); border: none; color: var(--text-muted);
+      font-family: inherit; font-size: 12px; font-weight: 600;
+      cursor: pointer; display: flex; align-items: center; justify-content: space-between;
+      text-align: left;
+      transition: background .15s, color .15s;
+    }
+    .modal-host-toggle:hover { background: var(--surface-hover); color: var(--text); }
+    .modal-host-toggle .material-symbols-outlined { font-size: 16px; transition: transform .2s; }
+    .modal-host-toggle.open .material-symbols-outlined { transform: rotate(180deg); }
+    .modal-host-body {
+      display: none;
+      padding: 14px;
+      border-top: 1px solid var(--glass-border);
+      background: rgba(0,0,0,0.2);
+      flex-direction: column;
+      gap: 12px;
+    }
+    .modal-host-body.open { display: flex; }
+
+    .modal-actions {
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .modal-btn {
+      width: 100%; padding: 13px;
+      border-radius: 12px; border: 1px solid var(--glass-border);
+      background: var(--surface); color: var(--text);
+      font-family: inherit; font-size: 14px; font-weight: 700;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 9px;
+      transition: all .15s;
+    }
+    .modal-btn .material-symbols-outlined { font-size: 20px; }
+    .modal-btn.host-btn {
+      background: var(--accent); border-color: var(--accent); color: #000;
+    }
+    .modal-btn.host-btn:hover { opacity: .9; }
+    .modal-btn.join-btn {
+      background: rgba(6,182,212,0.12); border-color: var(--cyan); color: var(--cyan);
+    }
+    .modal-btn.join-btn:hover { background: rgba(6,182,212,0.22); }
 
     /* ═══════════ MOBILE: STACKED LAYOUT ═══════════ */
     @media (max-width:768px) {
@@ -321,6 +480,8 @@
       .side-panel {
         width:100%; flex:1;
         border-left:none; border-top:1px solid var(--glass-border);
+        /* iOS fix: make it scroll its own content via children, not here */
+        overflow: hidden;
       }
 
       .emoji-float { animation-duration:1.5s; }
@@ -344,6 +505,93 @@
 <div class="bg-gradient"></div>
 <div class="bg-pattern"></div>
 
+<!-- ═══════ ONBOARDING MODAL ═══════ -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-card">
+    <!-- Header -->
+    <div class="modal-header">
+      <div class="modal-logo">
+        <span class="material-symbols-outlined">screen_share</span>
+      </div>
+      <h1>Live Party 🍿</h1>
+      <p>Watch together in real-time</p>
+    </div>
+
+    <div class="modal-divider"></div>
+
+    <!-- Identity -->
+    <div>
+      <div class="modal-section-title">Your Identity</div>
+      <input class="modal-input" id="modalName" placeholder="Your name (e.g. Akash)" autocomplete="off" spellcheck="false" />
+    </div>
+
+    <!-- Room -->
+    <div>
+      <div class="modal-section-title">Room Code</div>
+      <div class="modal-room-row">
+        <input class="modal-input" id="modalRoom" placeholder="Enter or generate a code" maxlength="12" autocomplete="off" spellcheck="false" />
+        <button class="modal-gen-btn" onclick="modalGenerateRoom()" title="Generate random room code">
+          <span class="material-symbols-outlined">autorenew</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="modal-divider"></div>
+
+    <!-- Host advanced settings (collapsed by default) -->
+    <div>
+      <div class="modal-host-settings">
+        <button class="modal-host-toggle" id="hostToggle" onclick="toggleHostSettings()">
+          <span>⚙️ Host Settings (optional)</span>
+          <span class="material-symbols-outlined">expand_more</span>
+        </button>
+        <div class="modal-host-body" id="hostSettingsBody">
+          <div>
+            <div class="modal-section-title">Screen Quality &amp; FPS</div>
+            <div class="form-row">
+              <div>
+                <select class="form-select" id="scrRes">
+                  <option value="4k">4K</option>
+                  <option value="2k">2K</option>
+                  <option value="1080p" selected>1080p</option>
+                  <option value="720p">720p</option>
+                </select>
+              </div>
+              <div>
+                <select class="form-select" id="scrFps">
+                  <option value="60">60 fps</option>
+                  <option value="30" selected>30 fps</option>
+                  <option value="24">24 fps</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="modal-section-title" style="display:flex; justify-content:space-between;">
+              Bitrate <span id="modalBitrateLabel">4 Mbps</span>
+            </div>
+            <input type="range" id="bitrateSlider" min="1" max="12" value="4" step="0.5"
+              oninput="document.getElementById('modalBitrateLabel').textContent = this.value + ' Mbps';
+                       document.getElementById('bitrateValLabel').textContent = this.value + ' Mbps';"
+              style="width:100%; height:4px; -webkit-appearance:none; appearance:none; background:var(--glass-border); border-radius:2px; cursor:pointer; outline:none;" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CTA Buttons -->
+    <div class="modal-actions">
+      <button class="modal-btn host-btn" onclick="modalStartHost()">
+        <span class="material-symbols-outlined">cast</span> Start Host Session
+      </button>
+      <button class="modal-btn join-btn" onclick="modalJoin()">
+        <span class="material-symbols-outlined">login</span> Join Watch Party
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ MAIN APP ═══════ -->
 <div class="app-layout">
   <!-- LEFT: VIDEO -->
   <div class="main-col">
@@ -369,6 +617,11 @@
           <span class="overlay-tag" id="qualityTag" style="display:none;">—</span>
         </div>
       </div>
+
+      <!-- Fullscreen button -->
+      <button class="btn-fullscreen" id="btnFullscreen" onclick="toggleFullscreen()" title="Fullscreen">
+        <span class="material-symbols-outlined" id="fsIcon">fullscreen</span>
+      </button>
 
       <div class="emoji-overlay" id="emojiOverlay"></div>
     </div>
@@ -445,7 +698,8 @@
           <div class="form-row">
             <div class="form-group">
               <label>Screen Quality</label>
-              <select class="form-select" id="scrRes">
+              <!-- Note: #scrRes / #scrFps are in the modal; these hidden inputs sync the value -->
+              <select class="form-select" id="scrResSettings" onchange="document.getElementById('scrRes').value=this.value">
                 <option value="4k">4K</option>
                 <option value="2k">2K</option>
                 <option value="1080p" selected>1080p</option>
@@ -454,7 +708,7 @@
             </div>
             <div class="form-group">
               <label>Screen FPS</label>
-              <select class="form-select" id="scrFps">
+              <select class="form-select" id="scrFpsSettings" onchange="document.getElementById('scrFps').value=this.value">
                 <option value="60">60 fps</option>
                 <option value="30" selected>30 fps</option>
                 <option value="24">24 fps</option>
@@ -465,8 +719,9 @@
             <label style="display:flex; justify-content:space-between;">
               Bitrate <span id="bitrateValLabel">4 Mbps</span>
             </label>
-            <input type="range" id="bitrateSlider" min="1" max="12" value="4" step="0.5"
-              oninput="document.getElementById('bitrateValLabel').textContent = this.value + ' Mbps'"
+            <input type="range" id="bitrateSliderSettings" min="1" max="12" value="4" step="0.5"
+              oninput="document.getElementById('bitrateValLabel').textContent = this.value + ' Mbps';
+                       document.getElementById('bitrateSlider').value = this.value;"
               style="width:100%; height:4px; -webkit-appearance:none; appearance:none; background:var(--glass-border); border-radius:2px; cursor:pointer; outline:none;" />
           </div>
         </div>
@@ -492,6 +747,13 @@
             </button>
           </div>
         </div>
+
+        <div>
+          <div class="section-title">Share</div>
+          <button class="btn-action share" onclick="shareRoom()">
+            <span class="material-symbols-outlined">share</span> Share Room Link
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -500,12 +762,15 @@
 <div id="toast"></div>
 
 <script>
+  /* ── TAB SWITCHING ── */
   window.switchTab = (tab) => {
     document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.panel-content').forEach(c => c.classList.remove('active'));
     document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1))?.classList.add('active');
     document.getElementById('content' + tab.charAt(0).toUpperCase() + tab.slice(1))?.classList.add('active');
   };
+
+  /* ── VOLUME ── */
   window.setMovieVolume = (v) => {
     const vol = v / 100;
     const vid = document.getElementById('remoteVideo');
@@ -514,6 +779,125 @@
     if (aud) aud.volume = vol;
     document.getElementById('movieVolVal').textContent = v + '%';
   };
+
+  /* ── FULLSCREEN ── */
+  window.toggleFullscreen = () => {
+    const wrap = document.querySelector('.video-wrap');
+    const icon = document.getElementById('fsIcon');
+    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+      const el = wrap;
+      if (el.requestFullscreen) el.requestFullscreen();
+      else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      if (icon) icon.textContent = 'fullscreen_exit';
+    } else {
+      if (document.exitFullscreen) document.exitFullscreen();
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+      if (icon) icon.textContent = 'fullscreen';
+    }
+  };
+  document.addEventListener('fullscreenchange', () => {
+    const icon = document.getElementById('fsIcon');
+    if (icon) icon.textContent = document.fullscreenElement ? 'fullscreen_exit' : 'fullscreen';
+  });
+  document.addEventListener('webkitfullscreenchange', () => {
+    const icon = document.getElementById('fsIcon');
+    if (icon) icon.textContent = document.webkitFullscreenElement ? 'fullscreen_exit' : 'fullscreen';
+  });
+
+  /* ── MODAL: HOST SETTINGS TOGGLE ── */
+  window.toggleHostSettings = () => {
+    const body = document.getElementById('hostSettingsBody');
+    const toggle = document.getElementById('hostToggle');
+    body.classList.toggle('open');
+    toggle.classList.toggle('open');
+  };
+
+  /* ── MODAL: GENERATE ROOM ── */
+  window.modalGenerateRoom = () => {
+    const code = Math.random().toString(36).substr(2, 6).toUpperCase();
+    document.getElementById('modalRoom').value = code;
+  };
+
+  /* ── MODAL: CLOSE & SYNC FIELDS ── */
+  function closeModal() {
+    document.getElementById('modalOverlay').classList.add('hidden');
+  }
+
+  function syncFromModal() {
+    const name = document.getElementById('modalName').value.trim();
+    const room = document.getElementById('modalRoom').value.trim();
+    // Sync to main settings fields
+    if (name) {
+      document.getElementById('userName').value = name;
+      localStorage.setItem('watchparty_name', name);
+    }
+    if (room) document.getElementById('roomId').value = room;
+    return { name, room };
+  }
+
+  /* ── MODAL: START HOST ── */
+  window.modalStartHost = () => {
+    const { name, room } = syncFromModal();
+    if (!name) {
+      document.getElementById('modalName').focus();
+      document.getElementById('modalName').style.borderColor = 'var(--red)';
+      setTimeout(() => document.getElementById('modalName').style.borderColor = '', 1500);
+      return;
+    }
+    closeModal();
+    window.confirmHost();
+  };
+
+  /* ── MODAL: JOIN ── */
+  window.modalJoin = () => {
+    const { name, room } = syncFromModal();
+    if (!name) {
+      document.getElementById('modalName').focus();
+      document.getElementById('modalName').style.borderColor = 'var(--red)';
+      setTimeout(() => document.getElementById('modalName').style.borderColor = '', 1500);
+      return;
+    }
+    if (!room) {
+      document.getElementById('modalRoom').focus();
+      document.getElementById('modalRoom').style.borderColor = 'var(--red)';
+      setTimeout(() => document.getElementById('modalRoom').style.borderColor = '', 1500);
+      return;
+    }
+    closeModal();
+    window.confirmJoin();
+  };
+
+  /* ── SHARE ROOM ── */
+  window.shareRoom = () => {
+    const room = document.getElementById('roomId').value.trim();
+    if (!room) return window.showToast?.('⚠️ Start a session first');
+    const url = `${location.origin}${location.pathname}?room=${encodeURIComponent(room)}`;
+    if (navigator.share) {
+      navigator.share({ title: 'Join my Watch Party!', url }).catch(() => {});
+    } else {
+      navigator.clipboard?.writeText(url).then(() => window.showToast?.('🔗 Link copied!'));
+    }
+  };
+
+  /* ── ON LOAD: Pre-fill from localStorage & URL params ── */
+  window.addEventListener('DOMContentLoaded', () => {
+    const params = new URLSearchParams(location.search);
+    const roomFromUrl = params.get('room');
+    const savedName = localStorage.getItem('watchparty_name');
+
+    if (savedName) {
+      document.getElementById('modalName').value = savedName;
+      document.getElementById('userName').value = savedName;
+    }
+
+    if (roomFromUrl) {
+      document.getElementById('modalRoom').value = roomFromUrl;
+      document.getElementById('roomId').value = roomFromUrl;
+    }
+
+    // If coming from a shared link with a room, auto-open modal
+    // (modal is always shown on load anyway, but pre-filled)
+  });
 </script>
 
 <script type="module" src="app.js"></script>
