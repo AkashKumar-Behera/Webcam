@@ -166,55 +166,71 @@ async function captureScreen() {
     video: { 
       width: { ideal: width }, 
       height: { ideal: height }, 
-      frameRate: { ideal: fps } 
+      frameRate: { ideal: fps, max: fps }   // cap at chosen fps — prevents wild fluctuation
     },
     audio: {
       channelCount: 2, 
       sampleRate: 48000,
       autoGainControl: false, 
       echoCancellation: false, 
-      noiseSuppression: false // Crucial for media audio quality
+      noiseSuppression: false
     }
   };
 
   try {
     localStream = await navigator.mediaDevices.getDisplayMedia(constraints);
   } catch (e) {
-    // Safari fallback constraints
     constraints.audio = true;
     localStream = await navigator.mediaDevices.getDisplayMedia(constraints);
   }
 
+  // Tell the encoder this is screen content, not a camera.
+  // 'detail' = prioritise sharp text/UI frames over motion smoothness.
+  // This alone massively reduces encoder-side FPS drops.
+  const videoTrack = localStream.getVideoTracks()[0];
+  if (videoTrack && 'contentHint' in videoTrack) {
+    videoTrack.contentHint = 'detail';
+  }
+
   const video = document.getElementById("remoteVideo");
   video.srcObject = localStream;
-  video.muted = true; // Host mutes themselves
+  video.muted = true;
 
-  // Stop session if window sharing stops at OS level
-  localStream.getVideoTracks()[0].onended = () => leaveCall();
+  videoTrack.onended = () => leaveCall();
   return localStream;
 }
+
 
 /* ═══════════════════════════════════════════════
    BITRATE & LATENCY OPTIMIZATION
    ═══════════════════════════════════════════════ */
 async function optimizeHostSender(pc) {
   const mbps = parseFloat(document.getElementById("bitrateSlider")?.value || "4");
+  const fps  = parseInt(document.getElementById("scrFps")?.value || "30") || 30;
   
   for (const sender of pc.getSenders()) {
     if (!sender.track || sender.track.kind !== 'video') continue;
     const params = sender.getParameters();
     if (!params.encodings?.length) params.encodings = [{}];
     
-    // Set Bitrate
+    // Bitrate: floor at 500 kbps to prevent encoder going too low
     params.encodings[0].maxBitrate = mbps * 1_000_000;
-    
-    // Low latency network tuning
+    params.encodings[0].minBitrate = 500_000;
+
+    // Cap framerate at what the user chose — prevents encoder over-shooting
+    params.encodings[0].maxFramerate = fps;
+
+    // Prioritise this sender
     params.encodings[0].networkPriority = "high";
-    params.degradationPreference = "maintain-framerate"; 
+    params.encodings[0].priority = "high";
+
+    // When bandwidth is scarce: drop resolution, NOT framerate
+    params.degradationPreference = "maintain-framerate";
     
     try { await sender.setParameters(params); } catch (_) {}
   }
 }
+
 
 /* ═══════════════════════════════════════════════
    HOST LOGIC
@@ -372,12 +388,21 @@ window.confirmJoin = async () => {
   video.muted = false; // Viewers hear audio
 
   pc.ontrack = (e) => {
-    // Sub-50ms latency tuning! Playout delay 0 means no jitter buffering.
+    const track = e.track;
+
+    // Jitter buffer tuning:
+    // Audio → 0ms (low-latency is fine, audio is forgiving)
+    // Video → 50ms buffer so the decoder has a small queue and FPS looks smooth
     if (e.receiver) {
-      e.receiver.playoutDelayHint = 0; 
+      if (track.kind === 'audio') {
+        try { e.receiver.playoutDelayHint = 0; } catch (_) {}
+      } else if (track.kind === 'video') {
+        try { e.receiver.playoutDelayHint = 0.05; } catch (_) {} // 50 ms smoothing buffer
+        // Tell browser this is screen content so it renders correctly
+        if ('contentHint' in track) track.contentHint = 'detail';
+      }
     }
 
-    const track = e.track;
     if (!remoteStream.getTracks().find(t => t.id === track.id)) {
       remoteStream.addTrack(track);
     }

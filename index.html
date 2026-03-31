@@ -781,20 +781,37 @@
   };
 
   /* ── FULLSCREEN ── */
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
   window.toggleFullscreen = () => {
-    const wrap = document.querySelector('.video-wrap');
-    const icon = document.getElementById('fsIcon');
-    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
-      const el = wrap;
-      if (el.requestFullscreen) el.requestFullscreen();
-      else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    const video = document.getElementById('remoteVideo');
+    const wrap  = document.querySelector('.video-wrap');
+    const icon  = document.getElementById('fsIcon');
+
+    // ── iOS Safari: ONLY the <video> element supports native fullscreen ──
+    // div.requestFullscreen() is silently ignored on iPhone/iPad.
+    if (isIOS) {
+      if (video && video.webkitEnterFullscreen) {
+        video.webkitEnterFullscreen();
+        // webkitfullscreenchange fires on the video element on iOS
+      }
+      return;
+    }
+
+    // ── All other browsers: standard API on the wrapper div ──
+    const inFs = document.fullscreenElement || document.webkitFullscreenElement;
+    if (!inFs) {
+      if (wrap.requestFullscreen)        wrap.requestFullscreen();
+      else if (wrap.webkitRequestFullscreen) wrap.webkitRequestFullscreen();
       if (icon) icon.textContent = 'fullscreen_exit';
     } else {
-      if (document.exitFullscreen) document.exitFullscreen();
+      if (document.exitFullscreen)            document.exitFullscreen();
       else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
       if (icon) icon.textContent = 'fullscreen';
     }
   };
+
+  // Standard fullscreen change events (non-iOS)
   document.addEventListener('fullscreenchange', () => {
     const icon = document.getElementById('fsIcon');
     if (icon) icon.textContent = document.fullscreenElement ? 'fullscreen_exit' : 'fullscreen';
@@ -802,6 +819,16 @@
   document.addEventListener('webkitfullscreenchange', () => {
     const icon = document.getElementById('fsIcon');
     if (icon) icon.textContent = document.webkitFullscreenElement ? 'fullscreen_exit' : 'fullscreen';
+  });
+
+  // iOS: <video> fires its own fullscreen events
+  document.getElementById('remoteVideo')?.addEventListener('webkitbeginfullscreen', () => {
+    const icon = document.getElementById('fsIcon');
+    if (icon) icon.textContent = 'fullscreen_exit';
+  });
+  document.getElementById('remoteVideo')?.addEventListener('webkitendfullscreen', () => {
+    const icon = document.getElementById('fsIcon');
+    if (icon) icon.textContent = 'fullscreen';
   });
 
   /* ── MODAL: HOST SETTINGS TOGGLE ── */
