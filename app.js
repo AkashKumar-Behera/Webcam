@@ -161,18 +161,17 @@ async function initMedia() {
 }
 
 /* ══════════════════════════════════════════════
-   VOICE + CAMERA INIT — for Voice Mesh (PC #2)
+   CAMERA INIT — VIDEO ONLY for Voice Mesh (PC #2)
+   NO mic capture here = zero interference with
+   screen share audio quality!
    ══════════════════════════════════════════════ */
 async function initVoiceMedia() {
   const { width, height } = RES_MAP[voiceSettings.videoRes];
 
   try {
+    // VIDEO ONLY — no audio capture!
     localVoiceStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true
-      },
+      audio: false,
       video: {
         width: { ideal: width },
         height: { ideal: height },
@@ -180,24 +179,14 @@ async function initVoiceMedia() {
         facingMode: "user"
       }
     });
-
-    // Show local video tile in participant grid
     addLocalVideoTile();
     return localVoiceStream;
   } catch (e) {
-    showToast("⚠️ Mic/Camera access failed: " + e.message);
-    // Try audio only
-    try {
-      localVoiceStream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true },
-        video: false
-      });
-      addLocalVideoTile();
-      return localVoiceStream;
-    } catch (e2) {
-      showToast("❌ No mic access: " + e2.message);
-      return null;
-    }
+    showToast("⚠️ Camera access failed: " + e.message);
+    // Continue without camera
+    localVoiceStream = new MediaStream();
+    addLocalVideoTile();
+    return localVoiceStream;
   }
 }
 
@@ -280,42 +269,15 @@ async function applyBitratePerPC(pcInstance, mbps) {
   }
 }
 
-/* ══════════════════════════════════════════════
-   SDP MODIFICATION — Force HD Stereo Opus Audio
-   This modifies the SDP BEFORE negotiation so that
-   Opus codec uses stereo, max bitrate, and no CBR.
-   This is the CORRECT way to ensure HD bass audio.
-   ══════════════════════════════════════════════ */
-function forceHDStereoAudio(sdp) {
-  // Find Opus payload type from rtpmap
-  const opusMatch = sdp.match(/a=rtpmap:(\d+) opus\//i);
-  if (!opusMatch) return sdp;
-  const pt = opusMatch[1];
-
-  // Modify Opus fmtp line to add stereo + high bitrate params
-  const fmtpRegex = new RegExp(`(a=fmtp:${pt} .+)`);
-  if (fmtpRegex.test(sdp)) {
-    sdp = sdp.replace(fmtpRegex, (match) => {
-      // Remove any existing stereo/bitrate params to avoid duplicates
-      let clean = match
-        .replace(/;?stereo=\d/g, '')
-        .replace(/;?sprop-stereo=\d/g, '')
-        .replace(/;?maxaveragebitrate=\d+/g, '')
-        .replace(/;?cbr=\d/g, '')
-        .replace(/;?maxplaybackrate=\d+/g, '');
-      return clean + ';stereo=1;sprop-stereo=1;maxaveragebitrate=510000;maxplaybackrate=48000;cbr=0';
-    });
-  }
-  return sdp;
-}
-
 async function applyBitrate(mbps) {
   Object.values(screenPcMap).forEach(pc => applyBitratePerPC(pc, mbps));
 }
 
 /* ══════════════════════════════════════════════
    VOICE MESH PEER CONNECTIONS (PC #2)
-   All-to-All: Everyone ↔ Everyone
+   Video: always-on camera (WebRTC track)
+   Voice: Push-to-Talk via DataChannel (zero
+          interference with screen share audio)
    ══════════════════════════════════════════════ */
 
 function getPairKey(id1, id2) {
@@ -326,36 +288,41 @@ async function createVoiceConnection(peerId, peerName, isOfferer) {
   const pairKey = getPairKey(myVoiceId, peerId);
   const pc = new RTCPeerConnection(servers);
 
-  voicePcMap[peerId] = { pc, audioEl: null, peerName };
+  voicePcMap[peerId] = { pc, dc: null, peerName };
 
-  // Add our mic + camera tracks
+  // Add ONLY camera video tracks (NO audio — PTT uses DataChannel)
   if (localVoiceStream) {
-    localVoiceStream.getTracks().forEach(track => {
+    localVoiceStream.getVideoTracks().forEach(track => {
       pc.addTrack(track, localVoiceStream);
     });
   }
 
-  // Handle incoming remote voice + video tracks
+  // DataChannel for PTT voice audio
+  if (isOfferer) {
+    const dc = pc.createDataChannel('ptt', { ordered: true });
+    dc.binaryType = 'arraybuffer';
+    dc.onopen = () => { console.log(`[PTT] DataChannel open with ${peerName}`); };
+    dc.onmessage = (e) => handlePTTAudio(peerId, e.data);
+    voicePcMap[peerId].dc = dc;
+  } else {
+    pc.ondatachannel = (e) => {
+      const dc = e.channel;
+      dc.binaryType = 'arraybuffer';
+      dc.onopen = () => { console.log(`[PTT] DataChannel open with ${peerName}`); };
+      dc.onmessage = (ev) => handlePTTAudio(peerId, ev.data);
+      voicePcMap[peerId].dc = dc;
+    };
+  }
+
+  // Handle incoming remote VIDEO tracks only
   const remoteVoiceStream = new MediaStream();
 
   pc.ontrack = (e) => {
-    e.streams[0].getTracks().forEach(track => {
+    e.streams[0].getVideoTracks().forEach(track => {
       if (!remoteVoiceStream.getTracks().find(t => t.id === track.id)) {
         remoteVoiceStream.addTrack(track);
       }
     });
-
-    // Create/update audio element for this peer's voice
-    const audioTracks = remoteVoiceStream.getAudioTracks();
-    if (audioTracks.length > 0 && !voicePcMap[peerId]?.audioEl) {
-      const audioEl = new Audio();
-      audioEl.srcObject = new MediaStream(audioTracks);
-      audioEl.volume = voiceVolume;
-      audioEl.play().catch(() => {});
-      if (voicePcMap[peerId]) voicePcMap[peerId].audioEl = audioEl;
-    }
-
-    // Add/update video tile
     addRemoteVideoTile(peerId, peerName, remoteVoiceStream);
   };
 
@@ -379,70 +346,179 @@ async function createVoiceConnection(peerId, peerName, isOfferer) {
     console.log(`[Voice][${peerId}] PC:`, pc.connectionState);
     if (pc.connectionState === "connected") {
       applyBitratePerPC(pc, voiceSettings.videoBitrate);
-      showToast(`🎤 Voice connected with ${peerName}`);
+      showToast(`📹 Connected with ${peerName}`);
     }
   };
 
   if (isOfferer) {
-    // I create the offer
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     await set(ref(db, `rooms/${roomId}/voiceLinks/${pairKey}/offer`), {
-      type: offer.type,
-      sdp: offer.sdp
+      type: offer.type, sdp: offer.sdp
     });
 
-    // Listen for answer
     onValue(ref(db, `rooms/${roomId}/voiceLinks/${pairKey}/answer`), async (snap) => {
       if (!snap.val() || pc.signalingState === "stable") return;
-      try {
-        await pc.setRemoteDescription(new RTCSessionDescription(snap.val()));
-      } catch (e) {
-        console.warn("[Voice] setRemoteDesc error:", e);
-      }
+      try { await pc.setRemoteDescription(new RTCSessionDescription(snap.val())); }
+      catch (e) { console.warn("[Voice] setRemoteDesc error:", e); }
     });
 
-    // Listen for answer ICE candidates
-    onChildAdded(ref(db, `rooms/${roomId}/voiceLinks/${pairKey}/answerCandidates`), async (candSnap) => {
-      try { await pc.addIceCandidate(new RTCIceCandidate(candSnap.val())); } catch (_) {}
+    onChildAdded(ref(db, `rooms/${roomId}/voiceLinks/${pairKey}/answerCandidates`), async (cs) => {
+      try { await pc.addIceCandidate(new RTCIceCandidate(cs.val())); } catch (_) {}
     });
   } else {
-    // Listen for offer, then answer
     onValue(ref(db, `rooms/${roomId}/voiceLinks/${pairKey}/offer`), async (snap) => {
       if (!snap.val() || pc.signalingState !== "stable") return;
       try {
         await pc.setRemoteDescription(new RTCSessionDescription(snap.val()));
-
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         await set(ref(db, `rooms/${roomId}/voiceLinks/${pairKey}/answer`), {
-          type: answer.type,
-          sdp: answer.sdp
+          type: answer.type, sdp: answer.sdp
         });
-      } catch (e) {
-        console.warn("[Voice] offer/answer error:", e);
-      }
+      } catch (e) { console.warn("[Voice] offer/answer error:", e); }
     });
 
-    // Listen for offer ICE candidates
-    onChildAdded(ref(db, `rooms/${roomId}/voiceLinks/${pairKey}/offerCandidates`), async (candSnap) => {
-      try { await pc.addIceCandidate(new RTCIceCandidate(candSnap.val())); } catch (_) {}
+    onChildAdded(ref(db, `rooms/${roomId}/voiceLinks/${pairKey}/offerCandidates`), async (cs) => {
+      try { await pc.addIceCandidate(new RTCIceCandidate(cs.val())); } catch (_) {}
     });
   }
 
   updateParticipantCount();
 }
 
+/* ══════════════════════════════════════════════
+   PUSH-TO-TALK (PTT) — DataChannel Voice
+   Mic is ONLY captured when PTT button is held.
+   Screen share audio remains 100% untouched.
+   ══════════════════════════════════════════════ */
+let pttActive = false;
+let pttMicStream = null;
+let pttAudioCtx = null;
+let pttProcessor = null;
+let pttPlaybackCtx = null;
+let pttPlayTimes = {};
+
+window.startPTT = async () => {
+  if (pttActive) return;
+  pttActive = true;
+
+  // Update UI
+  const btn = document.getElementById('btnPTT');
+  if (btn) { btn.classList.add('ptt-active'); }
+  const localMic = document.getElementById('localTileMic');
+  if (localMic) { localMic.textContent = 'record_voice_over'; localMic.classList.remove('muted'); }
+
+  try {
+    // Capture mic ONLY during PTT — no echo cancellation to avoid interference
+    pttMicStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    });
+
+    pttAudioCtx = new AudioContext();
+    const source = pttAudioCtx.createMediaStreamSource(pttMicStream);
+    // Buffer: 4096 samples at 48kHz = ~85ms per chunk
+    pttProcessor = pttAudioCtx.createScriptProcessor(4096, 1, 1);
+
+    const nativeSampleRate = pttAudioCtx.sampleRate;
+    const targetRate = 16000; // Downsample to 16kHz for bandwidth
+    const ratio = nativeSampleRate / targetRate;
+
+    pttProcessor.onaudioprocess = (e) => {
+      if (!pttActive) return;
+      const inputData = e.inputBuffer.getChannelData(0);
+
+      // Downsample to 16kHz mono
+      const outputLength = Math.floor(inputData.length / ratio);
+      const int16Data = new Int16Array(outputLength);
+      for (let i = 0; i < outputLength; i++) {
+        const srcIdx = Math.floor(i * ratio);
+        int16Data[i] = Math.max(-32768, Math.min(32767, inputData[srcIdx] * 32768));
+      }
+
+      // Send to all peers via DataChannel
+      const buffer = int16Data.buffer;
+      Object.values(voicePcMap).forEach(entry => {
+        if (entry.dc && entry.dc.readyState === 'open') {
+          try { entry.dc.send(buffer); } catch (_) {}
+        }
+      });
+    };
+
+    source.connect(pttProcessor);
+    pttProcessor.connect(pttAudioCtx.destination);
+    showToast('🎤 Talking...');
+  } catch (err) {
+    showToast('⚠️ Mic access failed: ' + err.message);
+    pttActive = false;
+  }
+};
+
+window.stopPTT = () => {
+  if (!pttActive) return;
+  pttActive = false;
+
+  // Release mic completely
+  if (pttMicStream) {
+    pttMicStream.getTracks().forEach(t => t.stop());
+    pttMicStream = null;
+  }
+  if (pttProcessor) {
+    pttProcessor.disconnect();
+    pttProcessor = null;
+  }
+  if (pttAudioCtx && pttAudioCtx.state !== 'closed') {
+    pttAudioCtx.close().catch(() => {});
+    pttAudioCtx = null;
+  }
+
+  // Update UI
+  const btn = document.getElementById('btnPTT');
+  if (btn) { btn.classList.remove('ptt-active'); }
+  const localMic = document.getElementById('localTileMic');
+  if (localMic) { localMic.textContent = 'mic_off'; localMic.classList.add('muted'); }
+};
+
+// PTT Audio Receiver — plays incoming voice from DataChannel
+function handlePTTAudio(peerId, data) {
+  if (!pttPlaybackCtx || pttPlaybackCtx.state === 'closed') {
+    pttPlaybackCtx = new AudioContext();
+  }
+
+  const int16 = new Int16Array(data);
+  const float32 = new Float32Array(int16.length);
+  for (let i = 0; i < int16.length; i++) {
+    float32[i] = int16[i] / 32768;
+  }
+
+  const buffer = pttPlaybackCtx.createBuffer(1, float32.length, 16000);
+  buffer.getChannelData(0).set(float32);
+
+  const source = pttPlaybackCtx.createBufferSource();
+  const gain = pttPlaybackCtx.createGain();
+  gain.gain.value = voiceVolume;
+
+  source.buffer = buffer;
+  source.connect(gain);
+  gain.connect(pttPlaybackCtx.destination);
+
+  const now = pttPlaybackCtx.currentTime;
+  if (!pttPlayTimes[peerId] || pttPlayTimes[peerId] < now) {
+    pttPlayTimes[peerId] = now + 0.02;
+  }
+  source.start(pttPlayTimes[peerId]);
+  pttPlayTimes[peerId] += buffer.duration;
+}
+
 function cleanupVoicePeer(peerId) {
   const entry = voicePcMap[peerId];
   if (!entry) return;
 
+  if (entry.dc) {
+    try { entry.dc.close(); } catch (_) {}
+  }
   if (entry.pc) {
     try { entry.pc.close(); } catch (_) {}
-  }
-  if (entry.audioEl) {
-    entry.audioEl.pause();
-    entry.audioEl.srcObject = null;
   }
 
   // Remove video tile
@@ -454,12 +530,8 @@ function cleanupVoicePeer(peerId) {
 }
 
 async function joinVoiceMesh() {
-  // Get mic + camera
+  // Get camera (video only, no mic)
   await initVoiceMedia();
-  if (!localVoiceStream) {
-    showToast("⚠️ Joining voice without mic/camera");
-    localVoiceStream = new MediaStream(); // empty stream fallback
-  }
 
   // Generate a unique voice peer ID
   myVoiceId = "vp_" + Math.random().toString(36).substr(2, 9);
@@ -515,7 +587,7 @@ async function joinVoiceMesh() {
   document.getElementById("voiceVolumeRow").style.display = "flex";
 
   updateParticipantCount();
-  showToast("🎤 Voice + Video mesh active!");
+  showToast("🎤 Voice + Video active! Hold PTT to talk");
 }
 
 /* ══════════════════════════════════════════════
@@ -556,7 +628,8 @@ function addLocalVideoTile() {
   const micIcon = document.createElement("span");
   micIcon.className = "tile-mic material-symbols-outlined";
   micIcon.id = "localTileMic";
-  micIcon.textContent = "mic";
+  micIcon.textContent = "mic_off";
+  micIcon.classList.add("muted");
   tile.appendChild(micIcon);
 
   grid.prepend(tile);
@@ -661,12 +734,10 @@ window.startStream = async () => {
     };
 
     const offer = await pc.createOffer();
-    // Force HD stereo Opus in SDP before sending
-    const hdSdp = forceHDStereoAudio(offer.sdp);
-    await pc.setLocalDescription({ type: offer.type, sdp: hdSdp });
+    await pc.setLocalDescription(offer);
     await set(ref(db, `rooms/${roomId}/viewers/${viewerId}/offer`), {
       type: offer.type,
-      sdp: hdSdp
+      sdp: offer.sdp
     });
 
     onValue(ref(db, `rooms/${roomId}/viewers/${viewerId}/answer`), async ansSnap => {
@@ -794,33 +865,10 @@ window.toggleStream = async () => {
   else await window.leaveCall();
 };
 
-/* ══════════════════════════════════════════════
-   MIC TOGGLE (Voice Mode)
-   ══════════════════════════════════════════════ */
+/* PTT is handled by startPTT / stopPTT functions above */
+/* toggleMic is no longer needed — replaced by Push-to-Talk */
 window.toggleMic = () => {
-  if (!localVoiceStream) return showToast("⚠️ No voice stream active");
-  const tracks = localVoiceStream.getAudioTracks();
-  if (!tracks.length) return showToast("⚠️ No mic found");
-
-  micEnabled = !micEnabled;
-  tracks.forEach(t => t.enabled = micEnabled);
-
-  const btn = document.getElementById("btnMic");
-  const icon = btn.querySelector(".material-symbols-outlined");
-  if (micEnabled) {
-    btn.classList.remove("off");
-    icon.textContent = "mic";
-  } else {
-    btn.classList.add("off");
-    icon.textContent = "mic_off";
-  }
-
-  // Update local tile mic indicator
-  const localMicIcon = document.getElementById("localTileMic");
-  if (localMicIcon) {
-    localMicIcon.textContent = micEnabled ? "mic" : "mic_off";
-    localMicIcon.classList.toggle("muted", !micEnabled);
-  }
+  showToast('🎤 Use the PTT (Hold to Talk) button instead!');
 };
 
 /* ══════════════════════════════════════════════
@@ -875,6 +923,9 @@ window.startScreenShare = async () => {
    ══════════════════════════════════════════════ */
 window.leaveCall = async () => {
   stopStats(); stopTimer();
+
+  // Stop PTT if active
+  if (pttActive) window.stopPTT();
 
   // Close all screen share PCs
   Object.values(screenPcMap).forEach(p => { try { p.close(); } catch (_) {} });

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'watch-party-v2';
+const CACHE_NAME = 'watch-party-v3';
 const ASSETS = [
   '/',
   '/index.html',

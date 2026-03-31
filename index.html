@@ -266,6 +266,19 @@
     .voice-only { display: none !important; }
     body.voice-mode .voice-only { display: flex !important; }
 
+    /* PTT button active state */
+    #btnPTT.ptt-active {
+      background: rgba(129,201,149,0.3) !important;
+      color: var(--green) !important;
+      border-color: var(--green) !important;
+      box-shadow: 0 0 12px rgba(129,201,149,0.5);
+      animation: pttPulse 1s infinite;
+    }
+    @keyframes pttPulse {
+      0%, 100% { box-shadow: 0 0 8px rgba(129,201,149,0.4); }
+      50% { box-shadow: 0 0 18px rgba(129,201,149,0.7); }
+    }
+
     .btn-leave {
       height: 44px;
       padding: 0 20px;
@@ -565,8 +578,11 @@
 
     <div class="controls-center">
       <!-- Voice-only buttons -->
-      <button class="icon-btn voice-only" id="btnMic" onclick="toggleMic()" title="Toggle Mic">
-        <span class="material-symbols-outlined">mic</span>
+      <button class="icon-btn voice-only" id="btnPTT"
+        onmousedown="startPTT()" onmouseup="stopPTT()"
+        ontouchstart="event.preventDefault(); startPTT()" ontouchend="event.preventDefault(); stopPTT()"
+        title="Hold to Talk">
+        <span class="material-symbols-outlined">record_voice_over</span>
       </button>
       <button class="icon-btn voice-only" id="btnCam" onclick="toggleCam()" title="Toggle Camera">
         <span class="material-symbols-outlined">videocam</span>
@@ -741,8 +757,8 @@
           <h3>With Voice & Video</h3>
           <p class="mode-desc">Up to 5 participants</p>
           <ul>
-            <li>🎤 Voice call (HD)</li>
-            <li>📹 Video (720p)</li>
+            <li>🎤 Push-to-Talk voice</li>
+            <li>📹 Camera always on (720p)</li>
             <li>🎬 Screen share (HD bass)</li>
             <li>💬 Live chat</li>
           </ul>
@@ -792,7 +808,10 @@
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn-flat" onclick="closeModeModal()">Cancel</button>
+      <button class="btn-flat btn-filled" style="background:#34a853;" onclick="joinStream()">
+        <span class="material-symbols-outlined" style="font-size:18px;">login</span>
+        Join Watch Party
+      </button>
       <button class="btn-flat btn-filled" onclick="confirmModeAndStart()">
         <span class="material-symbols-outlined" style="font-size:18px;">rocket_launch</span>
         Start Session
