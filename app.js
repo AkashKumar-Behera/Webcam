@@ -346,9 +346,10 @@ async function optimizeHostSender(pc, vid=null){
 window.confirmHost=async()=>{
   roomId=document.getElementById("roomId").value.trim(); myName=document.getElementById("userName").value.trim()||"Host";
   if(!roomId){roomId=Math.random().toString(36).substr(2,8).toUpperCase();document.getElementById("roomId").value=roomId;}
-  if(myName)localStorage.setItem("watchparty_name",myName);
-  try{await captureScreen();}catch{return showToast("⚠️ Screen share cancelled");}
+  logStatus("Host session starting...");
+  try{await captureScreen();}catch{logStatus("Capture canceled"); return showToast("⚠️ Screen share cancelled");}
   isHost=true;
+  logStatus("Screen captured successfully");
   window._myVid = "host";
   startSilenceLoop();
   document.getElementById("noSignal").classList.add("hidden");
@@ -360,12 +361,14 @@ window.confirmHost=async()=>{
   window.switchTab("chat"); renderPeopleTab();
 
   const roomRef=ref(db,`rooms/${roomId}`);
-  await set(ref(db,`rooms/${roomId}/host`),{name:myName,created:Date.now()});
+  logStatus(`Registering host in room: ${roomId}`);
+  await set(ref(db,`rooms/${roomId}/host`),{name:myName,created:Date.now()}).catch(e=>logStatus(`Firebase Error: ${e.message}`));
   onDisconnect(roomRef).remove();
 
   // Waitroom
   const unsubW=onChildAdded(ref(db,`rooms/${roomId}/waitroom`),snap=>{
     const vid=snap.key, data=snap.val(); if(!data||!vid||data.status)return;
+    logStatus(`Approval request from: ${data.name||"Viewer"}`);
     pendingViewers[vid]={name:data.name||"Viewer"}; renderPeopleTab(); showToast(`🔔 ${data.name} wants to join`); window.switchTab("people");
   }); firebaseUnsubs.push(unsubW);
 
@@ -410,7 +413,7 @@ window.confirmHost=async()=>{
     await pc.setLocalDescription(offer);
     
     logStatus(`Sent Offer to ${vid.substring(0,6)}`);
-    await set(ref(db,`rooms/${roomId}/viewers/${vid}/offer`),{type:offer.type,sdp:offer.sdp});
+    await set(ref(db,`rooms/${roomId}/viewers/${vid}/offer`),{type:offer.type,sdp:offer.sdp}).catch(e=>logStatus(`Offer Write Error: ${e.message}`));
     let pendIce=[],rdReady=false;
     const unsubA=onValue(ref(db,`rooms/${roomId}/viewers/${vid}/answer`),async s=>{
       if(!s.val()||rdReady)return; 
@@ -429,20 +432,27 @@ window.confirmHost=async()=>{
 window.confirmJoin=async()=>{
   roomId=document.getElementById("roomId").value.trim(); myName=document.getElementById("userName").value.trim()||"Viewer";
   if(!roomId)return showToast("⚠️ Enter Room Code");
+  logStatus(`Joining room: ${roomId}`);
   if(myName)localStorage.setItem("watchparty_name",myName);
   isHost=false; bgAudioSet=false; updateConnStatus("connecting");
+  
+  // Mobile Gesture Unlock
+  const v = document.getElementById("remoteVideo"); if(v){v.play().catch(()=>{});}
+
   document.getElementById("hostOnlySettings") && (document.getElementById("hostOnlySettings").style.display="none");
   document.getElementById("lowDataGroup") && (document.getElementById("lowDataGroup").style.display="flex");
   const myVid="v_"+Math.random().toString(36).substr(2,9);
   window._myVid = myVid;
-  await set(ref(db,`rooms/${roomId}/waitroom/${myVid}`),{name:myName,requestedAt:Date.now()});
+  logStatus(`Waitroom ID: ${myVid}`);
+  await set(ref(db,`rooms/${roomId}/waitroom/${myVid}`),{name:myName,requestedAt:Date.now()}).catch(e=>logStatus(`Waitroom Write Error: ${e.message}`));
   onDisconnect(ref(db,`rooms/${roomId}/waitroom/${myVid}`)).remove();
   const ns=document.getElementById("noSignal"); ns.classList.remove("hidden");
   ns.querySelector("h3").textContent="Waiting for host..."; ns.querySelector("p").textContent="Host will let you in shortly";
+  logStatus("Sent join request, waiting for approval...");
   const unsubS=onValue(ref(db,`rooms/${roomId}/waitroom/${myVid}/status`),async ss=>{
     const status=ss.val(); if(!status)return; unsubS();
-    if(status==="approved"){ns.classList.add("hidden"); await proceedJoin(myVid,myName);}
-    else{showToast("❌ Host declined your request"); updateConnStatus("disconnected"); changeActionBtns("init"); ns.querySelector("h3").textContent="Waiting for Screen Share"; ns.querySelector("p").textContent="Connect to join or host a session";}
+    if(status==="approved"){ logStatus("Request Approved!"); ns.classList.add("hidden"); await proceedJoin(myVid,myName); }
+    else{ logStatus("Request Declined."); showToast("❌ Host declined your request"); updateConnStatus("disconnected"); changeActionBtns("init"); ns.querySelector("h3").textContent="Waiting for Screen Share"; ns.querySelector("p").textContent="Connect to join or host a session";}
   }); firebaseUnsubs.push(unsubS);
 };
 
@@ -519,7 +529,7 @@ async function proceedJoin(myVid,userName){
       ans.sdp=mungerPreferVP9(ans.sdp);
       await pc.setLocalDescription(ans);
       logStatus("Sent Answer to Host");
-      await set(ref(db,`rooms/${roomId}/viewers/${myVid}/answer`),{type:ans.type,sdp:ans.sdp});
+      await set(ref(db,`rooms/${roomId}/viewers/${myVid}/answer`),{type:ans.type,sdp:ans.sdp}).catch(e=>logStatus(`Answer Write Error: ${e.message}`));
     }catch(e){logStatus(`Signaling error: ${e.message}`);}
   });
   const unsubI=onChildAdded(oRef,async s=>{const c=s.val();if(rdReady){try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(_){}}else pendIce.push(c);});
