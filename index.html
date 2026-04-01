@@ -277,6 +277,7 @@
       <div class="video-btns">
         <button class="vbtn" onclick="toggleFullscreen()" title="Fullscreen"><span class="material-symbols-outlined" id="fsIcon">fullscreen</span></button>
         <button class="vbtn" id="pipBtn" onclick="togglePip()" title="Picture-in-Picture" style="display:none"><span class="material-symbols-outlined">picture_in_picture</span></button>
+        <button class="vbtn" id="micBtnMain" onclick="toggleVoiceChat()" title="Toggle Microphone" style="background:var(--red)"><span class="material-symbols-outlined" id="micIconMain">mic_off</span></button>
       </div>
       <!-- Fullscreen floating chat overlay -->
       <div class="fs-chat-overlay" id="fullscreenChatOverlay"></div>
@@ -315,6 +316,9 @@
           </button>
           <button class="chat-attach" onclick="document.getElementById('chatFileInput').click()">
             <span class="material-symbols-outlined" style="font-size:18px;">image</span>
+          </button>
+          <button class="chat-attach" id="micBtnChat" onclick="toggleVoiceChat()" title="Voice Chat">
+            <span class="material-symbols-outlined" id="micIconChat" style="font-size:18px; color:var(--red);">mic_off</span>
           </button>
           <input class="chat-input" id="chatInput" placeholder="Type a message..." onkeypress="if(event.key==='Enter')sendChat()"/>
           <button class="chat-send" onclick="sendChat()"><span class="material-symbols-outlined" style="font-size:17px;">send</span></button>

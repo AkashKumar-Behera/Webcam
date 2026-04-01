@@ -7,7 +7,7 @@ const firebaseConfig = { apiKey:"AIzaSyBGnFw13ko0b4KAs7plpFmHlg0GohowElA", authD
 const app = initializeApp(firebaseConfig);
 const db  = getDatabase(app);
 
-const servers = { iceServers:[{urls:"stun:stun.l.google.com:19302"},{urls:"stun:82.25.104.130:3478"},{urls:"turn:82.25.104.130:3478",username:"akash",credential:"hostinger_vps_123"},{urls:"turn:82.25.104.130:5349",username:"akash",credential:"hostinger_vps_123"},{urls:"turn:82.25.104.130:3478?transport=tcp",username:"akash",credential:"hostinger_vps_123"},{urls:"turn:82.25.104.130:5349?transport=tcp",username:"akash",credential:"hostinger_vps_123"}], iceCandidatePoolSize:2 };
+const servers = { iceServers:[{urls:"turn:82.25.104.130:3478",username:"akash",credential:"hostinger_vps_123"},{urls:"turn:82.25.104.130:5349",username:"akash",credential:"hostinger_vps_123"},{urls:"turn:82.25.104.130:3478?transport=tcp",username:"akash",credential:"hostinger_vps_123"},{urls:"turn:82.25.104.130:5349?transport=tcp",username:"akash",credential:"hostinger_vps_123"}], iceCandidatePoolSize:2 };
 const RES_MAP = { "4k":{width:3840,height:2160},"2k":{width:2560,height:1440},"1080p":{width:1920,height:1080},"720p":{width:1280,height:720} };
 
 /* STATE */
@@ -16,6 +16,8 @@ let screenPcMap={}, viewerPc=null;
 let connectedViewers={}, pendingViewers={};
 let statsInterval=null, timerInterval=null, startTime=0, prevBytesStat=0;
 let firebaseUnsubs=[], bgAudioSet=false, iceRestartCount=0;
+let audioCtx=null, movieNode=null, duckingActive=false;
+let myVoiceStream=null, voicePcs={}, silenceLoop=null;
 const MAX_ICE_RESTARTS=3;
 const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
@@ -23,10 +25,55 @@ function logIce(pc,label){ pc.onicegatheringstatechange=()=>console.log(`[ICE ${
 function logCandidate(c,label){ if(!c)return; const t=c.candidate?.match(/typ (\w+)/)?.[1]||'?'; console.log(`[ICE ${label}] ${t}|${c.candidate?.substring(0,60)}`); }
 
 /* HELPERS */
+function playProceduralSound(type){
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    if(type==="join"){ osc.type="sine"; osc.frequency.setValueAtTime(440, ctx.currentTime); osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.2); gain.gain.setValueAtTime(0.1, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5); }
+    else { osc.type="sine"; osc.frequency.setValueAtTime(880, ctx.currentTime); osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.2); gain.gain.setValueAtTime(0.1, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5); }
+    osc.start(); osc.stop(ctx.currentTime + 0.5);
+  } catch(_) {}
+}
+
 function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+function startSilenceLoop(){
+  if(silenceLoop)return;
+  const audio=new Audio();
+  const canvas=document.createElement("canvas");
+  canvas.width=canvas.height=1;
+  const stream=canvas.captureStream();
+  // Procedural silence track
+  const ctx=new (window.AudioContext||window.webkitAudioContext)();
+  const dest=ctx.createMediaStreamDestination();
+  const osc=ctx.createOscillator();
+  const gain=ctx.createGain(); gain.gain.value=0.001; // nearly silent
+  osc.connect(gain); gain.connect(dest);
+  osc.start();
+  audio.srcObject=dest.stream;
+  audio.loop=true;
+  audio.play().then(()=>silenceLoop=audio).catch(()=>{});
+}
 function nameToHsl(n){ let h=0; for(const c of String(n)) h=c.charCodeAt(0)+((h<<5)-h); return `hsl(${Math.abs(h)%360},65%,48%)`; }
 
 /* STABILITY HELPERS */
+function mungerPreferOpus(sdp){
+  const lines=sdp.split("\r\n");
+  let audioIdx=-1;
+  for(let i=0;i<lines.length;i++){if(lines[i].startsWith("m=audio ")){audioIdx=i;break;}}
+  if(audioIdx===-1)return sdp;
+  // Force 128kbps stereo Opus
+  let newSdp = sdp.replace(/a=fmtp:(\d+) (.*)/g, (m, p1, p2) => {
+    if (sdp.includes("a=rtpmap:" + p1 + " opus/48000")) {
+      return `a=fmtp:${p1} minptime=10;useinbandfec=1;stereo=1;maxaveragebitrate=128000`;
+    }
+    return m;
+  });
+  return newSdp;
+}
+
 function mungerPreferVP9(sdp){
   const lines=sdp.split("\r\n");
   let videoIdx=-1;
@@ -73,11 +120,26 @@ function renderPeopleTab(){
   let html="";
   const pending=Object.entries(pendingViewers);
   if(isHost&&pending.length>0){ html+=`<div class="ppl-section">⏳ Waiting to Join</div>`; for(const[vid,d]of pending){ const col=nameToHsl(d.name); html+=`<div class="ppl-item pending-item"><div class="ppl-av" style="background:${col}">${d.name[0].toUpperCase()}</div><div class="ppl-name">${esc(d.name)}</div><div class="ppl-btns"><button class="pa-btn approve" onclick="approveViewer('${vid}','${esc(d.name)}')"><span class="material-symbols-outlined">check</span></button><button class="pa-btn deny" onclick="denyViewer('${vid}','${esc(d.name)}')"><span class="material-symbols-outlined">close</span></button></div></div>`; } }
-  const connected=Object.entries(connectedViewers);
+  
+  // Dedup and sort
+  const connectedArr = Object.entries(connectedViewers).map(([k,v])=>({id:k, ...v}));
+  const uniqueParticipants = [];
+  const seenNames = new Set();
+  
+  // Show "You" first
+  const colMe=nameToHsl(myName||"User");
   html+=`<div class="ppl-section">👥 In Session</div>`;
-  if(myName){ const col=nameToHsl(myName); html+=`<div class="ppl-item"><div class="ppl-av" style="background:${col}">${myName[0].toUpperCase()}</div><div class="ppl-name">${esc(myName)} <span class="role-badge">${isHost?"HOST":"YOU"}</span></div></div>`; }
-  for(const[vid,d]of connected){ const col=nameToHsl(d.name); html+=`<div class="ppl-item"><div class="ppl-av" style="background:${col}">${d.name[0].toUpperCase()}</div><div class="ppl-name">${esc(d.name)}</div>${isHost?`<button class="pa-btn kick" onclick="kickViewer('${vid}','${esc(d.name)}')"><span class="material-symbols-outlined">person_remove</span></button>`:""}</div>`; }
-  if(!html&&!myName) html=`<div class="ppl-empty"><span class="material-symbols-outlined">group</span><p>No one yet</p></div>`;
+  html+=`<div class="ppl-item"><div class="ppl-av" style="background:${colMe}">${(myName||"U")[0].toUpperCase()}</div><div class="ppl-name">${esc(myName||"User")} <span class="role-badge">${isHost?"HOST":"YOU"}</span></div></div>`;
+  seenNames.add(myName);
+
+  for(const p of connectedArr){
+    if(seenNames.has(p.name)) continue; // basic dedupe by name for UI clarity
+    seenNames.add(p.name);
+    const col=nameToHsl(p.name);
+    html+=`<div class="ppl-item"><div class="ppl-av" style="background:${col}">${p.name[0].toUpperCase()}</div><div class="ppl-name">${esc(p.name)}</div>${isHost?`<button class="pa-btn kick" onclick="kickViewer('${p.id}','${esc(p.name)}')"><span class="material-symbols-outlined">person_remove</span></button>`:""}</div>`;
+  }
+
+  if(!html) html=`<div class="ppl-empty"><span class="material-symbols-outlined">group</span><p>No one yet</p></div>`;
   c.innerHTML=html;
   const badge=document.getElementById("peopleBadge"); if(badge){badge.textContent=pending.length;badge.style.display=pending.length>0?"flex":"none";}
 }
@@ -131,8 +193,32 @@ async function captureScreen(){
   const resStr=document.getElementById("scrRes")?.value||"1080p", fpsStr=document.getElementById("scrFps")?.value||"30";
   const {width,height}=RES_MAP[resStr]||RES_MAP["1080p"], fps=parseInt(fpsStr)||30;
   const con={video:{width:{ideal:width},height:{ideal:height},frameRate:{ideal:fps,max:fps}},audio:{channelCount:2,sampleRate:48000,autoGainControl:false,echoCancellation:false,noiseSuppression:false}};
+  
   try{ localStream=await navigator.mediaDevices.getDisplayMedia(con); }
   catch{ con.audio=true; try{localStream=await navigator.mediaDevices.getDisplayMedia(con);}catch{con.audio=false;localStream=await navigator.mediaDevices.getDisplayMedia(con);} }
+  
+  // Mix Mic if enabled
+  if(confirm("🎤 Would you like to enable your Microphone for commentary?")){
+    try {
+      const micStream = await navigator.mediaDevices.getUserMedia({audio: {echoCancellation:true, noiseSuppression:true}});
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const dest = ctx.createMediaStreamDestination();
+      
+      if(localStream.getAudioTracks().length > 0){
+        const source1 = ctx.createMediaStreamSource(new MediaStream([localStream.getAudioTracks()[0]]));
+        source1.connect(dest);
+      }
+      const source2 = ctx.createMediaStreamSource(micStream);
+      source2.connect(dest);
+      
+      const mixedTrack = dest.stream.getAudioTracks()[0];
+      localStream.getAudioTracks().forEach(t=>t.stop());
+      localStream.removeTrack(localStream.getAudioTracks()[0]);
+      localStream.addTrack(mixedTrack);
+      localStream._micStream = micStream; // store to stop later
+    } catch(e) { console.warn("Mic capture failed", e); }
+  }
+
   const vt=localStream.getVideoTracks()[0]; if(vt&&"contentHint"in vt)vt.contentHint="detail";
   const video=document.getElementById("remoteVideo"); video.srcObject=localStream; video.muted=true;
   vt.onended=()=>leaveCall(); return localStream;
@@ -143,26 +229,32 @@ async function optimizeHostSender(pc, vid=null){
   let mbps=parseFloat(document.getElementById("bitrateSlider")?.value||"4");
   const fps=parseInt(document.getElementById("scrFps")?.value||"30")||30;
   
-  // Auto-Throttle based on viewer feedback
-  if(vid && connectedViewers[vid]?.loss > 5){
-    mbps = Math.max(0.3, mbps * 0.6); // Cut bitrate if loss is high
-  }
-  if(vid && connectedViewers[vid]?.lowData){
-    mbps = Math.min(mbps, 1.0); // Cap at 1Mbps for Low Data Mode
-  }
-
   for(const s of pc.getSenders()){ 
-    if(!s.track||s.track.kind!=="video")continue; 
-    const p=s.getParameters(); if(!p.encodings?.length)p.encodings=[{}]; 
-    p.encodings[0].maxBitrate=mbps*1_000_000; 
-    p.encodings[0].minBitrate=300_000; // Lower floor for stability
-    p.encodings[0].maxFramerate=fps; 
-    p.encodings[0].networkPriority="high"; 
-    p.encodings[0].priority="high"; 
-    
-    if(vid && connectedViewers[vid]?.lowData) p.degradationPreference="maintain-resolution";
-    else p.degradationPreference="maintain-framerate";
-    
+    if(!s.track)continue;
+    const p=s.getParameters();
+    if(s.track.kind==="video"){
+      if(!p.encodings?.length)p.encodings=[{rid:"low"},{rid:"mid"},{rid:"high"}];
+      
+      // High Layer (Layer 2)
+      p.encodings[2].maxBitrate=mbps*1_000_000;
+      p.encodings[2].maxFramerate=fps;
+      p.encodings[2].networkPriority="high";
+      p.encodings[2].priority="high";
+      
+      // Mid Layer (Layer 1)
+      p.encodings[1].maxBitrate=Math.min(1000000, mbps*500000);
+      p.encodings[1].scaleResolutionDownBy=2.0;
+
+      // Low Layer (Layer 0) - starting from 144p
+      p.encodings[0].maxBitrate=150_000;
+      p.encodings[0].scaleResolutionDownBy=4.0;
+      
+      p.degradationPreference="maintain-resolution"; // YouTube style sharp text
+    } else if(s.track.kind==="audio"){
+      if(!p.encodings?.length)p.encodings=[{}];
+      p.encodings[0].networkPriority="high";
+      p.encodings[0].priority="high"; // Audio priority over video
+    }
     try{await s.setParameters(p);}catch(_){} 
   }
 }
@@ -174,6 +266,8 @@ window.confirmHost=async()=>{
   if(myName)localStorage.setItem("watchparty_name",myName);
   try{await captureScreen();}catch{return showToast("⚠️ Screen share cancelled");}
   isHost=true;
+  window._myVid = "host";
+  startSilenceLoop();
   document.getElementById("noSignal").classList.add("hidden");
   document.getElementById("liveBadge").style.display="flex";
   document.getElementById("sourceTag").style.display=""; document.getElementById("sourceTag").textContent="HOSTING";
@@ -192,10 +286,12 @@ window.confirmHost=async()=>{
     pendingViewers[vid]={name:data.name||"Viewer"}; renderPeopleTab(); showToast(`🔔 ${data.name} wants to join`); window.switchTab("people");
   }); firebaseUnsubs.push(unsubW);
 
-  // Viewer connections
-  const unsubV=onChildAdded(ref(db,`rooms/${roomId}/viewers`),async snap=>{
+    const unsubV=onChildAdded(ref(db,`rooms/${roomId}/viewers`),async snap=>{
     const vid=snap.key; if(!vid||screenPcMap[vid])return;
-    get(ref(db,`rooms/${roomId}/viewers/${vid}/ready`)).then(s=>{const n=s.val()?.name||"Viewer"; connectedViewers[vid]={name:n}; renderPeopleTab(); addSystemMsg(`👋 ${n} joined`);});
+    const ts = snap.val()?.requestedAt || 0;
+    if(ts < Date.now() - 3600000) return; // ignore ancient sessions
+    
+    get(ref(db,`rooms/${roomId}/viewers/${vid}/ready`)).then(s=>{const n=s.val()?.name||"Viewer"; connectedViewers[vid]={name:n}; renderPeopleTab(); addSystemMsg(`👋 ${n} joined`); playProceduralSound("join");});
     const pc=new RTCPeerConnection(servers); screenPcMap[vid]=pc;
     if(localStream)localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
     logIce(pc,`H→${vid.substring(0,6)}`);
@@ -204,6 +300,7 @@ window.confirmHost=async()=>{
     pc.onicecandidate=e=>{if(e.candidate){logCandidate(e.candidate,`H→${vid.substring(0,6)}`);push(oRef,e.candidate.toJSON());}};
     
     const offer=await pc.createOffer(); 
+    offer.sdp = mungerPreferOpus(offer.sdp);
     offer.sdp = mungerPreferVP9(offer.sdp);
     await pc.setLocalDescription(offer);
     
@@ -241,6 +338,7 @@ window.confirmJoin=async()=>{
 
 async function proceedJoin(myVid,userName){
   onDisconnect(ref(db,`rooms/${roomId}/viewers/${myVid}`)).remove();
+  startSilenceLoop();
   await set(ref(db,`rooms/${roomId}/viewers/${myVid}/ready`),{name:userName});
   const pc=new RTCPeerConnection(servers); viewerPc=pc;
   const video=document.getElementById("remoteVideo"), remoteStream=new MediaStream();
@@ -278,7 +376,7 @@ async function proceedJoin(myVid,userName){
   const oRef=ref(db,`rooms/${roomId}/viewers/${myVid}/offerCandidates`), aRef=ref(db,`rooms/${roomId}/viewers/${myVid}/answerCandidates`);
   pc.onicecandidate=e=>{if(e.candidate){logCandidate(e.candidate,"viewer");push(aRef,e.candidate.toJSON());}};
   let pendIce=[],rdReady=false;
-  const unsubO=onValue(ref(db,`rooms/${roomId}/viewers/${myVid}/offer`),async snap=>{if(!snap.val()||rdReady)return;try{await pc.setRemoteDescription(new RTCSessionDescription(snap.val()));rdReady=true;for(const c of pendIce){try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(_){}}pendIce=[];const ans=await pc.createAnswer();ans.sdp=mungerPreferVP9(ans.sdp);await pc.setLocalDescription(ans);await set(ref(db,`rooms/${roomId}/viewers/${myVid}/answer`),{type:ans.type,sdp:ans.sdp});}catch(e){console.error(e);}});
+  const unsubO=onValue(ref(db,`rooms/${roomId}/viewers/${myVid}/offer`),async snap=>{if(!snap.val()||rdReady)return;try{await pc.setRemoteDescription(new RTCSessionDescription(snap.val()));rdReady=true;for(const c of pendIce){try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(_){}}pendIce=[];    const ans=await pc.createAnswer();ans.sdp=mungerPreferOpus(ans.sdp);ans.sdp=mungerPreferVP9(ans.sdp);await pc.setLocalDescription(ans);await set(ref(db,`rooms/${roomId}/viewers/${myVid}/answer`),{type:ans.type,sdp:ans.sdp});}catch(e){console.error(e);}});
   const unsubI=onChildAdded(oRef,async s=>{const c=s.val();if(rdReady){try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(_){}}else pendIce.push(c);});
   
   // Listener for Host to throttle bitrate based on viewer loss/needs
@@ -294,24 +392,16 @@ async function proceedJoin(myVid,userName){
   });
   firebaseUnsubs.push(unsubHostF);
   
-  // Viewers list read (Universal people tab)
   const unsubPV=onChildAdded(ref(db,`rooms/${roomId}/viewers`), s=>{
     const vid=s.key; if(!vid)return;
-    get(ref(db,`rooms/${roomId}/viewers/${vid}/ready`)).then(sn=>{const n=sn.val()?.name||"Viewer"; connectedViewers[vid]={name:n}; renderPeopleTab();});
+    get(ref(db,`rooms/${roomId}/viewers/${vid}/ready`)).then(sn=>{const n=sn.val()?.name||"Viewer"; if(!connectedViewers[vid]){connectedViewers[vid]={name:n}; renderPeopleTab(); playProceduralSound("join");}});
   });
-  const unsubPR=onChildAdded(ref(db,`rooms/${roomId}/viewers`), ()=>renderPeopleTab()); // simplistic deletion handling
-  
-  // Sync Viewer's display of Host settings
-  document.getElementById("viewerHostSettings").style.display="block";
-  const unsubSet=onValue(ref(db, `rooms/${roomId}/settings`), snap=>{
-    const d=snap.val(); if(!d)return;
-    if(document.getElementById("vhsQuality")) document.getElementById("vhsQuality").textContent=d.quality;
-    if(document.getElementById("vhsFps")) document.getElementById("vhsFps").textContent=`${d.fps} fps`;
-    if(document.getElementById("vhsBitrate")) document.getElementById("vhsBitrate").textContent=`${d.bitrate} Mbps`;
-    if(document.getElementById("vhsDelay")) document.getElementById("vhsDelay").textContent=`${d.delay} s`;
+  const unsubPR=onChildAdded(ref(db,`rooms/${roomId}/viewers`), ()=>renderPeopleTab()); 
+  const unsubPD=onValue(ref(db,`rooms/${roomId}/viewers`), snap=>{
+    const current = snap.val()||{};
+    Object.keys(connectedViewers).forEach(vid=>{ if(!current[vid]){ const name=connectedViewers[vid].name; delete connectedViewers[vid]; renderPeopleTab(); addSystemMsg(`🚪 ${name} left`); playProceduralSound("leave"); } });
   });
-  
-  firebaseUnsubs.push(unsubO,unsubI,unsubPV,unsubPR,unsubSet);
+  firebaseUnsubs.push(unsubO,unsubI,unsubPV,unsubPR,unsubPD,unsubSet);
   startChatListener(); startReactionListener();
 }
 
@@ -425,6 +515,95 @@ function startHostStats(){
 
 function stopStats(){clearInterval(statsInterval);clearInterval(timerInterval);}
 window.generateRoom=()=>{const c=Math.random().toString(36).substr(2,6).toUpperCase();const el=document.getElementById("roomId");if(el)el.value=c;showToast("🎲 Room code generated");};
+
+/* VOICE CHAT (MESH) */
+window.toggleVoiceChat=async()=>{
+  if(!roomId)return showToast("⚠️ Join a room first");
+  const micBtnMain=document.getElementById("micBtnMain"), micBtnChat=document.getElementById("micBtnChat");
+  const micIconMain=document.getElementById("micIconMain"), micIconChat=document.getElementById("micIconChat");
+  
+  if(myVoiceStream){
+    myVoiceStream.getTracks().forEach(t=>t.stop()); myVoiceStream=null;
+    Object.values(voicePcs).forEach(pc=>pc.close()); voicePcs={};
+    if(micBtnMain){micBtnMain.style.background="var(--red)"; micIconMain.textContent="mic_off";}
+    if(micIconChat){micIconChat.textContent="mic_off"; micIconChat.style.color="var(--red)";}
+    showToast("🔇 Mic OFF");
+    remove(ref(db,`rooms/${roomId}/voice/${window._myVid||"host"}`));
+    return;
+  }
+
+  try {
+    myVoiceStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+    if(micBtnMain){micBtnMain.style.background="var(--accent)"; micIconMain.textContent="mic";}
+    if(micIconChat){micIconChat.textContent="mic"; micIconChat.style.color="var(--accent)";}
+    showToast("🎤 Mic ON");
+    setupDucking(myVoiceStream);
+    
+    const myVid=isHost?"host":(window._myVid||"v_"+Math.random().toString(36).substr(2,5));
+    window._myVid=myVid;
+    
+    // Announce voice presence
+    set(ref(db,`rooms/${roomId}/voice/${myVid}`),{name:myName,active:true,ts:Date.now()});
+    onDisconnect(ref(db,`rooms/${roomId}/voice/${myVid}`)).remove();
+
+    // Listen for others
+    const unsubVoice=onChildAdded(ref(db,`rooms/${roomId}/voice`), snap=>{
+      const peerVid=snap.key; if(peerVid===myVid||voicePcs[peerVid])return;
+      initVoiceP2P(peerVid, true);
+    }); firebaseUnsubs.push(unsubVoice);
+  } catch(e){ console.error(e); showToast("❌ Mic Access Denied"); }
+};
+
+async function initVoiceP2P(peerVid, isOffer){
+  if(voicePcs[peerVid])return;
+  const pc=new RTCPeerConnection(servers); voicePcs[peerVid]=pc;
+  if(myVoiceStream)myVoiceStream.getTracks().forEach(t=>pc.addTrack(t,myVoiceStream));
+  
+  pc.ontrack=e=>{
+    const audio=new Audio(); audio.srcObject=e.streams[0]; audio.play().catch(()=>{});
+  };
+
+  const oRef=ref(db,`rooms/${roomId}/voice_sig/${peerVid}/${window._myVid}/offer`);
+  const aRef=ref(db,`rooms/${roomId}/voice_sig/${window._myVid}/${peerVid}/answer`);
+  
+  pc.onicecandidate=e=>{ if(e.candidate){ push(ref(db,`rooms/${roomId}/voice_sig/${peerVid}/${window._myVid}/ice`), e.candidate.toJSON()); } };
+  
+  if(isOffer){
+    const offer=await pc.createOffer(); await pc.setLocalDescription(offer);
+    set(oRef, {type:offer.type,sdp:offer.sdp});
+  }
+
+  onValue(ref(db,`rooms/${roomId}/voice_sig/${window._myVid}/${peerVid}/offer`), async s=>{
+    if(!s.val()||pc.remoteDescription)return;
+    await pc.setRemoteDescription(new RTCSessionDescription(s.val()));
+    const ans=await pc.createAnswer(); await pc.setLocalDescription(ans);
+    set(ref(db,`rooms/${roomId}/voice_sig/${peerVid}/${window._myVid}/answer`), {type:ans.type,sdp:ans.sdp});
+  });
+
+  onValue(aRef, async s=>{ if(s.val()&&!pc.remoteDescription) await pc.setRemoteDescription(new RTCSessionDescription(s.val())); });
+  onChildAdded(ref(db,`rooms/${roomId}/voice_sig/${window._myVid}/${peerVid}/ice`), s=>{ if(s.val()) pc.addIceCandidate(new RTCIceCandidate(s.val())).catch(()=>{}); });
+}
+
+function setupDucking(stream){
+  try {
+    if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = audioCtx.createMediaStreamSource(stream);
+    const analyzer = audioCtx.createAnalyser();
+    analyzer.fftSize = 256;
+    source.connect(analyzer);
+    const data = new Uint8Array(analyzer.frequencyBinCount);
+    
+    setInterval(()=>{
+      analyzer.getByteFrequencyData(data);
+      const volume = data.reduce((a,b)=>a+b,0)/data.length;
+      if(volume > 30){ if(!duckingActive){ duckingActive=true; lowerMovieVolume(); } }
+      else { if(duckingActive){ duckingActive=false; setTimeout(()=> { if(!duckingActive) restoreMovieVolume(); }, 1500); } }
+    }, 200);
+  } catch(e){}
+}
+
+function lowerMovieVolume(){ const v=document.getElementById("remoteVideo"), a=document.getElementById("bgAudio"); if(v)v.volume=0.2; if(a)a.volume=0.2; }
+function restoreMovieVolume(){ const val=(document.getElementById("movieVolume")?.value||100)/100; const v=document.getElementById("remoteVideo"), a=document.getElementById("bgAudio"); if(v)v.volume=val; if(a)a.volume=val; }
 
 /* PiP — auto on visibility change */
 document.addEventListener("visibilitychange",async()=>{
