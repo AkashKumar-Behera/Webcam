@@ -270,6 +270,7 @@ function renderPeopleTab(){
 window.approveViewer=async(vid,name)=>{ await set(ref(db,`rooms/${roomId}/waitroom/${vid}/status`),"approved"); delete pendingViewers[vid]; renderPeopleTab(); };
 window.denyViewer  =async(vid,name)=>{ await set(ref(db,`rooms/${roomId}/waitroom/${vid}/status`),"denied"); setTimeout(()=>remove(ref(db,`rooms/${roomId}/waitroom/${vid}`)),3000); delete pendingViewers[vid]; renderPeopleTab(); showToast(`✗ ${name} declined`); };
 window.kickViewer  =async(vid,name)=>{ await set(ref(db,`rooms/${roomId}/viewers/${vid}/kicked`),true); setTimeout(()=>remove(ref(db,`rooms/${roomId}/viewers/${vid}`)),2000); try{screenPcMap[vid]?.close();}catch(_){} delete screenPcMap[vid]; delete connectedViewers[vid]; renderPeopleTab(); showToast(`👢 ${name} removed`); };
+window.muteAllViewers = async () => { if(!isHost||!roomId)return; await set(ref(db,`rooms/${roomId}/muteAll`), Date.now()); showToast("🤫 Muted all viewers"); };
 window.applyBitrateNow=()=>{ logStatus("Bitrate dynamically managed by Cloudflare SFU."); };
 
 window.pushHostSettings=()=>{
@@ -321,7 +322,7 @@ async function captureScreen(){
   catch{ con.audio=true; try{localStream=await navigator.mediaDevices.getDisplayMedia(con);}catch{con.audio=false;localStream=await navigator.mediaDevices.getDisplayMedia(con);} }
   
   // Mix Mic if enabled
-  if(confirm("🎤 Would you like to enable your Microphone for commentary?")){
+  if(document.getElementById("modalHostMic")?.checked){
     try {
       const micStream = await navigator.mediaDevices.getUserMedia(getMicConstraints());
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -404,6 +405,20 @@ window.confirmHost=async()=>{
   const pc = new RTCPeerConnection(servers); 
   screenPcMap["host_cf"] = pc; // Keep reference to cleanup later
   
+  pc.ontrack = e => {
+    const track = e.track;
+    if(track.kind === "audio") {
+      logStatus(`Host received Voice track: ${track.id}`);
+      const au = document.createElement("audio");
+      au.id = `voice_${track.id}`;
+      au.autoplay = true;
+      au.srcObject = new MediaStream([track]);
+      document.body.appendChild(au);
+      track.onended = () => { if(au.parentNode) au.parentNode.removeChild(au); };
+      track.onmute = () => { if(au.parentNode) au.parentNode.removeChild(au); };
+    }
+  };
+
   let localTransceivers = [];
   if(localStream){
     localStream.getTracks().forEach(track => {
@@ -559,17 +574,26 @@ async function proceedJoin(myVid,userName){
           logStatus("Audio stream started");
           if("mediaSession"in navigator)navigator.mediaSession.metadata=new MediaMetadata({title:`Live Room ${roomId}`,artist:"Watch Party",artwork:[{src:"icon.png",sizes:"192x192",type:"image/png"}]});
         }).catch(e=>logStatus(`Audio play error: ${e.message}`)); 
+      } else if(track.kind==="audio"){
+        const au = document.createElement("audio");
+        au.id = `voice_${track.id}`;
+        au.autoplay = true;
+        au.srcObject = new MediaStream([track]);
+        document.body.appendChild(au);
+        track.onended = () => { if(au.parentNode) au.parentNode.removeChild(au); };
+        track.onmute = () => { if(au.parentNode) au.parentNode.removeChild(au); };
       }
     };
 
     pc.onconnectionstatechange=()=>{
       logStatus(`[Viewer] ${pc.connectionState}`);
       if(pc.connectionState==="connected"){updateConnStatus("connected");document.getElementById("noSignal").classList.add("hidden");document.getElementById("sourceTag").style.display="";document.getElementById("sourceTag").textContent="WATCHING";changeActionBtns("session");window.switchTab("chat");renderPeopleTab();showToast("🎬 Connected!");}
-      if(pc.connectionState==="disconnected"){updateConnStatus("connecting");showToast("⚡ Reconnecting...");}
+      if(pc.connectionState==="disconnected"){updateConnStatus("connecting");showToast("⚡ Reconnecting..."); cfApp?.renegotiate().catch(()=>{});}
       if(pc.connectionState==="failed"){logStatus("Connection Failed definitively.");updateConnStatus("disconnected");leaveCall();}
     };
     
     onValue(ref(db,`rooms/${roomId}/viewers/${myVid}/kicked`),s=>{if(s.val()){showToast("⛔ Removed by host");leaveCall();}});
+    onValue(ref(db,`rooms/${roomId}/muteAll`),s=>{if(s.val() && myVoiceStream){ toggleVoiceChat(); showToast("🤫 Host muted microphones"); }});
 
     let trackObjects = [];
     if(hostData.cfTrackVideo) trackObjects.push({ location: 'remote', sessionId: hostData.cfSessionId, trackName: hostData.cfTrackVideo });
@@ -690,17 +714,29 @@ function startChatListener(){
     const col=nameToHsl(d.sender), init=d.sender[0]?.toUpperCase()||"?";
     
     let contentHtml = "";
-    if(d.image) contentHtml = `<img src="${d.image}" />`;
+    if(d.image) contentHtml = `<img src="${d.image}" onclick="window.fullScreenImg(this.src)" style="cursor:pointer;" />`;
     else contentHtml = esc(d.text);
 
     wrap.innerHTML=`
       <div class="chat-msg-header"><div class="chat-av" style="background:${col}">${init}</div><span class="chat-sender" style="color:${isMe?"var(--accent)":"var(--cyan)"}">${isMe?"You":esc(d.sender)}</span><span class="chat-time">${time}</span></div>
       <div class="chat-bubble ${isMe?"me":"other"}">${contentHtml}</div>
     `;
-    const c=document.getElementById("chatMessages"); if(c){c.appendChild(wrap);c.scrollTop=c.scrollHeight;if(!document.getElementById("contentChat").classList.contains("active"))showToast(`${d.sender} sent a message`);}
+    const c=document.getElementById("chatMessages"); if(c){c.appendChild(wrap);c.scrollTop=c.scrollHeight;}
+    if(!document.getElementById("contentChat")?.classList.contains("active")){
+      const badge=document.getElementById("chatBadge"); if(badge){ badge.style.display="inline-flex"; }
+      try{ new Audio("https://actions.google.com/sounds/v1/water/water_drop.ogg").play(); }catch(e){}
+    }
     if(d.text) addFloatingChatMsg(isMe?"You":d.sender,d.text);
   }); firebaseUnsubs.push(unsub);
 }
+
+window.fullScreenImg = (src) => {
+  const overlay = document.createElement('div');
+  overlay.className = 'fs-img-overlay';
+  overlay.innerHTML = `<img src="${src}" />`;
+  overlay.onclick = () => overlay.remove();
+  document.body.appendChild(overlay);
+};
 
 /* REACTIONS */
 window.sendReaction=emoji=>{if(!roomId)return showToast("⚠️ Connect first");push(ref(db,`rooms/${roomId}/reactions`),{emoji,time:Date.now()+Math.random()});triggerEmojiUI(emoji);};
@@ -708,15 +744,16 @@ function startReactionListener(){if(!roomId)return;const ts=Date.now();const u=o
 function triggerEmojiUI(emoji){const ov=document.getElementById("emojiOverlay");if(!ov)return;const el=document.createElement("div");el.className="emoji-float";el.textContent=emoji;el.style.left=(15+Math.random()*70)+"%";ov.appendChild(el);el.addEventListener("animationend",()=>el.remove(),{once:true});}
 
 /* STATS — Viewer (inbound) */
+let cumulativeBytes=0;
 /* STATS — Viewer (inbound) */
 function startStats(pc){
-  if(!pc)return; startTime=Date.now(); prevBytesStat=0;
+  if(!pc)return; startTime=Date.now(); prevBytesStat=0; cumulativeBytes=0;
   const iv=isMobile?3000:2000;
   statsInterval=setInterval(async()=>{try{
     const stats=await pc.getStats();
-    let inb=null,pair=null, codecId=null;
+    let inb=null,pair=null, codecId=null, jitter=0;
     stats.forEach(r=>{
-      if(r.type==="inbound-rtp"&&r.kind==="video"){ inb=r; codecId=r.codecId; }
+      if(r.type==="inbound-rtp"&&r.kind==="video"){ inb=r; codecId=r.codecId; jitter=r.jitter||0; }
       if(r.type==="candidate-pair"&&r.state==="succeeded"&&!pair) pair=r;
     });
     let codecName="Auto";
@@ -726,7 +763,8 @@ function startStats(pc){
     }
 
     if(inb){
-      const b=inb.bytesReceived||0,br=((b-prevBytesStat)*8/(iv/1000)/1_000_000).toFixed(1);prevBytesStat=b;
+      const b=inb.bytesReceived||0; cumulativeBytes=b;
+      const br=((b-prevBytesStat)*8/(iv/1000)/1_000_000).toFixed(1);prevBytesStat=b;
       const e=id=>document.getElementById(id);
       if(e("statBitrate"))e("statBitrate").innerHTML=`${br}<span class="stat-unit"> Mbps</span>`;
       if(e("barBitrate"))e("barBitrate").style.width=Math.min(br/12*100,100)+"%";
@@ -736,17 +774,30 @@ function startStats(pc){
       const lossNum=((inb.packetsLost||0)/Math.max(inb.packetsReceived||1,1)*100);const loss=lossNum.toFixed(1);
       if(e("statLoss"))e("statLoss").textContent=`${loss}%`;
       const tag=e("qualityTag");if(tag){tag.style.display="";const h=inb.frameHeight||0;tag.textContent=h>=1080?"1080p":h>=720?"720p":`${h}p`;}
+      if(!pair&&document.getElementById("statRtt"))document.getElementById("statRtt").innerHTML=`~${Math.round(jitter*1000)}<span class="stat-unit"> ms</span>`;
     }
     if(pair&&document.getElementById("statRtt"))document.getElementById("statRtt").innerHTML=`${Math.round((pair.currentRoundTripTime||0)*1000)}<span class="stat-unit"> ms</span>`;
   }catch(_){}},iv);
-  timerInterval=setInterval(()=>{const s=Math.floor((Date.now()-startTime)/1000);const el=document.getElementById("statDuration");if(el)el.textContent=`${String(Math.floor(s/3600)).padStart(2,"0")}:${String(Math.floor((s%3600)/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;},1000);
+  timerInterval=setInterval(()=>{
+    const s=Math.floor((Date.now()-startTime)/1000);
+    const mbs=(cumulativeBytes/1_000_000).toFixed(1);
+    const bt=mbs>1000?`${(mbs/1000).toFixed(2)} GB`:`${mbs} MB`;
+    const el=document.getElementById("statDuration");
+    if(el)el.innerHTML=`${String(Math.floor(s/3600)).padStart(2,"0")}:${String(Math.floor((s%3600)/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")} <span style="font-size:10px;color:rgba(6,182,212,0.8);margin-left:6px;font-weight:bold;">⤓ ${bt}</span>`;
+  },1000);
 }
 
 /* STATS — Host (outbound) */
 function startHostStats(){
-  startTime=Date.now(); prevBytesStat=0; const iv=2000;
-  statsInterval=setInterval(async()=>{const pcs=Object.values(screenPcMap).filter(p=>p.connectionState==="connected");if(!pcs.length)return;try{const pc=pcs[0]; const stats=await pc.getStats();let out=null,rin=null,pair=null, codecId=null;stats.forEach(r=>{if(r.type==="outbound-rtp"&&r.kind==="video"){out=r;codecId=r.codecId;}if(r.type==="remote-inbound-rtp"&&r.kind==="video")rin=r;if(r.type==="candidate-pair"&&r.state==="succeeded"&&!pair)pair=r;});let codecName="Auto";if(codecId){const cStat=stats.get(codecId);if(cStat)codecName=cStat.mimeType.split('/')[1]||"Auto";}if(out){const b=out.bytesSent||0,br=((b-prevBytesStat)*8/(iv/1000)/1_000_000).toFixed(1);prevBytesStat=b;const e=id=>document.getElementById(id);if(e("statBitrate"))e("statBitrate").innerHTML=`${br}<span class="stat-unit"> Mbps</span>`;if(e("barBitrate"))e("barBitrate").style.width=Math.min(br/12*100,100)+"%";if(e("statFps"))e("statFps").textContent=Math.round(out.framesPerSecond||0);if(e("statRes"))e("statRes").textContent=`${out.frameWidth||0}×${out.frameHeight||0}`;const qlr=out.qualityLimitationReason;if(e("statCodec"))e("statCodec").textContent=qlr&&qlr!=="none"?`⚠️ ${qlr} (Codec: ${codecName})`:codecName;if(rin){const loss=((rin.packetsLost||0)/Math.max(out.packetsSent||1,1)*100).toFixed(1);if(e("statLoss"))e("statLoss").textContent=`${loss}%`;}const tag=e("qualityTag");if(tag){tag.style.display="";const h=out.frameHeight||0;tag.textContent=h>=1080?"1080p":h>=720?"720p":`${h}p`;}}if(pair&&document.getElementById("statRtt"))document.getElementById("statRtt").innerHTML=`${Math.round((pair.currentRoundTripTime||0)*1000)}<span class="stat-unit"> ms</span>`;}catch(_){}},iv);
-  timerInterval=setInterval(()=>{const s=Math.floor((Date.now()-startTime)/1000);const el=document.getElementById("statDuration");if(el)el.textContent=`${String(Math.floor(s/3600)).padStart(2,"0")}:${String(Math.floor((s%3600)/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;},1000);
+  startTime=Date.now(); prevBytesStat=0; cumulativeBytes=0; const iv=2000;
+  statsInterval=setInterval(async()=>{const pcs=Object.values(screenPcMap).filter(p=>p.connectionState==="connected");if(!pcs.length)return;try{const pc=pcs[0]; const stats=await pc.getStats();let out=null,rin=null,pair=null, codecId=null;stats.forEach(r=>{if(r.type==="outbound-rtp"&&r.kind==="video"){out=r;codecId=r.codecId;}if(r.type==="remote-inbound-rtp"&&r.kind==="video")rin=r;if(r.type==="candidate-pair"&&r.state==="succeeded"&&!pair)pair=r;});let codecName="Auto";if(codecId){const cStat=stats.get(codecId);if(cStat)codecName=cStat.mimeType.split('/')[1]||"Auto";}if(out){const b=out.bytesSent||0; cumulativeBytes=b; const br=((b-prevBytesStat)*8/(iv/1000)/1_000_000).toFixed(1);prevBytesStat=b;const e=id=>document.getElementById(id);if(e("statBitrate"))e("statBitrate").innerHTML=`${br}<span class="stat-unit"> Mbps</span>`;if(e("barBitrate"))e("barBitrate").style.width=Math.min(br/12*100,100)+"%";if(e("statFps"))e("statFps").textContent=Math.round(out.framesPerSecond||0);if(e("statRes"))e("statRes").textContent=`${out.frameWidth||0}×${out.frameHeight||0}`;const qlr=out.qualityLimitationReason;if(e("statCodec"))e("statCodec").textContent=qlr&&qlr!=="none"?`⚠️ ${qlr} (Codec: ${codecName})`:codecName;if(rin){const loss=((rin.packetsLost||0)/Math.max(out.packetsSent||1,1)*100).toFixed(1);if(e("statLoss"))e("statLoss").textContent=`${loss}%`;}const tag=e("qualityTag");if(tag){tag.style.display="";const h=out.frameHeight||0;tag.textContent=h>=1080?"1080p":h>=720?"720p":`${h}p`;}}if(pair&&document.getElementById("statRtt"))document.getElementById("statRtt").innerHTML=`${Math.round((pair.currentRoundTripTime||0)*1000)}<span class="stat-unit"> ms</span>`;}catch(_){}},iv);
+  timerInterval=setInterval(()=>{
+    const s=Math.floor((Date.now()-startTime)/1000);
+    const mbs=(cumulativeBytes/1_000_000).toFixed(1);
+    const bt=mbs>1000?`${(mbs/1000).toFixed(2)} GB`:`${mbs} MB`;
+    const el=document.getElementById("statDuration");
+    if(el)el.innerHTML=`${String(Math.floor(s/3600)).padStart(2,"0")}:${String(Math.floor((s%3600)/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")} <span style="font-size:10px;color:rgba(16,185,129,0.8);margin-left:6px;font-weight:bold;">↑ ${bt}</span>`;
+  },1000);
 }
 
 function stopStats(){clearInterval(statsInterval);clearInterval(timerInterval);}

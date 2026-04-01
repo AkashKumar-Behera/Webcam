@@ -58,6 +58,10 @@
     .emoji-overlay{position:absolute;bottom:60px;left:0;right:0;height:240px;pointer-events:none;overflow:visible;z-index:10;}
     .emoji-float{position:absolute;bottom:0;font-size:28px;animation:emojiRise 2.5s ease-out forwards;pointer-events:none;text-shadow:0 2px 4px rgba(0,0,0,0.5);}
     @keyframes emojiRise{0%{opacity:1;transform:translateY(0) scale(0.5)}15%{opacity:1;transform:translateY(-20px) scale(1.1)}100%{opacity:0;transform:translateY(-220px) scale(0.7)}}
+    /* FULLSCREEN IMAGE OVERLAY */
+    .fs-img-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;cursor:pointer;animation:fadeIn .2s;}
+    .fs-img-overlay img{max-width:100%;max-height:100%;object-fit:contain;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,0.5);}
+    @keyframes fadeIn{0%{opacity:0}100%{opacity:1}}
     /* SIDE PANEL */
     .side-panel{width:340px;display:flex;flex-direction:column;border-left:1px solid var(--glass-border);background:rgba(12,12,12,0.96);flex-shrink:0;}
     .panel-tabs{display:flex;border-bottom:1px solid var(--glass-border);flex-shrink:0;}
@@ -245,6 +249,13 @@
           </div>
         </div>
       </div>
+    <div class="modal-divider"></div>
+    <div style="background:rgba(16,185,129,0.05); border:1px solid rgba(16,185,129,0.2); padding:16px; border-radius:12px; display:flex; align-items:center; gap:12px; cursor:pointer;" onclick="document.getElementById('modalHostMic').click()">
+      <input type="checkbox" id="modalHostMic" style="width:18px;height:18px; cursor:pointer;" onclick="event.stopPropagation()"/>
+      <div>
+        <div style="font-size:13px; font-weight:700; color:var(--text);">Enable Microphone (Commentary)</div>
+        <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Mix your voice into the movie stream cleanly</div>
+      </div>
     </div>
     <div class="modal-actions">
       <button class="modal-btn host-btn" onclick="modalStartHost()"><span class="material-symbols-outlined">cast</span> Start Host Session</button>
@@ -287,7 +298,7 @@
   <!-- SIDE PANEL -->
   <div class="side-panel">
     <div class="panel-tabs">
-      <button class="panel-tab active" onclick="switchTab('chat')" id="tabChat">Chat</button>
+      <button class="panel-tab active" onclick="switchTab('chat')" id="tabChat" style="position:relative;">Chat<span class="tab-badge" id="chatBadge" style="background:var(--accent);">!</span></button>
       <button class="panel-tab" onclick="switchTab('stats')" id="tabStats">Stats</button>
       <button class="panel-tab" onclick="switchTab('settings')" id="tabSettings">Settings</button>
       <button class="panel-tab" onclick="switchTab('people')" id="tabPeople" style="position:relative;">People<span class="tab-badge" id="peopleBadge">0</span></button>
@@ -378,7 +389,10 @@
         <div id="hostOnlySettings" style="display:none;">
           <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
             Host Controls
-            <button onclick="window.replaceScreenShareBtn()" style="background:var(--surface); border:1px solid var(--glass-border); color:var(--text); padding:4px 8px; border-radius:6px; font-size:10px; cursor:pointer;">Change Screen</button>
+            <div style="display:flex; gap:6px;">
+              <button onclick="window.replaceScreenShareBtn()" style="background:var(--surface); border:1px solid var(--glass-border); color:var(--text); padding:4px 8px; border-radius:6px; font-size:10px; cursor:pointer;">Change Screen</button>
+              <button onclick="window.muteAllViewers()" style="background:var(--red); border:1px solid var(--red); color:#fff; padding:4px 8px; border-radius:6px; font-size:10px; cursor:pointer;">Mute All Viewers</button>
+            </div>
           </div>
           <div class="form-row">
             <div class="form-group"><label>Quality</label><select class="form-select" id="scrResS" onchange="document.getElementById('scrRes').value=this.value; window.pushHostSettings();"><option value="4k">4K</option><option value="2k">2K</option><option value="1080p" selected>1080p</option><option value="720p">720p</option></select></div>
@@ -456,6 +470,7 @@ window.switchTab=tab=>{
   document.querySelectorAll('.panel-content').forEach(c=>c.classList.remove('active'));
   document.getElementById('tab'+tab[0].toUpperCase()+tab.slice(1))?.classList.add('active');
   document.getElementById('content'+tab[0].toUpperCase()+tab.slice(1))?.classList.add('active');
+  if(tab==='chat'){ const b=document.getElementById('chatBadge'); if(b) b.style.display='none'; }
 };
 window.setMovieVolume=v=>{const vol=v/100;const vid=document.getElementById('remoteVideo'),aud=document.getElementById('bgAudio');if(vid)vid.volume=vol;if(aud)aud.volume=vol;document.getElementById('movieVolVal').textContent=v+'%';};
 
