@@ -109,6 +109,3 @@ const servers = {
   iceTransportPolicy: "all"
 };
 ```
-
-
-Scource is no public
