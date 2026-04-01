@@ -7,7 +7,7 @@ const firebaseConfig = { apiKey:"AIzaSyBGnFw13ko0b4KAs7plpFmHlg0GohowElA", authD
 const app = initializeApp(firebaseConfig);
 const db  = getDatabase(app);
 
-const servers = { iceServers:[{urls:"turn:82.25.104.130:3478",username:"akash",credential:"hostinger_vps_123"},{urls:"turn:82.25.104.130:5349",username:"akash",credential:"hostinger_vps_123"},{urls:"turn:82.25.104.130:3478?transport=tcp",username:"akash",credential:"hostinger_vps_123"},{urls:"turn:82.25.104.130:5349?transport=tcp",username:"akash",credential:"hostinger_vps_123"}], iceCandidatePoolSize:2 };
+const servers = { iceServers:[{urls:"stun:stun.l.google.com:19302"},{urls:"turn:82.25.104.130:3478",username:"akash",credential:"hostinger_vps_123"},{urls:"turn:82.25.104.130:5349",username:"akash",credential:"hostinger_vps_123"},{urls:"turn:82.25.104.130:3478?transport=tcp",username:"akash",credential:"hostinger_vps_123"},{urls:"turn:82.25.104.130:5349?transport=tcp",username:"akash",credential:"hostinger_vps_123"}], iceCandidatePoolSize:2 };
 const RES_MAP = { "4k":{width:3840,height:2160},"2k":{width:2560,height:1440},"1080p":{width:1920,height:1080},"720p":{width:1280,height:720} };
 
 /* STATE */
@@ -233,7 +233,7 @@ async function optimizeHostSender(pc, vid=null){
     if(!s.track)continue;
     const p=s.getParameters();
     if(s.track.kind==="video"){
-      if(!p.encodings?.length)p.encodings=[{rid:"low"},{rid:"mid"},{rid:"high"}];
+      if(!p.encodings?.length || p.encodings.length < 3) continue; 
       
       // High Layer (Layer 2)
       p.encodings[2].maxBitrate=mbps*1_000_000;
@@ -293,7 +293,23 @@ window.confirmHost=async()=>{
     
     get(ref(db,`rooms/${roomId}/viewers/${vid}/ready`)).then(s=>{const n=s.val()?.name||"Viewer"; connectedViewers[vid]={name:n}; renderPeopleTab(); addSystemMsg(`👋 ${n} joined`); playProceduralSound("join");});
     const pc=new RTCPeerConnection(servers); screenPcMap[vid]=pc;
-    if(localStream)localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
+    if(localStream){
+      localStream.getTracks().forEach(t=>{
+        if(t.kind==="video"){
+          pc.addTransceiver(t, {
+            direction: "sendonly",
+            streams: [localStream],
+            sendEncodings: [
+              { rid: "low", scaleResolutionDownBy: 4.0, maxBitrate: 150000 },
+              { rid: "mid", scaleResolutionDownBy: 2.0, maxBitrate: 1000000 },
+              { rid: "high", maxBitrate: 4000000 }
+            ]
+          });
+        } else {
+          pc.addTrack(t, localStream);
+        }
+      });
+    }
     logIce(pc,`H→${vid.substring(0,6)}`);
     pc.onconnectionstatechange=()=>{ console.log(`[H→${vid.substring(0,6)}] ${pc.connectionState}`); if(pc.connectionState==="connected")optimizeHostSender(pc); if(["failed","closed"].includes(pc.connectionState)){try{pc.close();}catch(_){} delete screenPcMap[vid]; delete connectedViewers[vid]; renderPeopleTab();} };
     const oRef=ref(db,`rooms/${roomId}/viewers/${vid}/offerCandidates`), aRef=ref(db,`rooms/${roomId}/viewers/${vid}/answerCandidates`);
