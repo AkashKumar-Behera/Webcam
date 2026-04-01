@@ -339,6 +339,12 @@
           <div class="stat-card"><div class="stat-label">Packet Loss</div><div class="stat-value" id="statLoss">—</div></div>
           <div class="stat-card" style="grid-column:1/-1;"><div class="stat-label">Duration</div><div class="stat-value" id="statDuration">00:00:00</div></div>
         </div>
+        <div class="stat-card" style="margin-top:12px; background:rgba(0,0,0,0.2); border:1px dashed var(--glass-border);">
+          <div class="stat-label" style="display:flex; justify-content:space-between; align-items:center;">Diagnostic Log <button onclick="document.getElementById('connLog').textContent='-- Log Reset --'; " style="background:none; border:none; color:var(--accent); font-size:9px; cursor:pointer;">Clear</button></div>
+          <div id="connLog" style="font-size:10px; font-family:monospace; color:var(--text-muted); margin-top:8px; line-height:1.4; max-height:120px; overflow-y:auto; word-break:break-all; padding:4px;">
+            -- Waiting for connection --
+          </div>
+        </div>
       </div>
     </div>
 
@@ -386,6 +392,32 @@
             <label style="display:flex;justify-content:space-between;">Stream Buffer <span id="delayValLabel" style="color:#fbbf24">0.05 s</span></label>
             <input type="range" id="streamDelaySlider" min="0" max="2" value="0.05" step="0.1" oninput="document.getElementById('delayValLabel').textContent=this.value+' s';" onchange="window.pushHostSettings();" style="width:100%;height:4px;-webkit-appearance:none;appearance:none;background:var(--glass-border);border-radius:2px;cursor:pointer;outline:none;"/>
             <div style="font-size:9px; color:var(--text-muted); margin-top:4px;">Increase buffer if users experience stuttering.</div>
+          </div>
+        </div>
+        <div>
+          <div class="section-title">🎙️ Microphone</div>
+          <div class="form-group">
+            <label>Input Device</label>
+            <select class="form-select" id="micSelect" onchange="window.refreshMicMeter()"><option value="">Default Microphone</option></select>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px;">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <input type="checkbox" id="micEcho" checked style="width:14px;height:14px;cursor:pointer;" onchange="window.refreshMicMeter()"/>
+              <label for="micEcho" style="margin:0; font-size:11px; text-transform:none;">Echo Cancel</label>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <input type="checkbox" id="micNoise" checked style="width:14px;height:14px;cursor:pointer;" onchange="window.refreshMicMeter()"/>
+              <label for="micNoise" style="margin:0; font-size:11px; text-transform:none;">Noise Suppress</label>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <input type="checkbox" id="micAGC" checked style="width:14px;height:14px;cursor:pointer;" onchange="window.refreshMicMeter()"/>
+              <label for="micAGC" style="margin:0; font-size:11px; text-transform:none;">Auto Gain</label>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <div id="micMeter" style="flex:1; height:4px; background:var(--glass-border); border-radius:2px; overflow:hidden; position:relative;">
+                <div id="micMeterFill" style="width:0%; height:100%; background:var(--accent); transition:width 0.1s;"></div>
+              </div>
+            </div>
           </div>
         </div>
         <div>

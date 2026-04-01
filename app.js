@@ -7,7 +7,12 @@ const firebaseConfig = { apiKey:"AIzaSyBGnFw13ko0b4KAs7plpFmHlg0GohowElA", authD
 const app = initializeApp(firebaseConfig);
 const db  = getDatabase(app);
 
-const servers = { iceServers:[{urls:"stun:stun.l.google.com:19302"},{urls:"turn:82.25.104.130:3478",username:"akash",credential:"hostinger_vps_123"},{urls:"turn:82.25.104.130:5349",username:"akash",credential:"hostinger_vps_123"},{urls:"turn:82.25.104.130:3478?transport=tcp",username:"akash",credential:"hostinger_vps_123"},{urls:"turn:82.25.104.130:5349?transport=tcp",username:"akash",credential:"hostinger_vps_123"}], iceCandidatePoolSize:2 };
+const servers = { 
+  iceServers:[{urls:"stun:stun.l.google.com:19302"},{urls:"turn:82.25.104.130:3478",username:"akash",credential:"hostinger_vps_123"},{urls:"turn:82.25.104.130:5349",username:"akash",credential:"hostinger_vps_123"},{urls:"turn:82.25.104.130:3478?transport=tcp",username:"akash",credential:"hostinger_vps_123"},{urls:"turn:82.25.104.130:5349?transport=tcp",username:"akash",credential:"hostinger_vps_123"}], 
+  iceCandidatePoolSize:10, 
+  iceTransportPolicy:"all",
+  sdpSemantics: "unified-plan"
+};
 const RES_MAP = { "4k":{width:3840,height:2160},"2k":{width:2560,height:1440},"1080p":{width:1920,height:1080},"720p":{width:1280,height:720} };
 
 /* STATE */
@@ -57,6 +62,84 @@ function startSilenceLoop(){
   audio.play().then(()=>silenceLoop=audio).catch(()=>{});
 }
 function nameToHsl(n){ let h=0; for(const c of String(n)) h=c.charCodeAt(0)+((h<<5)-h); return `hsl(${Math.abs(h)%360},65%,48%)`; }
+
+function logStatus(msg){
+  console.log(`[STATUS] ${msg}`);
+  const log = document.getElementById("connLog");
+  if(log){
+    const el = document.createElement("div");
+    el.textContent = `[${new Date().toLocaleTimeString([],{hour12:false,minute:'2-digit',second:'2-digit'})}] ${msg}`;
+    log.appendChild(el); log.scrollTop = log.scrollHeight;
+    if(log.children.length > 50) log.children[0].remove();
+  }
+}
+
+function mungerPreferH264(sdp){
+  const lines=sdp.split("\r\n"); let videoIdx=-1;
+  for(let i=0;i<lines.length;i++){if(lines[i].startsWith("m=video ")){videoIdx=i;break;}}
+  if(videoIdx===-1)return sdp;
+  const mLine=lines[videoIdx].split(" "); const payloads=mLine.slice(3);
+  let h264Payloads=[];
+  for(let i=0;i<lines.length;i++){
+    if(lines[i].startsWith("a=rtpmap:") && lines[i].toLowerCase().includes("h264")){
+      const p=lines[i].split(":")[1].split(" ")[0]; if(payloads.includes(p)) h264Payloads.push(p);
+    }
+  }
+  if(!h264Payloads.length)return sdp;
+  const others=payloads.filter(p=>!h264Payloads.includes(p));
+  mLine.splice(3, mLine.length-3, ...h264Payloads, ...others);
+  lines[videoIdx]=mLine.join(" "); return lines.join("\r\n");
+}
+
+/* MIC MANAGEMENT */
+let micMeterInterval = null;
+async function refreshAudioDevices(){
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const micSelect = document.getElementById("micSelect");
+    if(!micSelect)return;
+    const prev = micSelect.value; micSelect.innerHTML = "";
+    devices.filter(d=>d.kind==="audioinput").forEach(d=>{
+      const opt = document.createElement("option"); opt.value=d.deviceId; opt.textContent=d.label||`Mic ${micSelect.length+1}`;
+      micSelect.appendChild(opt);
+    });
+    if(prev && [...micSelect.options].some(o=>o.value===prev)) micSelect.value=prev;
+  } catch(_){}
+}
+
+function getMicConstraints(){
+  const devId = document.getElementById("micSelect")?.value;
+  const echo = document.getElementById("micEcho")?.checked ?? true;
+  const noise = document.getElementById("micNoise")?.checked ?? true;
+  const agc = document.getElementById("micAGC")?.checked ?? true;
+  const con = { audio: { echoCancellation: echo, noiseSuppression: noise, autoGainControl: agc } };
+  if(devId) con.audio.deviceId = { exact: devId };
+  return con;
+}
+
+window.refreshMicMeter = async () => {
+  if(micMeterInterval){ clearInterval(micMeterInterval); micMeterInterval=null; }
+  const fill = document.getElementById("micMeterFill"); if(fill) fill.style.width="0%";
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia(getMicConstraints());
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = ctx.createMediaStreamSource(stream);
+    const analyzer = ctx.createAnalyser(); analyzer.fftSize = 256;
+    source.connect(analyzer);
+    const data = new Uint8Array(analyzer.frequencyBinCount);
+    micMeterInterval = setInterval(()=>{
+      analyzer.getByteFrequencyData(data);
+      const vol = data.reduce((a,b)=>a+b,0)/data.length;
+      if(fill) fill.style.width = Math.min(100, vol * 2) + "%";
+    }, 100);
+    // Cleanup after 5s or when tab changes
+    setTimeout(()=>{ clearInterval(micMeterInterval); stream.getTracks().forEach(t=>t.stop()); ctx.close(); if(fill) fill.style.width="0%"; }, 5000);
+  } catch(_){}
+};
+// Trigger device list on load
+navigator.mediaDevices.addEventListener("devicechange", refreshAudioDevices);
+refreshAudioDevices().then(()=>{ if(navigator.mediaDevices.getUserMedia) navigator.mediaDevices.getUserMedia({audio:true}).then(refreshAudioDevices).catch(()=>{}); });
+
 
 /* STABILITY HELPERS */
 function mungerPreferOpus(sdp){
@@ -200,7 +283,7 @@ async function captureScreen(){
   // Mix Mic if enabled
   if(confirm("🎤 Would you like to enable your Microphone for commentary?")){
     try {
-      const micStream = await navigator.mediaDevices.getUserMedia({audio: {echoCancellation:true, noiseSuppression:true}});
+      const micStream = await navigator.mediaDevices.getUserMedia(getMicConstraints());
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
       const dest = ctx.createMediaStreamDestination();
       
@@ -291,6 +374,7 @@ window.confirmHost=async()=>{
     const ts = snap.val()?.requestedAt || 0;
     if(ts < Date.now() - 3600000) return; // ignore ancient sessions
     
+    logStatus(`Incoming viewer: ${vid.substring(0,6)}`);
     get(ref(db,`rooms/${roomId}/viewers/${vid}/ready`)).then(s=>{const n=s.val()?.name||"Viewer"; connectedViewers[vid]={name:n}; renderPeopleTab(); addSystemMsg(`👋 ${n} joined`); playProceduralSound("join");});
     const pc=new RTCPeerConnection(servers); screenPcMap[vid]=pc;
     if(localStream){
@@ -311,18 +395,28 @@ window.confirmHost=async()=>{
       });
     }
     logIce(pc,`H→${vid.substring(0,6)}`);
-    pc.onconnectionstatechange=()=>{ console.log(`[H→${vid.substring(0,6)}] ${pc.connectionState}`); if(pc.connectionState==="connected")optimizeHostSender(pc); if(["failed","closed"].includes(pc.connectionState)){try{pc.close();}catch(_){} delete screenPcMap[vid]; delete connectedViewers[vid]; renderPeopleTab();} };
+    pc.onconnectionstatechange=()=>{ 
+      logStatus(`[H→${vid.substring(0,6)}] ${pc.connectionState}`);
+      if(pc.connectionState==="connected")optimizeHostSender(pc); 
+      if(["failed","closed"].includes(pc.connectionState)){try{pc.close();}catch(_){} delete screenPcMap[vid]; delete connectedViewers[vid]; renderPeopleTab();} 
+    };
     const oRef=ref(db,`rooms/${roomId}/viewers/${vid}/offerCandidates`), aRef=ref(db,`rooms/${roomId}/viewers/${vid}/answerCandidates`);
     pc.onicecandidate=e=>{if(e.candidate){logCandidate(e.candidate,`H→${vid.substring(0,6)}`);push(oRef,e.candidate.toJSON());}};
     
     const offer=await pc.createOffer(); 
     offer.sdp = mungerPreferOpus(offer.sdp);
+    offer.sdp = mungerPreferH264(offer.sdp); // Use H264 for mobile stability
     offer.sdp = mungerPreferVP9(offer.sdp);
     await pc.setLocalDescription(offer);
     
+    logStatus(`Sent Offer to ${vid.substring(0,6)}`);
     await set(ref(db,`rooms/${roomId}/viewers/${vid}/offer`),{type:offer.type,sdp:offer.sdp});
     let pendIce=[],rdReady=false;
-    const unsubA=onValue(ref(db,`rooms/${roomId}/viewers/${vid}/answer`),async s=>{if(!s.val()||rdReady)return; try{await pc.setRemoteDescription(new RTCSessionDescription(s.val()));rdReady=true;for(const c of pendIce){try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(_){}}pendIce=[];}catch(e){console.error(e);}});
+    const unsubA=onValue(ref(db,`rooms/${roomId}/viewers/${vid}/answer`),async s=>{
+      if(!s.val()||rdReady)return; 
+      logStatus(`Received Answer from ${vid.substring(0,6)}`);
+      try{await pc.setRemoteDescription(new RTCSessionDescription(s.val()));rdReady=true;for(const c of pendIce){try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(_){}}pendIce=[];}catch(e){console.error(e);}
+    });
     const unsubI=onChildAdded(aRef,async cs=>{const c=cs.val();if(rdReady){try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(_){}}else pendIce.push(c);});
     firebaseUnsubs.push(unsubA,unsubI);
   }); firebaseUnsubs.push(unsubV);
@@ -353,6 +447,7 @@ window.confirmJoin=async()=>{
 };
 
 async function proceedJoin(myVid,userName){
+  logStatus("Starting connection sequence...");
   onDisconnect(ref(db,`rooms/${roomId}/viewers/${myVid}`)).remove();
   startSilenceLoop();
   await set(ref(db,`rooms/${roomId}/viewers/${myVid}/ready`),{name:userName});
@@ -364,6 +459,7 @@ async function proceedJoin(myVid,userName){
 
   pc.ontrack=e=>{
     const track=e.track;
+    logStatus(`Received track: ${track.kind}`);
     if(e.receiver){
       if(track.kind==="audio"){try{e.receiver.playoutDelayHint=0;}catch(_){}}
       else{
@@ -379,20 +475,53 @@ async function proceedJoin(myVid,userName){
       }
     }
     if(!remoteStream.getTracks().find(t=>t.id===track.id))remoteStream.addTrack(track);
-    if(!bgAudioSet&&track.kind==="audio"){ bgAudioSet=true; const bg=document.getElementById("bgAudio"); bg.srcObject=new MediaStream([track]); video.muted=true; bg.play().then(()=>{if("mediaSession"in navigator)navigator.mediaSession.metadata=new MediaMetadata({title:`Live Room ${roomId}`,artist:"Watch Party",artwork:[{src:"icon.png",sizes:"192x192",type:"image/png"}]});}).catch(e=>console.warn(e)); }
+    
+    // Explicit play for mobile
+    video.play().catch(()=>{
+      logStatus("Autoplay blocked. User interaction required.");
+      video.muted=true; video.play().catch(()=>{}); // Fallback to muted
+    });
+
+    if(!bgAudioSet&&track.kind==="audio"){ 
+      bgAudioSet=true; 
+      const bg=document.getElementById("bgAudio"); 
+      bg.srcObject=new MediaStream([track]); 
+      video.muted=true; 
+      bg.play().then(()=>{
+        logStatus("Audio stream started");
+        if("mediaSession"in navigator)navigator.mediaSession.metadata=new MediaMetadata({title:`Live Room ${roomId}`,artist:"Watch Party",artwork:[{src:"icon.png",sizes:"192x192",type:"image/png"}]});
+      }).catch(e=>logStatus(`Audio play error: ${e.message}`)); 
+    }
   };
   logIce(pc,"viewer");
   pc.onconnectionstatechange=()=>{
-    console.log(`[Viewer] ${pc.connectionState}`);
+    logStatus(`[Viewer] ${pc.connectionState}`);
     if(pc.connectionState==="connected"){iceRestartCount=0;updateConnStatus("connected");document.getElementById("noSignal").classList.add("hidden");document.getElementById("sourceTag").style.display="";document.getElementById("sourceTag").textContent="WATCHING";changeActionBtns("session");window.switchTab("chat");startStats(pc);renderPeopleTab();showToast("🎬 Connected!");}
     if(pc.connectionState==="disconnected"){updateConnStatus("connecting");showToast("⚡ Reconnecting...");}
-    if(pc.connectionState==="failed"){if(iceRestartCount<MAX_ICE_RESTARTS){iceRestartCount++;showToast(`🔄 Retry ${iceRestartCount}/${MAX_ICE_RESTARTS}`);pc.restartIce();}else{showToast("❌ Connection failed");updateConnStatus("disconnected");leaveCall();}}
+    if(pc.connectionState==="failed"){if(iceRestartCount<MAX_ICE_RESTARTS){iceRestartCount++;logStatus(`ICE Restart ${iceRestartCount}`);pc.restartIce();}else{logStatus("Connection Failed definitively.");updateConnStatus("disconnected");leaveCall();}}
   };
   onValue(ref(db,`rooms/${roomId}/viewers/${myVid}/kicked`),s=>{if(s.val()){showToast("⛔ Removed by host");leaveCall();}});
   const oRef=ref(db,`rooms/${roomId}/viewers/${myVid}/offerCandidates`), aRef=ref(db,`rooms/${roomId}/viewers/${myVid}/answerCandidates`);
   pc.onicecandidate=e=>{if(e.candidate){logCandidate(e.candidate,"viewer");push(aRef,e.candidate.toJSON());}};
   let pendIce=[],rdReady=false;
-  const unsubO=onValue(ref(db,`rooms/${roomId}/viewers/${myVid}/offer`),async snap=>{if(!snap.val()||rdReady)return;try{await pc.setRemoteDescription(new RTCSessionDescription(snap.val()));rdReady=true;for(const c of pendIce){try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(_){}}pendIce=[];    const ans=await pc.createAnswer();ans.sdp=mungerPreferOpus(ans.sdp);ans.sdp=mungerPreferVP9(ans.sdp);await pc.setLocalDescription(ans);await set(ref(db,`rooms/${roomId}/viewers/${myVid}/answer`),{type:ans.type,sdp:ans.sdp});}catch(e){console.error(e);}});
+  const unsubO=onValue(ref(db,`rooms/${roomId}/viewers/${myVid}/offer`),async snap=>{
+    if(!snap.val()||rdReady)return;
+    logStatus("Received Offer from Host");
+    try{
+      await pc.setRemoteDescription(new RTCSessionDescription(snap.val()));
+      rdReady=true;
+      logStatus("Remote description set");
+      for(const c of pendIce){try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(_){}}
+      pendIce=[];    
+      const ans=await pc.createAnswer();
+      ans.sdp=mungerPreferOpus(ans.sdp);
+      ans.sdp=mungerPreferH264(ans.sdp); // Use H264 for mobile stability
+      ans.sdp=mungerPreferVP9(ans.sdp);
+      await pc.setLocalDescription(ans);
+      logStatus("Sent Answer to Host");
+      await set(ref(db,`rooms/${roomId}/viewers/${myVid}/answer`),{type:ans.type,sdp:ans.sdp});
+    }catch(e){logStatus(`Signaling error: ${e.message}`);}
+  });
   const unsubI=onChildAdded(oRef,async s=>{const c=s.val();if(rdReady){try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(_){}}else pendIce.push(c);});
   
   // Listener for Host to throttle bitrate based on viewer loss/needs
@@ -417,7 +546,7 @@ async function proceedJoin(myVid,userName){
     const current = snap.val()||{};
     Object.keys(connectedViewers).forEach(vid=>{ if(!current[vid]){ const name=connectedViewers[vid].name; delete connectedViewers[vid]; renderPeopleTab(); addSystemMsg(`🚪 ${name} left`); playProceduralSound("leave"); } });
   });
-  firebaseUnsubs.push(unsubO,unsubI,unsubPV,unsubPR,unsubPD,unsubSet);
+  firebaseUnsubs.push(unsubO,unsubI,unsubPV,unsubPR,unsubPD);
   startChatListener(); startReactionListener();
 }
 
@@ -549,7 +678,7 @@ window.toggleVoiceChat=async()=>{
   }
 
   try {
-    myVoiceStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+    myVoiceStream=await navigator.mediaDevices.getUserMedia(getMicConstraints());
     if(micBtnMain){micBtnMain.style.background="var(--accent)"; micIconMain.textContent="mic";}
     if(micIconChat){micIconChat.textContent="mic"; micIconChat.style.color="var(--accent)";}
     showToast("🎤 Mic ON");
