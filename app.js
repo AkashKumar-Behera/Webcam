@@ -82,20 +82,24 @@ function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").rep
 
 function startSilenceLoop(){
   if(silenceLoop)return;
-  const audio=new Audio();
-  const canvas=document.createElement("canvas");
-  canvas.width=canvas.height=1;
-  const stream=canvas.captureStream();
-  // Procedural silence track
-  const ctx=new (window.AudioContext||window.webkitAudioContext)();
-  const dest=ctx.createMediaStreamDestination();
-  const osc=ctx.createOscillator();
-  const gain=ctx.createGain(); gain.gain.value=0.001; // nearly silent
-  osc.connect(gain); gain.connect(dest);
-  osc.start();
-  audio.srcObject=dest.stream;
-  audio.loop=true;
-  audio.play().then(()=>silenceLoop=audio).catch(()=>{});
+  try {
+    const ctx=new (window.AudioContext||window.webkitAudioContext)();
+    const dest=ctx.createMediaStreamDestination();
+    const osc=ctx.createOscillator();
+    const gain=ctx.createGain(); gain.gain.value=0.0001; 
+    osc.connect(gain); gain.connect(dest);
+    osc.start();
+    const audio=new Audio();
+    audio.srcObject=dest.stream;
+    audio.loop=true;
+    audio.play().then(()=> {silenceLoop = { audio, osc, ctx };}).catch(()=>{});
+  } catch(e){}
+}
+function stopSilenceLoop(){
+  if(silenceLoop){
+    try{silenceLoop.osc.stop(); silenceLoop.ctx.close(); silenceLoop.audio.pause();}catch(e){}
+    silenceLoop=null;
+  }
 }
 function nameToHsl(n){ let h=0; for(const c of String(n)) h=c.charCodeAt(0)+((h<<5)-h); return `hsl(${Math.abs(h)%360},65%,48%)`; }
 
@@ -447,7 +451,15 @@ window.confirmHost=async()=>{
     const vid=snap.key, data=snap.val(); if(!data||!vid||data.status)return;
     logStatus(`Approval request from: ${data.name||"Viewer"}`);
     pendingViewers[vid]={name:data.name||"Viewer"}; renderPeopleTab(); showToast(`🔔 ${data.name} wants to join`); window.switchTab("people");
-  }); firebaseUnsubs.push(unsubW);
+  });
+  
+  // Voice Pull Listener
+  const unsubVoice=onChildAdded(ref(db,`rooms/${roomId}/voice`), async snap=>{
+    const peerVid=snap.key; if(peerVid===window._myVid||!snap.val())return;
+    pullVoiceTracks(snap.val().cfSessionId, snap.val().trackName, pc);
+  });
+  
+  firebaseUnsubs.push(unsubW, unsubVoice);
 
   const unsubV=onChildAdded(ref(db,`rooms/${roomId}/viewers`),async snap=>{
     const vid=snap.key; if(!vid)return;
@@ -594,7 +606,7 @@ async function proceedJoin(myVid,userName){
 
     const unsubPV=onChildAdded(ref(db,`rooms/${roomId}/viewers`), s=>{
       const vid=s.key; if(!vid)return;
-      if(vid === myVid) return; // Prevent self processing occasionally
+      // Allow self addition to pass so I appear in my own People list
       get(ref(db,`rooms/${roomId}/viewers/${vid}/ready`)).then(sn=>{const n=sn.val()?.name||"Viewer"; if(!connectedViewers[vid]){connectedViewers[vid]={name:n}; renderPeopleTab(); playProceduralSound("join");}});
     });
     const unsubPR=onChildAdded(ref(db,`rooms/${roomId}/viewers`), ()=>renderPeopleTab()); 
@@ -603,6 +615,13 @@ async function proceedJoin(myVid,userName){
       Object.keys(connectedViewers).forEach(vid=>{ if(!current[vid] && vid !== myVid){ const name=connectedViewers[vid].name; delete connectedViewers[vid]; renderPeopleTab(); addSystemMsg(`🚪 ${name} left`); playProceduralSound("leave"); } });
     });
     firebaseUnsubs.push(unsubPV,unsubPR,unsubPD);
+    
+    // Voice Pull Listener
+    const unsubVoice=onChildAdded(ref(db,`rooms/${roomId}/voice`), async snap=>{
+      const peerVid=snap.key; if(peerVid===window._myVid||!snap.val())return;
+      pullVoiceTracks(snap.val().cfSessionId, snap.val().trackName, pc);
+    }); firebaseUnsubs.push(unsubVoice);
+
     startChatListener(); startReactionListener();
 
   } catch (err) {
@@ -615,11 +634,13 @@ async function proceedJoin(myVid,userName){
 }
 
 /* LEAVE */
+/* LEAVE */
 window.leaveCall=async()=>{
-  stopStats(); firebaseUnsubs.forEach(u=>{try{u();}catch(_){}}); firebaseUnsubs=[];
+  stopStats(); stopSilenceLoop(); firebaseUnsubs.forEach(u=>{try{u();}catch(_){}}); firebaseUnsubs=[];
   Object.values(screenPcMap).forEach(pc=>{try{pc.close();}catch(_){}});screenPcMap={};
   if(viewerPc){try{viewerPc.close();}catch(_){}viewerPc=null;}
   if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null;}
+  if(myVoiceStream){myVoiceStream.getTracks().forEach(t=>t.stop());myVoiceStream=null;}
   const bg=document.getElementById("bgAudio"); if(bg){bg.srcObject=null;bg.pause();}
   if(isHost&&roomId)remove(ref(db,`rooms/${roomId}`));
   const ns=document.getElementById("noSignal"); ns.classList.remove("hidden"); ns.querySelector("h3").textContent="Waiting for Screen Share"; ns.querySelector("p").textContent="Connect to join or host a session";
@@ -687,45 +708,72 @@ function startReactionListener(){if(!roomId)return;const ts=Date.now();const u=o
 function triggerEmojiUI(emoji){const ov=document.getElementById("emojiOverlay");if(!ov)return;const el=document.createElement("div");el.className="emoji-float";el.textContent=emoji;el.style.left=(15+Math.random()*70)+"%";ov.appendChild(el);el.addEventListener("animationend",()=>el.remove(),{once:true});}
 
 /* STATS — Viewer (inbound) */
+/* STATS — Viewer (inbound) */
 function startStats(pc){
   if(!pc)return; startTime=Date.now(); prevBytesStat=0;
-  let prevDrops=0, bufferAdjCount=0;
   const iv=isMobile?3000:2000;
-  statsInterval=setInterval(async()=>{try{const stats=await pc.getStats();let inb=null,pair=null;stats.forEach(r=>{if(r.type==="inbound-rtp"&&r.kind==="video")inb=r;if(r.type==="candidate-pair"&&r.nominated)pair=r;});if(inb){const b=inb.bytesReceived||0,br=((b-prevBytesStat)*8/(iv/1000)/1_000_000).toFixed(1);prevBytesStat=b;const e=id=>document.getElementById(id);if(e("statBitrate"))e("statBitrate").innerHTML=`${br}<span class="stat-unit"> Mbps</span>`;if(e("barBitrate"))e("barBitrate").style.width=Math.min(br/12*100,100)+"%";if(e("statFps"))e("statFps").textContent=Math.round(inb.framesPerSecond||0);if(e("statRes"))e("statRes").textContent=`${inb.frameWidth||0}×${inb.frameHeight||0}`;if(e("statCodec"))e("statCodec").textContent=inb.decoderImplementation||"Auto";const lossNum=((inb.packetsLost||0)/Math.max(inb.packetsReceived||1,1)*100);const loss=lossNum.toFixed(1);if(e("statLoss"))e("statLoss").textContent=`${loss}%`;
-    
-    // Auto Buffer Adjustment
-    const drops=inb.framesDropped||0;
-    if(drops > prevDrops+3){
-      bufferAdjCount++;
-      if(bufferAdjCount > 2){ // Consecutive drops
-        const current = parseFloat(document.getElementById("vhsDelay")?.textContent || "0.05");
-        const next = Math.min(2.0, current + 0.1);
-        pc.getReceivers().forEach(r=>{if(r.track.kind==="video")try{r.playoutDelayHint=next;}catch(_){}});
-        bufferAdjCount=0;
-      }
-    } else { bufferAdjCount=0; }
-    prevDrops=drops;
+  statsInterval=setInterval(async()=>{try{
+    const stats=await pc.getStats();
+    let inb=null,pair=null, codecId=null;
+    stats.forEach(r=>{
+      if(r.type==="inbound-rtp"&&r.kind==="video"){ inb=r; codecId=r.codecId; }
+      if(r.type==="candidate-pair"&&r.state==="succeeded"&&!pair) pair=r;
+    });
+    let codecName="Auto";
+    if(codecId) {
+       const codecStat = stats.get(codecId);
+       if(codecStat) codecName = codecStat.mimeType.split('/')[1] || "Auto";
+    }
 
-    // Report back to Host
-    const lowData = document.getElementById("lowDataMode")?.checked||false;
-    const myVid = pc === viewerPc ? (window._myVid || "") : "";
-    if(myVid && roomId) set(ref(db, `rooms/${roomId}/viewers/${myVid}/stats`), {loss: lossNum, lowData});
-
-    const tag=e("qualityTag");if(tag){tag.style.display="";const h=inb.frameHeight||0;tag.textContent=h>=1080?"1080p":h>=720?"720p":`${h}p`;}}if(pair&&document.getElementById("statRtt"))document.getElementById("statRtt").innerHTML=`${Math.round((pair.currentRoundTripTime||0)*1000)}<span class="stat-unit"> ms</span>`;}catch(_){}},iv);
+    if(inb){
+      const b=inb.bytesReceived||0,br=((b-prevBytesStat)*8/(iv/1000)/1_000_000).toFixed(1);prevBytesStat=b;
+      const e=id=>document.getElementById(id);
+      if(e("statBitrate"))e("statBitrate").innerHTML=`${br}<span class="stat-unit"> Mbps</span>`;
+      if(e("barBitrate"))e("barBitrate").style.width=Math.min(br/12*100,100)+"%";
+      if(e("statFps"))e("statFps").textContent=Math.round(inb.framesPerSecond||0);
+      if(e("statRes"))e("statRes").textContent=`${inb.frameWidth||0}×${inb.frameHeight||0}`;
+      if(e("statCodec"))e("statCodec").textContent=codecName;
+      const lossNum=((inb.packetsLost||0)/Math.max(inb.packetsReceived||1,1)*100);const loss=lossNum.toFixed(1);
+      if(e("statLoss"))e("statLoss").textContent=`${loss}%`;
+      const tag=e("qualityTag");if(tag){tag.style.display="";const h=inb.frameHeight||0;tag.textContent=h>=1080?"1080p":h>=720?"720p":`${h}p`;}
+    }
+    if(pair&&document.getElementById("statRtt"))document.getElementById("statRtt").innerHTML=`${Math.round((pair.currentRoundTripTime||0)*1000)}<span class="stat-unit"> ms</span>`;
+  }catch(_){}},iv);
   timerInterval=setInterval(()=>{const s=Math.floor((Date.now()-startTime)/1000);const el=document.getElementById("statDuration");if(el)el.textContent=`${String(Math.floor(s/3600)).padStart(2,"0")}:${String(Math.floor((s%3600)/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;},1000);
 }
 
 /* STATS — Host (outbound) */
 function startHostStats(){
   startTime=Date.now(); prevBytesStat=0; const iv=2000;
-  statsInterval=setInterval(async()=>{const pcs=Object.values(screenPcMap).filter(p=>p.connectionState==="connected");if(!pcs.length)return;try{const stats=await pcs[0].getStats();let out=null,rin=null,pair=null;stats.forEach(r=>{if(r.type==="outbound-rtp"&&r.kind==="video")out=r;if(r.type==="remote-inbound-rtp"&&r.kind==="video")rin=r;if(r.type==="candidate-pair"&&r.nominated)pair=r;});if(out){const b=out.bytesSent||0,br=((b-prevBytesStat)*8/(iv/1000)/1_000_000).toFixed(1);prevBytesStat=b;const e=id=>document.getElementById(id);if(e("statBitrate"))e("statBitrate").innerHTML=`${br}<span class="stat-unit"> Mbps</span>`;if(e("barBitrate"))e("barBitrate").style.width=Math.min(br/12*100,100)+"%";if(e("statFps"))e("statFps").textContent=Math.round(out.framesPerSecond||0);if(e("statRes"))e("statRes").textContent=`${out.frameWidth||0}×${out.frameHeight||0}`;const qlr=out.qualityLimitationReason;if(e("statCodec"))e("statCodec").textContent=qlr&&qlr!=="none"?`⚠️ ${qlr}`:"Optimal";if(rin){const loss=((rin.packetsLost||0)/Math.max(out.packetsSent||1,1)*100).toFixed(1);if(e("statLoss"))e("statLoss").textContent=`${loss}%`;}const tag=e("qualityTag");if(tag){tag.style.display="";const h=out.frameHeight||0;tag.textContent=h>=1080?"1080p":h>=720?"720p":`${h}p`;}}if(pair&&document.getElementById("statRtt"))document.getElementById("statRtt").innerHTML=`${Math.round((pair.currentRoundTripTime||0)*1000)}<span class="stat-unit"> ms</span>`;}catch(_){}},iv);
+  statsInterval=setInterval(async()=>{const pcs=Object.values(screenPcMap).filter(p=>p.connectionState==="connected");if(!pcs.length)return;try{const pc=pcs[0]; const stats=await pc.getStats();let out=null,rin=null,pair=null, codecId=null;stats.forEach(r=>{if(r.type==="outbound-rtp"&&r.kind==="video"){out=r;codecId=r.codecId;}if(r.type==="remote-inbound-rtp"&&r.kind==="video")rin=r;if(r.type==="candidate-pair"&&r.state==="succeeded"&&!pair)pair=r;});let codecName="Auto";if(codecId){const cStat=stats.get(codecId);if(cStat)codecName=cStat.mimeType.split('/')[1]||"Auto";}if(out){const b=out.bytesSent||0,br=((b-prevBytesStat)*8/(iv/1000)/1_000_000).toFixed(1);prevBytesStat=b;const e=id=>document.getElementById(id);if(e("statBitrate"))e("statBitrate").innerHTML=`${br}<span class="stat-unit"> Mbps</span>`;if(e("barBitrate"))e("barBitrate").style.width=Math.min(br/12*100,100)+"%";if(e("statFps"))e("statFps").textContent=Math.round(out.framesPerSecond||0);if(e("statRes"))e("statRes").textContent=`${out.frameWidth||0}×${out.frameHeight||0}`;const qlr=out.qualityLimitationReason;if(e("statCodec"))e("statCodec").textContent=qlr&&qlr!=="none"?`⚠️ ${qlr} (Codec: ${codecName})`:codecName;if(rin){const loss=((rin.packetsLost||0)/Math.max(out.packetsSent||1,1)*100).toFixed(1);if(e("statLoss"))e("statLoss").textContent=`${loss}%`;}const tag=e("qualityTag");if(tag){tag.style.display="";const h=out.frameHeight||0;tag.textContent=h>=1080?"1080p":h>=720?"720p":`${h}p`;}}if(pair&&document.getElementById("statRtt"))document.getElementById("statRtt").innerHTML=`${Math.round((pair.currentRoundTripTime||0)*1000)}<span class="stat-unit"> ms</span>`;}catch(_){}},iv);
   timerInterval=setInterval(()=>{const s=Math.floor((Date.now()-startTime)/1000);const el=document.getElementById("statDuration");if(el)el.textContent=`${String(Math.floor(s/3600)).padStart(2,"0")}:${String(Math.floor((s%3600)/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;},1000);
 }
 
 function stopStats(){clearInterval(statsInterval);clearInterval(timerInterval);}
 window.generateRoom=()=>{const c=Math.random().toString(36).substr(2,6).toUpperCase();const el=document.getElementById("roomId");if(el)el.value=c;showToast("🎲 Room code generated");};
 
-/* VOICE CHAT (MESH) */
+let voiceNegotiationMutex = false;
+async function pullVoiceTracks(sessionId, trackName, pc){
+  if(!cfApp||!pc) return;
+  while(voiceNegotiationMutex) await new Promise(r=>setTimeout(r, 100)); // basic queue
+  voiceNegotiationMutex = true;
+  try {
+    logStatus(`Pulling voice track ${trackName}...`);
+    const newRemoteTracksResult = await cfApp.newTracks([{ location: "remote", sessionId, trackName }]);
+    if(newRemoteTracksResult.requiresImmediateRenegotiation) {
+       switch(newRemoteTracksResult.sessionDescription.type) {
+         case 'offer':
+           await pc.setRemoteDescription(new RTCSessionDescription(newRemoteTracksResult.sessionDescription));
+           await pc.setLocalDescription(await pc.createAnswer());
+           await cfApp.sendAnswerSDP(pc.localDescription.sdp);
+           break;
+       }
+    }
+  } catch(e) { logStatus(`Voice Pull error: ${e.message}`); }
+  finally { voiceNegotiationMutex = false; }
+}
+
+/* VOICE CHAT (CLOUDFLARE SFU) */
 window.toggleVoiceChat=async()=>{
   if(!roomId)return showToast("⚠️ Join a room first");
   const micBtnMain=document.getElementById("micBtnMain"), micBtnChat=document.getElementById("micBtnChat");
@@ -733,7 +781,6 @@ window.toggleVoiceChat=async()=>{
   
   if(myVoiceStream){
     myVoiceStream.getTracks().forEach(t=>t.stop()); myVoiceStream=null;
-    Object.values(voicePcs).forEach(pc=>pc.close()); voicePcs={};
     if(micBtnMain){micBtnMain.style.background="var(--red)"; micIconMain.textContent="mic_off";}
     if(micIconChat){micIconChat.textContent="mic_off"; micIconChat.style.color="var(--red)";}
     showToast("🔇 Mic OFF");
@@ -742,77 +789,42 @@ window.toggleVoiceChat=async()=>{
   }
 
   try {
-    myVoiceStream=await navigator.mediaDevices.getUserMedia(getMicConstraints());
+    myVoiceStream=await navigator.mediaDevices.getUserMedia({audio:true}); // getMicConstraints normally, simplify for tests
     if(micBtnMain){micBtnMain.style.background="var(--accent)"; micIconMain.textContent="mic";}
     if(micIconChat){micIconChat.textContent="mic"; micIconChat.style.color="var(--accent)";}
     showToast("🎤 Mic ON");
-    setupDucking(myVoiceStream);
     
+    // 1. Identify active session
     const myVid=isHost?"host":(window._myVid||"v_"+Math.random().toString(36).substr(2,5));
     window._myVid=myVid;
     
-    // Announce voice presence
-    set(ref(db,`rooms/${roomId}/voice/${myVid}`),{name:myName,active:true,ts:Date.now()});
+    const pc = isHost ? screenPcMap["host_cf"] : viewerPc;
+    if(!pc || !cfApp) {
+      showToast("⚠️ Cloudflare connection not ready for Voice.");
+      return;
+    }
+
+    // 2. Publish to SFU
+    logStatus("Publishing Voice track to Cloudflare SFU...");
+    const audioTrack = myVoiceStream.getAudioTracks()[0];
+    const trans = pc.addTransceiver(audioTrack, { direction: "sendonly" });
+    
+    await pc.setLocalDescription(await pc.createOffer());
+    const publishRes = await cfApp.newTracks([{ location: "local", mid: trans.mid, trackName: audioTrack.id }], pc.localDescription.sdp);
+    await pc.setRemoteDescription(new RTCSessionDescription(publishRes.sessionDescription));
+    logStatus("Voice Track successfully published via Edge.");
+
+    // 3. Announce track ID universally so others can pull it
+    set(ref(db,`rooms/${roomId}/voice/${myVid}`),{
+      name:myName, active:true, ts:Date.now(), 
+      cfSessionId: cfApp.sessionId, trackName: audioTrack.id 
+    });
     onDisconnect(ref(db,`rooms/${roomId}/voice/${myVid}`)).remove();
 
-    // Listen for others
-    const unsubVoice=onChildAdded(ref(db,`rooms/${roomId}/voice`), snap=>{
-      const peerVid=snap.key; if(peerVid===myVid||voicePcs[peerVid])return;
-      initVoiceP2P(peerVid, true);
-    }); firebaseUnsubs.push(unsubVoice);
-  } catch(e){ console.error(e); showToast("❌ Mic Access Denied"); }
+    // The listener for pulling others' voice tracks should be in join flows!
+
+  } catch(e){ console.error(e); logStatus(`Voice Chat Error: ${e.message}`); showToast("❌ Mic Access or Network Denied"); }
 };
-
-async function initVoiceP2P(peerVid, isOffer){
-  if(voicePcs[peerVid])return;
-  const pc=new RTCPeerConnection(servers); voicePcs[peerVid]=pc;
-  if(myVoiceStream)myVoiceStream.getTracks().forEach(t=>pc.addTrack(t,myVoiceStream));
-  
-  pc.ontrack=e=>{
-    const audio=new Audio(); audio.srcObject=e.streams[0]; audio.play().catch(()=>{});
-  };
-
-  const oRef=ref(db,`rooms/${roomId}/voice_sig/${peerVid}/${window._myVid}/offer`);
-  const aRef=ref(db,`rooms/${roomId}/voice_sig/${window._myVid}/${peerVid}/answer`);
-  
-  pc.onicecandidate=e=>{ if(e.candidate){ push(ref(db,`rooms/${roomId}/voice_sig/${peerVid}/${window._myVid}/ice`), e.candidate.toJSON()); } };
-  
-  if(isOffer){
-    const offer=await pc.createOffer(); await pc.setLocalDescription(offer);
-    set(oRef, {type:offer.type,sdp:offer.sdp});
-  }
-
-  onValue(ref(db,`rooms/${roomId}/voice_sig/${window._myVid}/${peerVid}/offer`), async s=>{
-    if(!s.val()||pc.remoteDescription)return;
-    await pc.setRemoteDescription(new RTCSessionDescription(s.val()));
-    const ans=await pc.createAnswer(); await pc.setLocalDescription(ans);
-    set(ref(db,`rooms/${roomId}/voice_sig/${peerVid}/${window._myVid}/answer`), {type:ans.type,sdp:ans.sdp});
-  });
-
-  onValue(aRef, async s=>{ if(s.val()&&!pc.remoteDescription) await pc.setRemoteDescription(new RTCSessionDescription(s.val())); });
-  onChildAdded(ref(db,`rooms/${roomId}/voice_sig/${window._myVid}/${peerVid}/ice`), s=>{ if(s.val()) pc.addIceCandidate(new RTCIceCandidate(s.val())).catch(()=>{}); });
-}
-
-function setupDucking(stream){
-  try {
-    if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const source = audioCtx.createMediaStreamSource(stream);
-    const analyzer = audioCtx.createAnalyser();
-    analyzer.fftSize = 256;
-    source.connect(analyzer);
-    const data = new Uint8Array(analyzer.frequencyBinCount);
-    
-    setInterval(()=>{
-      analyzer.getByteFrequencyData(data);
-      const volume = data.reduce((a,b)=>a+b,0)/data.length;
-      if(volume > 30){ if(!duckingActive){ duckingActive=true; lowerMovieVolume(); } }
-      else { if(duckingActive){ duckingActive=false; setTimeout(()=> { if(!duckingActive) restoreMovieVolume(); }, 1500); } }
-    }, 200);
-  } catch(e){}
-}
-
-function lowerMovieVolume(){ const v=document.getElementById("remoteVideo"), a=document.getElementById("bgAudio"); if(v)v.volume=0.2; if(a)a.volume=0.2; }
-function restoreMovieVolume(){ const val=(document.getElementById("movieVolume")?.value||100)/100; const v=document.getElementById("remoteVideo"), a=document.getElementById("bgAudio"); if(v)v.volume=val; if(a)a.volume=val; }
 
 /* PiP — auto on visibility change */
 document.addEventListener("visibilitychange",async()=>{
