@@ -48,10 +48,10 @@ class RealtimeApp {
   }
 }
 
-const RES_MAP = { "4k":{width:3840,height:2160},"2k":{width:2560,height:1440},"1080p":{width:1920,height:1080},"720p":{width:1280,height:720} };
+const RES_MAP = { "4k":{width:3840,height:2160},"2k":{width:2560,height:1440},"1080p":{width:1920,height:1080},"720p":{width:1280,height:720},"144p":{width:256,height:144} };
 
 /* STATE */
-let localStream=null, roomId="", isHost=false, myName="";
+let localStream=null, roomId="", isHost=false, myName="", sessionType="party";
 let screenPcMap={}, viewerPc=null;
 let connectedViewers={}, pendingViewers={};
 let statsInterval=null, timerInterval=null, startTime=0, prevBytesStat=0;
@@ -187,10 +187,10 @@ function mungerPreferOpus(sdp){
   let audioIdx=-1;
   for(let i=0;i<lines.length;i++){if(lines[i].startsWith("m=audio ")){audioIdx=i;break;}}
   if(audioIdx===-1)return sdp;
-  // Force 128kbps stereo Opus
+  // High-Fidelity: 150kbps CBR Stereo for background music
   let newSdp = sdp.replace(/a=fmtp:(\d+) (.*)/g, (m, p1, p2) => {
     if (sdp.includes("a=rtpmap:" + p1 + " opus/48000")) {
-      return `a=fmtp:${p1} minptime=10;useinbandfec=1;stereo=1;maxaveragebitrate=128000`;
+      return `a=fmtp:${p1} minptime=10;useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=150000;cbr=1`;
     }
     return m;
   });
@@ -244,22 +244,26 @@ function renderPeopleTab(){
   const pending=Object.entries(pendingViewers);
   if(isHost&&pending.length>0){ html+=`<div class="ppl-section">⏳ Waiting to Join</div>`; for(const[vid,d]of pending){ const col=nameToHsl(d.name); html+=`<div class="ppl-item pending-item"><div class="ppl-av" style="background:${col}">${d.name[0].toUpperCase()}</div><div class="ppl-name">${esc(d.name)}</div><div class="ppl-btns"><button class="pa-btn approve" onclick="approveViewer('${vid}','${esc(d.name)}')"><span class="material-symbols-outlined">check</span></button><button class="pa-btn deny" onclick="denyViewer('${vid}','${esc(d.name)}')"><span class="material-symbols-outlined">close</span></button></div></div>`; } }
   
-  // Dedup and sort
-  const connectedArr = Object.entries(connectedViewers).map(([k,v])=>({id:k, ...v}));
-  const uniqueParticipants = [];
-  const seenNames = new Set();
-  
-  // Show "You" first
-  const colMe=nameToHsl(myName||"User");
   html+=`<div class="ppl-section">👥 In Session</div>`;
-  html+=`<div class="ppl-item"><div class="ppl-av" style="background:${colMe}">${(myName||"U")[0].toUpperCase()}</div><div class="ppl-name">${esc(myName||"User")} <span class="role-badge">${isHost?"HOST":"YOU"}</span></div></div>`;
-  seenNames.add(myName);
+  
+  // Show Host info (from Firebase)
+  get(ref(db,`rooms/${roomId}/host`)).then(s=>{
+    const h=s.val();
+    if(h && h.name !== myName){
+      const col=nameToHsl(h.name);
+      html+=`<div class="ppl-item"><div class="ppl-av" style="background:${col}">${h.name[0].toUpperCase()}</div><div class="ppl-name">${esc(h.name)} <span class="role-badge">HOST</span></div></div>`;
+    }
+  });
 
-  for(const p of connectedArr){
-    if(seenNames.has(p.name)) continue; // basic dedupe by name for UI clarity
-    seenNames.add(p.name);
+  // Show "You"
+  const colMe=nameToHsl(myName||"User");
+  html+=`<div class="ppl-item"><div class="ppl-av" style="background:${colMe}">${(myName||"U")[0].toUpperCase()}</div><div class="ppl-name">${esc(myName||"User")} <span class="role-badge">${isHost?"HOST":"YOU"}</span></div></div>`;
+
+  const connectedArr = Object.entries(connectedViewers);
+  for(const [vid, p] of connectedArr){
+    if(p.name === myName) continue;
     const col=nameToHsl(p.name);
-    html+=`<div class="ppl-item"><div class="ppl-av" style="background:${col}">${p.name[0].toUpperCase()}</div><div class="ppl-name">${esc(p.name)}</div>${isHost?`<button class="pa-btn kick" onclick="kickViewer('${p.id}','${esc(p.name)}')"><span class="material-symbols-outlined">person_remove</span></button>`:""}</div>`;
+    html+=`<div class="ppl-item"><div class="ppl-av" style="background:${col}">${p.name[0].toUpperCase()}</div><div class="ppl-name">${esc(p.name)}</div>${isHost?`<button class="pa-btn kick" onclick="kickViewer('${vid}','${esc(p.name)}')"><span class="material-symbols-outlined">person_remove</span></button>`:""}</div>`;
   }
 
   if(!html) html=`<div class="ppl-empty"><span class="material-symbols-outlined">group</span><p>No one yet</p></div>`;
@@ -279,12 +283,22 @@ window.pushHostSettings=()=>{
   const sFps=document.getElementById("scrFps")?.value||"30";
   const sBit=document.getElementById("bitrateSlider")?.value||"4";
   const sDel=document.getElementById("streamDelaySlider")?.value||"0.05";
-  set(ref(db,`rooms/${roomId}/settings`),{quality:sRes,fps:sFps,bitrate:sBit,delay:sDel});
+  set(ref(db,`rooms/${roomId}/settings`),{quality:sRes,fps:sFps,bitrate:sBit,delay:sDel,type:sessionType});
+};
+
+window.setMode=(m)=>{
+  sessionType=m;
+  document.getElementById("modalMode").value=m;
+  document.getElementById("modeParty").style.background=m==='party'?'var(--accent-dim)':'var(--surface)';
+  document.getElementById("modeParty").style.borderColor=m==='party'?'var(--accent)':'var(--glass-border)';
+  document.getElementById("modeBroadcast").style.background=m==='broadcast'?'var(--accent-dim)':'var(--surface)';
+  document.getElementById("modeBroadcast").style.borderColor=m==='broadcast'?'var(--accent)':'var(--glass-border)';
+  document.getElementById("micOptionHost").style.display=m==='broadcast'?'none':'flex';
 };
 
 window.replaceScreenShareBtn=async()=>{
   if(!isHost||!roomId)return;
-  const resStr=document.getElementById("scrRes")?.value||"1080p", fpsStr=document.getElementById("scrFps")?.value||"30";
+  const resStr=document.getElementById("scrRes")?.value||"144p", fpsStr=document.getElementById("scrFps")?.value||"30";
   const {width,height}=RES_MAP[resStr]||RES_MAP["1080p"], fps=parseInt(fpsStr)||30;
   const con={video:{width:{ideal:width},height:{ideal:height},frameRate:{ideal:fps,max:fps}},audio:{channelCount:2,sampleRate:48000,autoGainControl:false,echoCancellation:false,noiseSuppression:false}};
   let newStream;
@@ -387,7 +401,8 @@ async function optimizeHostSender(pc, vid=null){
 window.confirmHost=async()=>{
   roomId=document.getElementById("roomId").value.trim(); myName=document.getElementById("userName").value.trim()||"Host";
   if(!roomId){roomId=Math.random().toString(36).substr(2,8).toUpperCase();document.getElementById("roomId").value=roomId;}
-  logStatus("Host session starting...");
+  sessionType = document.getElementById("modalMode")?.value || "party";
+  logStatus(`Host session starting (${sessionType} mode)...`);
   try{await captureScreen();}catch{logStatus("Capture canceled"); return showToast("⚠️ Screen share cancelled");}
   isHost=true;
   logStatus("Screen captured successfully");
@@ -399,6 +414,10 @@ window.confirmHost=async()=>{
   updateConnStatus("connected"); changeActionBtns("session");
   document.getElementById("hostOnlySettings")?.style.removeProperty("display");
   document.getElementById("lowDataGroup") && (document.getElementById("lowDataGroup").style.display="none");
+  if(sessionType==="broadcast"){
+     document.getElementById("micBtnMain").style.display="none";
+     document.getElementById("micBtnChat").style.display="none";
+  }
   window.switchTab("chat"); renderPeopleTab();
 
   cfApp = new RealtimeApp(cfAppId);
@@ -457,7 +476,8 @@ window.confirmHost=async()=>{
     created:Date.now(),
     cfSessionId: myCfSessionId,
     cfTrackVideo: myCfTrackNames.video || null,
-    cfTrackAudio: myCfTrackNames.audio || null
+    cfTrackAudio: myCfTrackNames.audio || null,
+    role: 'host'
   }).catch(e=>logStatus(`Firebase Error: ${e.message}`));
   onDisconnect(roomRef).remove();
 
@@ -470,6 +490,7 @@ window.confirmHost=async()=>{
   
   // Voice Pull Listener
   const unsubVoice=onChildAdded(ref(db,`rooms/${roomId}/voice`), async snap=>{
+    if(sessionType==='broadcast')return;
     const peerVid=snap.key; if(peerVid===window._myVid||!snap.val())return;
     pullVoiceTracks(snap.val().cfSessionId, snap.val().trackName, pc);
   });
@@ -534,8 +555,14 @@ async function proceedJoin(myVid,userName){
       return leaveCall();
     }
     logStatus(`Host found with CF Session: ${hostData.cfSessionId.substring(0,6)}...`);
-    
-    cfApp = new RealtimeApp(cfAppId);
+    sessionType = (await get(ref(db,`rooms/${roomId}/settings/type`))).val() || "party";
+    logStatus(`Session Mode: ${sessionType}`);
+    if(sessionType==="broadcast"){
+      document.getElementById("micBtnMain").style.display="none";
+      document.getElementById("micBtnChat").style.display="none";
+    }
+    const unsubType=onValue(ref(db,`rooms/${roomId}/settings/type`), s=>{ if(s.val()) sessionType=s.val(); });
+    firebaseUnsubs.push(unsubType);
     const pc=new RTCPeerConnection(servers); viewerPc=pc;
     const video=document.getElementById("remoteVideo"), remoteStream=new MediaStream();
     video.srcObject=remoteStream; video.muted=false;
@@ -571,10 +598,14 @@ async function proceedJoin(myVid,userName){
         bg.srcObject=new MediaStream([track]); 
         video.muted=true; 
         bg.play().then(()=>{
-          logStatus("Audio stream started");
-          if("mediaSession"in navigator)navigator.mediaSession.metadata=new MediaMetadata({title:`Live Room ${roomId}`,artist:"Watch Party",artwork:[{src:"icon.png",sizes:"192x192",type:"image/png"}]});
+          logStatus("Movie audio started");
+          if("mediaSession"in navigator){
+            navigator.mediaSession.metadata=new MediaMetadata({title:`Watching: ${roomId}`,artist:myName,artwork:[{src:"https://img.icons8.com/bubbles/200/popcorn.png",sizes:"200x200",type:"image/png"}]});
+            navigator.mediaSession.setActionHandler('play',()=>bg.play());
+            navigator.mediaSession.setActionHandler('pause',()=>bg.pause());
+          }
         }).catch(e=>logStatus(`Audio play error: ${e.message}`)); 
-      } else if(track.kind==="audio"){
+      } else if(track.kind==="audio" && sessionType !== 'broadcast'){
         const au = document.createElement("audio");
         au.id = `voice_${track.id}`;
         au.autoplay = true;
