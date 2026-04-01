@@ -7,12 +7,40 @@ const firebaseConfig = { apiKey:"AIzaSyBGnFw13ko0b4KAs7plpFmHlg0GohowElA", authD
 const app = initializeApp(firebaseConfig);
 const db  = getDatabase(app);
 
-const servers = { 
-  iceServers:[{urls:"stun:stun.l.google.com:19302"},{urls:"turn:82.25.104.130:3478",username:"akash",credential:"hostinger_vps_123"},{urls:"turn:82.25.104.130:5349",username:"akash",credential:"hostinger_vps_123"},{urls:"turn:82.25.104.130:3478?transport=tcp",username:"akash",credential:"hostinger_vps_123"},{urls:"turn:82.25.104.130:5349?transport=tcp",username:"akash",credential:"hostinger_vps_123"}], 
-  iceCandidatePoolSize:10, 
-  iceTransportPolicy:"all",
-  sdpSemantics: "unified-plan"
+const servers = {
+  iceServers:[{urls:"stun:stun.cloudflare.com:3478"}], 
+  bundlePolicy:"max-bundle"
 };
+
+const cfAppId = 'e6be1e8812248470630854d4277238af';
+const cfAppSecret = '3f671947386a7bf692d8326e509e3797be3c37c295337c98a6414d563c0bfeb3';
+
+class RealtimeApp {
+  constructor(appId, basePath = 'https://rtc.live.cloudflare.com/v1') { this.prefixPath = `${basePath}/apps/${appId}`; }
+  async sendRequest(url, body, method = 'POST') {
+    const res = await fetch(url, { method, mode: 'cors', headers: { 'content-type': 'application/json', Authorization: `Bearer ${cfAppSecret}` }, body: JSON.stringify(body) });
+    return await res.json();
+  }
+  checkErrors(result, tracksCount = 0) {
+    if(result.errorCode) throw new Error(result.errorDescription);
+    for(let i=0; i<tracksCount; i++) if(result.tracks[i].errorCode) throw new Error(`tracks[${i}]: ${result.tracks[i].errorDescription}`);
+  }
+  async newSession(offerSDP) {
+    const res = await this.sendRequest(`${this.prefixPath}/sessions/new`, { sessionDescription: { type: 'offer', sdp: offerSDP } });
+    this.checkErrors(res); this.sessionId = res.sessionId; return res;
+  }
+  async newTracks(trackObjects, offerSDP = null) {
+    const body = { tracks: trackObjects };
+    if(offerSDP) body.sessionDescription = { type: 'offer', sdp: offerSDP };
+    const res = await this.sendRequest(`${this.prefixPath}/sessions/${this.sessionId}/tracks/new`, body);
+    this.checkErrors(res, trackObjects.length); return res;
+  }
+  async sendAnswerSDP(answer) {
+    const res = await this.sendRequest(`${this.prefixPath}/sessions/${this.sessionId}/renegotiate`, { sessionDescription: { type: 'answer', sdp: answer } }, 'PUT');
+    this.checkErrors(res);
+  }
+}
+
 const RES_MAP = { "4k":{width:3840,height:2160},"2k":{width:2560,height:1440},"1080p":{width:1920,height:1080},"720p":{width:1280,height:720} };
 
 /* STATE */
@@ -23,6 +51,7 @@ let statsInterval=null, timerInterval=null, startTime=0, prevBytesStat=0;
 let firebaseUnsubs=[], bgAudioSet=false, iceRestartCount=0;
 let audioCtx=null, movieNode=null, duckingActive=false;
 let myVoiceStream=null, voicePcs={}, silenceLoop=null;
+let cfApp=null, myCfSessionId=null, myCfTrackNames={};
 const MAX_ICE_RESTARTS=3;
 const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
@@ -230,7 +259,7 @@ function renderPeopleTab(){
 window.approveViewer=async(vid,name)=>{ await set(ref(db,`rooms/${roomId}/waitroom/${vid}/status`),"approved"); delete pendingViewers[vid]; renderPeopleTab(); };
 window.denyViewer  =async(vid,name)=>{ await set(ref(db,`rooms/${roomId}/waitroom/${vid}/status`),"denied"); setTimeout(()=>remove(ref(db,`rooms/${roomId}/waitroom/${vid}`)),3000); delete pendingViewers[vid]; renderPeopleTab(); showToast(`✗ ${name} declined`); };
 window.kickViewer  =async(vid,name)=>{ await set(ref(db,`rooms/${roomId}/viewers/${vid}/kicked`),true); setTimeout(()=>remove(ref(db,`rooms/${roomId}/viewers/${vid}`)),2000); try{screenPcMap[vid]?.close();}catch(_){} delete screenPcMap[vid]; delete connectedViewers[vid]; renderPeopleTab(); showToast(`👢 ${name} removed`); };
-window.applyBitrateNow=()=>{ Object.values(screenPcMap).forEach(pc=>{if(pc.connectionState==="connected")optimizeHostSender(pc);}); };
+window.applyBitrateNow=()=>{ logStatus("Bitrate dynamically managed by Cloudflare SFU."); };
 
 window.pushHostSettings=()=>{
   if(!isHost||!roomId)return;
@@ -360,73 +389,72 @@ window.confirmHost=async()=>{
   document.getElementById("lowDataGroup") && (document.getElementById("lowDataGroup").style.display="none");
   window.switchTab("chat"); renderPeopleTab();
 
+  cfApp = new RealtimeApp(cfAppId);
+  const pc = new RTCPeerConnection(servers); 
+  screenPcMap["host_cf"] = pc; // Keep reference to cleanup later
+  
+  let localTransceivers = [];
+  if(localStream){
+    localStream.getTracks().forEach(track => {
+      localTransceivers.push(pc.addTransceiver(track, { direction: "sendonly" }));
+    });
+  }
+  
+  await pc.setLocalDescription(await pc.createOffer());
+  const newSessionResult = await cfApp.newSession(pc.localDescription.sdp);
+  await pc.setRemoteDescription(new RTCSessionDescription(newSessionResult.sessionDescription));
+  
+  await new Promise((resolve, reject) => {
+    pc.addEventListener('iceconnectionstatechange', ev => {
+      if (pc.iceConnectionState === 'connected') resolve();
+    });
+    setTimeout(resolve, 5000); // safety fallback
+  });
+
+  logStatus("Cloudflare SFU Host Session Created.");
+  myCfSessionId = cfApp.sessionId;
+  
+  let trackObjects = localTransceivers.map(t => { return { location: 'local', mid: t.mid, trackName: t.sender.track.id }; });
+  
+  await pc.setLocalDescription(await pc.createOffer());
+  const newLocalTracksResult = await cfApp.newTracks(trackObjects, pc.localDescription.sdp);
+  await pc.setRemoteDescription(new RTCSessionDescription(newLocalTracksResult.sessionDescription));
+  logStatus("Tracks published to Cloudflare SFU.");
+
+  myCfTrackNames.video = localTransceivers.find(t=>t.sender.track.kind==='video')?.sender.track.id;
+  myCfTrackNames.audio = localTransceivers.find(t=>t.sender.track.kind==='audio')?.sender.track.id;
+
   const roomRef=ref(db,`rooms/${roomId}`);
   logStatus(`Registering host in room: ${roomId}`);
-  await set(ref(db,`rooms/${roomId}/host`),{name:myName,created:Date.now()}).catch(e=>logStatus(`Firebase Error: ${e.message}`));
+  await set(ref(db,`rooms/${roomId}/host`),{
+    name:myName,
+    created:Date.now(),
+    cfSessionId: myCfSessionId,
+    cfTrackVideo: myCfTrackNames.video || null,
+    cfTrackAudio: myCfTrackNames.audio || null
+  }).catch(e=>logStatus(`Firebase Error: ${e.message}`));
   onDisconnect(roomRef).remove();
 
-  // Waitroom
+  // Waitroom UI
   const unsubW=onChildAdded(ref(db,`rooms/${roomId}/waitroom`),snap=>{
     const vid=snap.key, data=snap.val(); if(!data||!vid||data.status)return;
     logStatus(`Approval request from: ${data.name||"Viewer"}`);
     pendingViewers[vid]={name:data.name||"Viewer"}; renderPeopleTab(); showToast(`🔔 ${data.name} wants to join`); window.switchTab("people");
   }); firebaseUnsubs.push(unsubW);
 
-    const unsubV=onChildAdded(ref(db,`rooms/${roomId}/viewers`),async snap=>{
-    const vid=snap.key; if(!vid||screenPcMap[vid])return;
+  const unsubV=onChildAdded(ref(db,`rooms/${roomId}/viewers`),async snap=>{
+    const vid=snap.key; if(!vid)return;
     const ts = snap.val()?.requestedAt || 0;
-    if(ts < Date.now() - 3600000) return; // ignore ancient sessions
-    
-    logStatus(`Incoming viewer: ${vid.substring(0,6)}`);
+    if(ts < Date.now() - 3600000) return; 
+    logStatus(`Viewer ${vid.substring(0,6)} confirmed entry`);
     get(ref(db,`rooms/${roomId}/viewers/${vid}/ready`)).then(s=>{const n=s.val()?.name||"Viewer"; connectedViewers[vid]={name:n}; renderPeopleTab(); addSystemMsg(`👋 ${n} joined`); playProceduralSound("join");});
-    const pc=new RTCPeerConnection(servers); screenPcMap[vid]=pc;
-    if(localStream){
-      localStream.getTracks().forEach(t=>{
-        if(t.kind==="video"){
-          pc.addTransceiver(t, {
-            direction: "sendonly",
-            streams: [localStream],
-            sendEncodings: [
-              { rid: "low", scaleResolutionDownBy: 4.0, maxBitrate: 150000 },
-              { rid: "mid", scaleResolutionDownBy: 2.0, maxBitrate: 1000000 },
-              { rid: "high", maxBitrate: 4000000 }
-            ]
-          });
-        } else {
-          pc.addTrack(t, localStream);
-        }
-      });
-    }
-    logIce(pc,`H→${vid.substring(0,6)}`);
-    pc.onconnectionstatechange=()=>{ 
-      logStatus(`[H→${vid.substring(0,6)}] ${pc.connectionState}`);
-      if(pc.connectionState==="connected")optimizeHostSender(pc); 
-      if(["failed","closed"].includes(pc.connectionState)){try{pc.close();}catch(_){} delete screenPcMap[vid]; delete connectedViewers[vid]; renderPeopleTab();} 
-    };
-    const oRef=ref(db,`rooms/${roomId}/viewers/${vid}/offerCandidates`), aRef=ref(db,`rooms/${roomId}/viewers/${vid}/answerCandidates`);
-    pc.onicecandidate=e=>{if(e.candidate){logCandidate(e.candidate,`H→${vid.substring(0,6)}`);push(oRef,e.candidate.toJSON());}};
-    
-    const offer=await pc.createOffer(); 
-    offer.sdp = mungerPreferOpus(offer.sdp);
-    offer.sdp = mungerPreferH264(offer.sdp); // Use H264 for mobile stability
-    offer.sdp = mungerPreferVP9(offer.sdp);
-    await pc.setLocalDescription(offer);
-    
-    logStatus(`Sent Offer to ${vid.substring(0,6)}`);
-    await set(ref(db,`rooms/${roomId}/viewers/${vid}/offer`),{type:offer.type,sdp:offer.sdp}).catch(e=>logStatus(`Offer Write Error: ${e.message}`));
-    let pendIce=[],rdReady=false;
-    const unsubA=onValue(ref(db,`rooms/${roomId}/viewers/${vid}/answer`),async s=>{
-      if(!s.val()||rdReady)return; 
-      logStatus(`Received Answer from ${vid.substring(0,6)}`);
-      try{await pc.setRemoteDescription(new RTCSessionDescription(s.val()));rdReady=true;for(const c of pendIce){try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(_){}}pendIce=[];}catch(e){console.error(e);}
-    });
-    const unsubI=onChildAdded(aRef,async cs=>{const c=cs.val();if(rdReady){try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(_){}}else pendIce.push(c);});
-    firebaseUnsubs.push(unsubA,unsubI);
   }); firebaseUnsubs.push(unsubV);
+
   startHostStats(); startChatListener(); startReactionListener();
   window.pushHostSettings();
   showToast("🎬 Live! Room: "+roomId);
 };
+
 
 /* VIEWER */
 window.confirmJoin=async()=>{
@@ -461,10 +489,21 @@ async function proceedJoin(myVid,userName){
   onDisconnect(ref(db,`rooms/${roomId}/viewers/${myVid}`)).remove();
   startSilenceLoop();
   await set(ref(db,`rooms/${roomId}/viewers/${myVid}/ready`),{name:userName});
+  
+  const hostSnap = await get(ref(db,`rooms/${roomId}/host`));
+  const hostData = hostSnap.val();
+  if(!hostData || !hostData.cfSessionId){
+    logStatus("Host not running Cloudflare SFU. Aborting.");
+    showToast("❌ Host not broadcasting");
+    return leaveCall();
+  }
+  logStatus(`Host found with CF Session: ${hostData.cfSessionId.substring(0,6)}...`);
+  
+  cfApp = new RealtimeApp(cfAppId);
   const pc=new RTCPeerConnection(servers); viewerPc=pc;
   const video=document.getElementById("remoteVideo"), remoteStream=new MediaStream();
   video.srcObject=remoteStream; video.muted=false;
-  
+
   let currentDelayHint = 0.05;
 
   pc.ontrack=e=>{
@@ -475,7 +514,6 @@ async function proceedJoin(myVid,userName){
       else{
         try{e.receiver.playoutDelayHint=currentDelayHint;}catch(_){}
         if("contentHint"in track)track.contentHint="detail";
-        // Listen dynamically to buffer changes
         const unsubDel=onValue(ref(db,`rooms/${roomId}/settings/delay`), s=>{
           if(s.val()){
              currentDelayHint=parseFloat(s.val());
@@ -486,10 +524,9 @@ async function proceedJoin(myVid,userName){
     }
     if(!remoteStream.getTracks().find(t=>t.id===track.id))remoteStream.addTrack(track);
     
-    // Explicit play for mobile
     video.play().catch(()=>{
       logStatus("Autoplay blocked. User interaction required.");
-      video.muted=true; video.play().catch(()=>{}); // Fallback to muted
+      video.muted=true; video.play().catch(()=>{});
     });
 
     if(!bgAudioSet&&track.kind==="audio"){ 
@@ -503,60 +540,58 @@ async function proceedJoin(myVid,userName){
       }).catch(e=>logStatus(`Audio play error: ${e.message}`)); 
     }
   };
-  logIce(pc,"viewer");
+
   pc.onconnectionstatechange=()=>{
     logStatus(`[Viewer] ${pc.connectionState}`);
-    if(pc.connectionState==="connected"){iceRestartCount=0;updateConnStatus("connected");document.getElementById("noSignal").classList.add("hidden");document.getElementById("sourceTag").style.display="";document.getElementById("sourceTag").textContent="WATCHING";changeActionBtns("session");window.switchTab("chat");startStats(pc);renderPeopleTab();showToast("🎬 Connected!");}
+    if(pc.connectionState==="connected"){updateConnStatus("connected");document.getElementById("noSignal").classList.add("hidden");document.getElementById("sourceTag").style.display="";document.getElementById("sourceTag").textContent="WATCHING";changeActionBtns("session");window.switchTab("chat");renderPeopleTab();showToast("🎬 Connected!");}
     if(pc.connectionState==="disconnected"){updateConnStatus("connecting");showToast("⚡ Reconnecting...");}
-    if(pc.connectionState==="failed"){if(iceRestartCount<MAX_ICE_RESTARTS){iceRestartCount++;logStatus(`ICE Restart ${iceRestartCount}`);pc.restartIce();}else{logStatus("Connection Failed definitively.");updateConnStatus("disconnected");leaveCall();}}
+    if(pc.connectionState==="failed"){logStatus("Connection Failed definitively.");updateConnStatus("disconnected");leaveCall();}
   };
+  
   onValue(ref(db,`rooms/${roomId}/viewers/${myVid}/kicked`),s=>{if(s.val()){showToast("⛔ Removed by host");leaveCall();}});
-  const oRef=ref(db,`rooms/${roomId}/viewers/${myVid}/offerCandidates`), aRef=ref(db,`rooms/${roomId}/viewers/${myVid}/answerCandidates`);
-  pc.onicecandidate=e=>{if(e.candidate){logCandidate(e.candidate,"viewer");push(aRef,e.candidate.toJSON());}};
-  let pendIce=[],rdReady=false;
-  const unsubO=onValue(ref(db,`rooms/${roomId}/viewers/${myVid}/offer`),async snap=>{
-    if(!snap.val()||rdReady)return;
-    logStatus("Received Offer from Host");
-    try{
-      await pc.setRemoteDescription(new RTCSessionDescription(snap.val()));
-      rdReady=true;
-      logStatus("Remote description set");
-      for(const c of pendIce){try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(_){}}
-      pendIce=[];    
-      const ans=await pc.createAnswer();
-      ans.sdp=mungerPreferOpus(ans.sdp);
-      ans.sdp=mungerPreferH264(ans.sdp); // Use H264 for mobile stability
-      ans.sdp=mungerPreferVP9(ans.sdp);
-      await pc.setLocalDescription(ans);
-      logStatus("Sent Answer to Host");
-      await set(ref(db,`rooms/${roomId}/viewers/${myVid}/answer`),{type:ans.type,sdp:ans.sdp}).catch(e=>logStatus(`Answer Write Error: ${e.message}`));
-    }catch(e){logStatus(`Signaling error: ${e.message}`);}
-  });
-  const unsubI=onChildAdded(oRef,async s=>{const c=s.val();if(rdReady){try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(_){}}else pendIce.push(c);});
+
+  let trackObjects = [];
+  if(hostData.cfTrackVideo) trackObjects.push({ location: 'remote', sessionId: hostData.cfSessionId, trackName: hostData.cfTrackVideo });
+  if(hostData.cfTrackAudio) trackObjects.push({ location: 'remote', sessionId: hostData.cfSessionId, trackName: hostData.cfTrackAudio });
   
-  // Listener for Host to throttle bitrate based on viewer loss/needs
-  const unsubHostF=onValue(ref(db,`rooms/${roomId}/viewers/${myVid}/stats`),s=>{
-    if(isHost && s.val()){
-      const vid=myVid; // closure
-      if(connectedViewers[vid]){
-        connectedViewers[vid].loss=s.val().loss||0;
-        connectedViewers[vid].lowData=s.val().lowData||false;
-        if(screenPcMap[vid]) optimizeHostSender(screenPcMap[vid],vid);
-      }
+  if(trackObjects.length === 0){
+    logStatus("Host sent no tracks!"); return;
+  }
+  
+  logStatus("Creating cloudflare viewer session...");
+  await pc.setLocalDescription(await pc.createOffer());
+  const newSessionResult = await cfApp.newSession(pc.localDescription.sdp);
+  await pc.setRemoteDescription(new RTCSessionDescription(newSessionResult.sessionDescription));
+  
+  logStatus(`Requesting ${trackObjects.length} tracks from Host`);
+  try {
+    const newRemoteTracksResult = await cfApp.newTracks(trackObjects);
+    if(newRemoteTracksResult.requiresImmediateRenegotiation) {
+       switch(newRemoteTracksResult.sessionDescription.type) {
+         case 'offer':
+           await pc.setRemoteDescription(new RTCSessionDescription(newRemoteTracksResult.sessionDescription));
+           await pc.setLocalDescription(await pc.createAnswer());
+           await cfApp.sendAnswerSDP(pc.localDescription.sdp);
+           logStatus("Answer sent for incoming tracks.");
+           break;
+         default: throw new Error("Expected offer SDP from Cloudflare");
+       }
     }
-  });
-  firebaseUnsubs.push(unsubHostF);
-  
+  } catch(e) {
+    logStatus(`SFU Fetch Error: ${e.message}`);
+  }
+
   const unsubPV=onChildAdded(ref(db,`rooms/${roomId}/viewers`), s=>{
     const vid=s.key; if(!vid)return;
+    if(vid === myVid) return; // Prevent self processing occasionally
     get(ref(db,`rooms/${roomId}/viewers/${vid}/ready`)).then(sn=>{const n=sn.val()?.name||"Viewer"; if(!connectedViewers[vid]){connectedViewers[vid]={name:n}; renderPeopleTab(); playProceduralSound("join");}});
   });
   const unsubPR=onChildAdded(ref(db,`rooms/${roomId}/viewers`), ()=>renderPeopleTab()); 
   const unsubPD=onValue(ref(db,`rooms/${roomId}/viewers`), snap=>{
     const current = snap.val()||{};
-    Object.keys(connectedViewers).forEach(vid=>{ if(!current[vid]){ const name=connectedViewers[vid].name; delete connectedViewers[vid]; renderPeopleTab(); addSystemMsg(`🚪 ${name} left`); playProceduralSound("leave"); } });
+    Object.keys(connectedViewers).forEach(vid=>{ if(!current[vid] && vid !== myVid){ const name=connectedViewers[vid].name; delete connectedViewers[vid]; renderPeopleTab(); addSystemMsg(`🚪 ${name} left`); playProceduralSound("leave"); } });
   });
-  firebaseUnsubs.push(unsubO,unsubI,unsubPV,unsubPR,unsubPD);
+  firebaseUnsubs.push(unsubPV,unsubPR,unsubPD);
   startChatListener(); startReactionListener();
 }
 
