@@ -160,7 +160,7 @@
     #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(12px);background:rgba(18,18,18,0.95);border:1px solid var(--glass-border);padding:10px 22px;border-radius:10px;font-size:13px;font-weight:500;z-index:999;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;}
     #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
     /* MODAL */
-    .modal-overlay{position:fixed;inset:0;z-index:500;background:rgba(0,0,0,0.82);display:flex;align-items:center;justify-content:center;padding:16px;}
+    .modal-overlay{position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:9999;background:rgba(0,0,0,0.82);display:flex;align-items:center;justify-content:center;padding:16px;}
     .modal-overlay.hidden{display:none;}
     .modal-card{background:#111;border:1px solid var(--glass-border);border-radius:20px;width:100%;max-width:420px;padding:24px 20px 20px;display:flex;flex-direction:column;gap:16px;box-shadow:0 32px 80px rgba(0,0,0,0.8);max-height:90vh;overflow-y:auto;-webkit-overflow-scrolling:touch;}
     .modal-header{text-align:center;}
@@ -213,56 +213,6 @@
 <div class="bg-gradient"></div>
 <div class="bg-pattern"></div>
 
-<!-- ONBOARDING MODAL -->
-<div class="modal-overlay" id="modalOverlay">
-  <div class="modal-card">
-    <div class="modal-header">
-      <div class="modal-logo"><span class="material-symbols-outlined">screen_share</span></div>
-      <h1>Live Party 🍿</h1><p>Watch together in real-time</p>
-    </div>
-    <div class="modal-divider"></div>
-    <div>
-      <div class="modal-section-title">Your Name</div>
-      <input class="modal-input" id="modalName" placeholder="e.g. Akash" autocomplete="off" spellcheck="false"/>
-    </div>
-    <div>
-      <div class="modal-section-title">Room Code</div>
-      <div class="modal-room-row">
-        <input class="modal-input" id="modalRoom" placeholder="Enter or generate a code" maxlength="12" autocomplete="off" spellcheck="false"/>
-        <button class="modal-gen-btn" onclick="modalGenerateRoom()"><span class="material-symbols-outlined">autorenew</span></button>
-      </div>
-    </div>
-    <div class="modal-divider"></div>
-    <div>
-      <div class="modal-host-settings">
-        <button class="modal-host-toggle" id="hostToggle" onclick="toggleHostSettings()">
-          <span>⚙️ Host Settings (optional)</span><span class="material-symbols-outlined">expand_more</span>
-        </button>
-        <div class="modal-host-body" id="hostSettingsBody">
-          <div>
-            <div class="modal-section-title">Quality &amp; FPS</div>
-            <div class="form-row">
-              <select class="form-select" id="scrRes"><option value="4k">4K</option><option value="2k">2K</option><option value="1080p" selected>1080p</option><option value="720p">720p</option></select>
-              <select class="form-select" id="scrFps"><option value="60">60 fps</option><option value="30" selected>30 fps</option><option value="24">24 fps</option></select>
-            </div>
-          </div>
-          <div>
-            <div class="modal-section-title" style="display:flex;justify-content:space-between;">Bitrate <span id="modalBitrateLabel">4 Mbps</span></div>
-            <input type="range" id="bitrateSlider" min="1" max="12" value="4" step="0.5" oninput="document.getElementById('modalBitrateLabel').textContent=this.value+' Mbps';document.getElementById('bitrateValLabel').textContent=this.value+' Mbps';" style="width:100%;height:4px;-webkit-appearance:none;appearance:none;background:var(--glass-border);border-radius:2px;cursor:pointer;outline:none;"/>
-          </div>
-        </div>
-      </div>
-    <div class="modal-divider"></div>
-    <div style="background:rgba(16,185,129,0.05); border:1px solid rgba(16,185,129,0.2); padding:12px; border-radius:12px; display:flex; align-items:center; gap:10px; cursor:pointer;" onclick="document.getElementById('modalHostMic').click()">
-      <input type="checkbox" id="modalHostMic" style="width:18px;height:18px; cursor:pointer;" onclick="event.stopPropagation()"/>
-      <div>
-        <div style="font-size:13px; font-weight:700; color:var(--text);">Enable Microphone</div>
-        <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Include live audio commentary</div>
-      </div>
-    </div>
-    <div class="modal-actions">
-      <button class="modal-btn host-btn" onclick="modalStartHost()"><span class="material-symbols-outlined">cast</span> Start Host Session</button>
-      <button class="modal-btn join-btn" onclick="modalJoin()"><span class="material-symbols-outlined">login</span> Join Watch Party</button>
     </div>
   </div>
 </div>
@@ -464,6 +414,60 @@
   </div>
 </div>
 <div id="toast"></div>
+
+<!-- ONBOARDING MODAL AT END -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div class="modal-logo"><span class="material-symbols-outlined">screen_share</span></div>
+      <h1>Live Party 🍿</h1><p>Watch together in real-time</p>
+    </div>
+    <div class="modal-divider"></div>
+    <div>
+      <div class="modal-section-title">Your Name</div>
+      <input class="modal-input" id="modalName" placeholder="e.g. Akash" autocomplete="off" spellcheck="false"/>
+    </div>
+    <div>
+      <div class="modal-section-title">Room Code</div>
+      <div class="modal-room-row">
+        <input class="modal-input" id="modalRoom" placeholder="Enter or generate a code" maxlength="12" autocomplete="off" spellcheck="false"/>
+        <button class="modal-gen-btn" onclick="modalGenerateRoom()"><span class="material-symbols-outlined">autorenew</span></button>
+      </div>
+    </div>
+    <div class="modal-divider"></div>
+    <div>
+      <div class="modal-host-settings">
+        <button class="modal-host-toggle" id="hostToggle" onclick="toggleHostSettings()">
+          <span>⚙️ Host Settings (optional)</span><span class="material-symbols-outlined">expand_more</span>
+        </button>
+        <div class="modal-host-body" id="hostSettingsBody">
+          <div>
+            <div class="modal-section-title">Quality &amp; FPS</div>
+            <div class="form-row">
+              <select class="form-select" id="scrRes"><option value="4k">4K</option><option value="2k">2K</option><option value="1080p" selected>1080p</option><option value="720p">720p</option></select>
+              <select class="form-select" id="scrFps"><option value="60">60 fps</option><option value="30" selected>30 fps</option><option value="24">24 fps</option></select>
+            </div>
+          </div>
+          <div>
+            <div class="modal-section-title" style="display:flex;justify-content:space-between;">Bitrate <span id="modalBitrateLabel">4 Mbps</span></div>
+            <input type="range" id="bitrateSlider" min="1" max="12" value="4" step="0.5" oninput="document.getElementById('modalBitrateLabel').textContent=this.value+' Mbps';document.getElementById('bitrateValLabel').textContent=this.value+' Mbps';" style="width:100%;height:4px;-webkit-appearance:none;appearance:none;background:var(--glass-border);border-radius:2px;cursor:pointer;outline:none;"/>
+          </div>
+        </div>
+      </div>
+    <div class="modal-divider"></div>
+    <div style="background:rgba(16,185,129,0.05); border:1px solid rgba(16,185,129,0.2); padding:12px; border-radius:12px; display:flex; align-items:center; gap:10px; cursor:pointer;" onclick="document.getElementById('modalHostMic').click()">
+      <input type="checkbox" id="modalHostMic" style="width:18px;height:18px; cursor:pointer;" onclick="event.stopPropagation()"/>
+      <div>
+        <div style="font-size:13px; font-weight:700; color:var(--text);">Enable Microphone</div>
+        <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Include live audio commentary</div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn host-btn" onclick="modalStartHost()"><span class="material-symbols-outlined">cast</span> Start Host Session</button>
+      <button class="modal-btn join-btn" onclick="modalJoin()"><span class="material-symbols-outlined">login</span> Join Watch Party</button>
+    </div>
+  </div>
+</div>
 
 <script>
 const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)&&!window.MSStream;
