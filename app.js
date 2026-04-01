@@ -485,90 +485,97 @@ window.confirmJoin=async()=>{
 };
 
 async function proceedJoin(myVid,userName){
-  logStatus("Starting connection sequence...");
-  onDisconnect(ref(db,`rooms/${roomId}/viewers/${myVid}`)).remove();
-  startSilenceLoop();
-  await set(ref(db,`rooms/${roomId}/viewers/${myVid}/ready`),{name:userName});
-  
-  const hostSnap = await get(ref(db,`rooms/${roomId}/host`));
-  const hostData = hostSnap.val();
-  if(!hostData || !hostData.cfSessionId){
-    logStatus("Host not running Cloudflare SFU. Aborting.");
-    showToast("❌ Host not broadcasting");
-    return leaveCall();
-  }
-  logStatus(`Host found with CF Session: ${hostData.cfSessionId.substring(0,6)}...`);
-  
-  cfApp = new RealtimeApp(cfAppId);
-  const pc=new RTCPeerConnection(servers); viewerPc=pc;
-  const video=document.getElementById("remoteVideo"), remoteStream=new MediaStream();
-  video.srcObject=remoteStream; video.muted=false;
-
-  let currentDelayHint = 0.05;
-
-  pc.ontrack=e=>{
-    const track=e.track;
-    logStatus(`Received track: ${track.kind}`);
-    if(e.receiver){
-      if(track.kind==="audio"){try{e.receiver.playoutDelayHint=0;}catch(_){}}
-      else{
-        try{e.receiver.playoutDelayHint=currentDelayHint;}catch(_){}
-        if("contentHint"in track)track.contentHint="detail";
-        const unsubDel=onValue(ref(db,`rooms/${roomId}/settings/delay`), s=>{
-          if(s.val()){
-             currentDelayHint=parseFloat(s.val());
-             try{e.receiver.playoutDelayHint=currentDelayHint;}catch(_){}
-          }
-        }); firebaseUnsubs.push(unsubDel);
-      }
-    }
-    if(!remoteStream.getTracks().find(t=>t.id===track.id))remoteStream.addTrack(track);
-    
-    video.play().catch(()=>{
-      logStatus("Autoplay blocked. User interaction required.");
-      video.muted=true; video.play().catch(()=>{});
-    });
-
-    if(!bgAudioSet&&track.kind==="audio"){ 
-      bgAudioSet=true; 
-      const bg=document.getElementById("bgAudio"); 
-      bg.srcObject=new MediaStream([track]); 
-      video.muted=true; 
-      bg.play().then(()=>{
-        logStatus("Audio stream started");
-        if("mediaSession"in navigator)navigator.mediaSession.metadata=new MediaMetadata({title:`Live Room ${roomId}`,artist:"Watch Party",artwork:[{src:"icon.png",sizes:"192x192",type:"image/png"}]});
-      }).catch(e=>logStatus(`Audio play error: ${e.message}`)); 
-    }
-  };
-
-  pc.onconnectionstatechange=()=>{
-    logStatus(`[Viewer] ${pc.connectionState}`);
-    if(pc.connectionState==="connected"){updateConnStatus("connected");document.getElementById("noSignal").classList.add("hidden");document.getElementById("sourceTag").style.display="";document.getElementById("sourceTag").textContent="WATCHING";changeActionBtns("session");window.switchTab("chat");renderPeopleTab();showToast("🎬 Connected!");}
-    if(pc.connectionState==="disconnected"){updateConnStatus("connecting");showToast("⚡ Reconnecting...");}
-    if(pc.connectionState==="failed"){logStatus("Connection Failed definitively.");updateConnStatus("disconnected");leaveCall();}
-  };
-  
-  onValue(ref(db,`rooms/${roomId}/viewers/${myVid}/kicked`),s=>{if(s.val()){showToast("⛔ Removed by host");leaveCall();}});
-
-  let trackObjects = [];
-  if(hostData.cfTrackVideo) trackObjects.push({ location: 'remote', sessionId: hostData.cfSessionId, trackName: hostData.cfTrackVideo });
-  if(hostData.cfTrackAudio) trackObjects.push({ location: 'remote', sessionId: hostData.cfSessionId, trackName: hostData.cfTrackAudio });
-  
-  if(trackObjects.length === 0){
-    logStatus("Host sent no tracks!"); return;
-  }
-  
-  logStatus("Creating cloudflare viewer session...");
-  await pc.setLocalDescription(await pc.createOffer());
-  const newSessionResult = await cfApp.newSession(pc.localDescription.sdp);
-  await pc.setRemoteDescription(new RTCSessionDescription(newSessionResult.sessionDescription));
-  
-  logStatus(`Requesting ${trackObjects.length} tracks from Host`);
   try {
+    logStatus("Starting connection sequence...");
+    onDisconnect(ref(db,`rooms/${roomId}/viewers/${myVid}`)).remove();
+    startSilenceLoop();
+    await set(ref(db,`rooms/${roomId}/viewers/${myVid}/ready`),{name:userName});
+    
+    logStatus("Fetching host metadata...");
+    const hostSnap = await get(ref(db,`rooms/${roomId}/host`));
+    const hostData = hostSnap.val();
+    if(!hostData || !hostData.cfSessionId){
+      logStatus("Host not running Cloudflare SFU. Aborting.");
+      showToast("❌ Host not broadcasting");
+      return leaveCall();
+    }
+    logStatus(`Host found with CF Session: ${hostData.cfSessionId.substring(0,6)}...`);
+    
+    cfApp = new RealtimeApp(cfAppId);
+    const pc=new RTCPeerConnection(servers); viewerPc=pc;
+    const video=document.getElementById("remoteVideo"), remoteStream=new MediaStream();
+    video.srcObject=remoteStream; video.muted=false;
+
+    let currentDelayHint = 0.05;
+
+    pc.ontrack=e=>{
+      const track=e.track;
+      logStatus(`Received track: ${track.kind}`);
+      if(e.receiver){
+        if(track.kind==="audio"){try{e.receiver.playoutDelayHint=0;}catch(_){}}
+        else{
+          try{e.receiver.playoutDelayHint=currentDelayHint;}catch(_){}
+          if("contentHint"in track)track.contentHint="detail";
+          const unsubDel=onValue(ref(db,`rooms/${roomId}/settings/delay`), s=>{
+            if(s.val()){
+               currentDelayHint=parseFloat(s.val());
+               try{e.receiver.playoutDelayHint=currentDelayHint;}catch(_){}
+            }
+          }); firebaseUnsubs.push(unsubDel);
+        }
+      }
+      if(!remoteStream.getTracks().find(t=>t.id===track.id))remoteStream.addTrack(track);
+      
+      video.play().catch(()=>{
+        logStatus("Autoplay blocked. User interaction required.");
+        video.muted=true; video.play().catch(()=>{});
+      });
+
+      if(!bgAudioSet&&track.kind==="audio"){ 
+        bgAudioSet=true; 
+        const bg=document.getElementById("bgAudio"); 
+        bg.srcObject=new MediaStream([track]); 
+        video.muted=true; 
+        bg.play().then(()=>{
+          logStatus("Audio stream started");
+          if("mediaSession"in navigator)navigator.mediaSession.metadata=new MediaMetadata({title:`Live Room ${roomId}`,artist:"Watch Party",artwork:[{src:"icon.png",sizes:"192x192",type:"image/png"}]});
+        }).catch(e=>logStatus(`Audio play error: ${e.message}`)); 
+      }
+    };
+
+    pc.onconnectionstatechange=()=>{
+      logStatus(`[Viewer] ${pc.connectionState}`);
+      if(pc.connectionState==="connected"){updateConnStatus("connected");document.getElementById("noSignal").classList.add("hidden");document.getElementById("sourceTag").style.display="";document.getElementById("sourceTag").textContent="WATCHING";changeActionBtns("session");window.switchTab("chat");renderPeopleTab();showToast("🎬 Connected!");}
+      if(pc.connectionState==="disconnected"){updateConnStatus("connecting");showToast("⚡ Reconnecting...");}
+      if(pc.connectionState==="failed"){logStatus("Connection Failed definitively.");updateConnStatus("disconnected");leaveCall();}
+    };
+    
+    onValue(ref(db,`rooms/${roomId}/viewers/${myVid}/kicked`),s=>{if(s.val()){showToast("⛔ Removed by host");leaveCall();}});
+
+    let trackObjects = [];
+    if(hostData.cfTrackVideo) trackObjects.push({ location: 'remote', sessionId: hostData.cfSessionId, trackName: hostData.cfTrackVideo });
+    if(hostData.cfTrackAudio) trackObjects.push({ location: 'remote', sessionId: hostData.cfSessionId, trackName: hostData.cfTrackAudio });
+    
+    if(trackObjects.length === 0){
+      logStatus("Host sent no tracks!"); return;
+    }
+    
+    // Explicit transceivers to ensure SDP has media sections
+    pc.addTransceiver('audio', { direction: 'recvonly' });
+    pc.addTransceiver('video', { direction: 'recvonly' });
+
+    logStatus("Creating cloudflare viewer session...");
+    await pc.setLocalDescription(await pc.createOffer());
+    const newSessionResult = await cfApp.newSession(pc.localDescription.sdp);
+    logStatus("Setting Session Remote Description...");
+    await pc.setRemoteDescription(new RTCSessionDescription(newSessionResult.sessionDescription));
+    
+    logStatus(`Requesting ${trackObjects.length} tracks from Host`);
     const newRemoteTracksResult = await cfApp.newTracks(trackObjects);
     if(newRemoteTracksResult.requiresImmediateRenegotiation) {
        switch(newRemoteTracksResult.sessionDescription.type) {
          case 'offer':
+           logStatus("Applying incoming Offer from CF");
            await pc.setRemoteDescription(new RTCSessionDescription(newRemoteTracksResult.sessionDescription));
            await pc.setLocalDescription(await pc.createAnswer());
            await cfApp.sendAnswerSDP(pc.localDescription.sdp);
@@ -577,22 +584,27 @@ async function proceedJoin(myVid,userName){
          default: throw new Error("Expected offer SDP from Cloudflare");
        }
     }
-  } catch(e) {
-    logStatus(`SFU Fetch Error: ${e.message}`);
-  }
 
-  const unsubPV=onChildAdded(ref(db,`rooms/${roomId}/viewers`), s=>{
-    const vid=s.key; if(!vid)return;
-    if(vid === myVid) return; // Prevent self processing occasionally
-    get(ref(db,`rooms/${roomId}/viewers/${vid}/ready`)).then(sn=>{const n=sn.val()?.name||"Viewer"; if(!connectedViewers[vid]){connectedViewers[vid]={name:n}; renderPeopleTab(); playProceduralSound("join");}});
-  });
-  const unsubPR=onChildAdded(ref(db,`rooms/${roomId}/viewers`), ()=>renderPeopleTab()); 
-  const unsubPD=onValue(ref(db,`rooms/${roomId}/viewers`), snap=>{
-    const current = snap.val()||{};
-    Object.keys(connectedViewers).forEach(vid=>{ if(!current[vid] && vid !== myVid){ const name=connectedViewers[vid].name; delete connectedViewers[vid]; renderPeopleTab(); addSystemMsg(`🚪 ${name} left`); playProceduralSound("leave"); } });
-  });
-  firebaseUnsubs.push(unsubPV,unsubPR,unsubPD);
-  startChatListener(); startReactionListener();
+    const unsubPV=onChildAdded(ref(db,`rooms/${roomId}/viewers`), s=>{
+      const vid=s.key; if(!vid)return;
+      if(vid === myVid) return; // Prevent self processing occasionally
+      get(ref(db,`rooms/${roomId}/viewers/${vid}/ready`)).then(sn=>{const n=sn.val()?.name||"Viewer"; if(!connectedViewers[vid]){connectedViewers[vid]={name:n}; renderPeopleTab(); playProceduralSound("join");}});
+    });
+    const unsubPR=onChildAdded(ref(db,`rooms/${roomId}/viewers`), ()=>renderPeopleTab()); 
+    const unsubPD=onValue(ref(db,`rooms/${roomId}/viewers`), snap=>{
+      const current = snap.val()||{};
+      Object.keys(connectedViewers).forEach(vid=>{ if(!current[vid] && vid !== myVid){ const name=connectedViewers[vid].name; delete connectedViewers[vid]; renderPeopleTab(); addSystemMsg(`🚪 ${name} left`); playProceduralSound("leave"); } });
+    });
+    firebaseUnsubs.push(unsubPV,unsubPR,unsubPD);
+    startChatListener(); startReactionListener();
+
+  } catch (err) {
+    logStatus(`Viewer Crash: ${err.message}`);
+    console.error(err);
+    showToast("❌ Connection error");
+    updateConnStatus("disconnected");
+    leaveCall();
+  }
 }
 
 /* LEAVE */
