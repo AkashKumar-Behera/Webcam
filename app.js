@@ -8,7 +8,14 @@ const app = initializeApp(firebaseConfig);
 const db  = getDatabase(app);
 
 const servers = {
-  iceServers:[{urls:"stun:stun.cloudflare.com:3478"}], 
+  iceServers:[
+    {urls:"stun:stun.cloudflare.com:3478"},
+    {urls:"turn:82.25.104.130:3478",username:"akash",credential:"hostinger_vps_123"},
+    {urls:"turn:82.25.104.130:5349",username:"akash",credential:"hostinger_vps_123"},
+    {urls:"turn:82.25.104.130:3478?transport=tcp",username:"akash",credential:"hostinger_vps_123"},
+    {urls:"turn:82.25.104.130:5349?transport=tcp",username:"akash",credential:"hostinger_vps_123"}
+  ], 
+  iceCandidatePoolSize:10,
   bundlePolicy:"max-bundle"
 };
 
