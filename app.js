@@ -197,10 +197,10 @@ function mungerPreferOpus(sdp) {
   let audioIdx = -1;
   for (let i = 0; i < lines.length; i++) { if (lines[i].startsWith("m=audio ")) { audioIdx = i; break; } }
   if (audioIdx === -1) return sdp;
-  // High-Fidelity: 150kbps CBR Stereo for music/movie audio
+  // ULTRA-FIDELITY: 510kbps Stereo (Max Opus Specs) for original-quality music and movies
   let newSdp = sdp.replace(/a=fmtp:(\d+) (.*)/g, (m, p1, p2) => {
     if (sdp.includes("a=rtpmap:" + p1 + " opus/48000")) {
-      return `a=fmtp:${p1} minptime=10;useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=150000;cbr=1`;
+      return `a=fmtp:${p1} minptime=10;useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=510000`;
     }
     return m;
   });
@@ -229,9 +229,10 @@ function mungerPreferVP9(sdp) {
 }
 
 /* UI */
+const scrollChat = () => { const c = document.getElementById("chatMessages"); if (c) { requestAnimationFrame(() => { c.scrollTop = c.scrollHeight; setTimeout(() => { c.scrollTop = c.scrollHeight; }, 100); }); } };
 function showToast(msg) { const t = document.getElementById("toast"); if (!t) return; t.textContent = msg; t.classList.add("show"); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove("show"), 3500); }
 
-function addSystemMsg(text) { const c = document.getElementById("chatMessages"); if (!c) return; const el = document.createElement("div"); el.className = "chat-system"; el.textContent = text; c.appendChild(el); c.scrollTop = c.scrollHeight; }
+function addSystemMsg(text) { const c = document.getElementById("chatMessages"); if (!c) return; const el = document.createElement("div"); el.className = "chat-system"; el.textContent = text; c.appendChild(el); scrollChat(); }
 
 function addFloatingChatMsg(sender, text) {
   const overlay = document.getElementById("fullscreenChatOverlay"); if (!overlay) return;
@@ -578,15 +579,16 @@ async function proceedJoin(myVid, userName) {
     cfApp = new RealtimeApp(cfAppId);
     const pc = new RTCPeerConnection(servers); viewerPc = pc;
     const video = document.getElementById("remoteVideo"), remoteStream = new MediaStream();
-    video.srcObject = remoteStream; video.muted = false;
+    video.srcObject = remoteStream; video.muted = true; // IMPORTANT: Keep muted, use bgAudio/GainNode
+    const hostAudID = hostData.cfTrackAudio;
 
     let currentDelayHint = 0.05;
 
     pc.ontrack = e => {
       const track = e.track;
-      logStatus(`Received track: ${track.kind}`);
+      logStatus(`Received track: ${track.kind} (ID: ${track.id})`);
       
-      // Volume/Audio Control Setup
+      // Volume/Audio Control Setup (ensure context is active)
       if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
       if (!movieGainNode) {
         movieGainNode = audioContext.createGain();
@@ -612,14 +614,16 @@ async function proceedJoin(myVid, userName) {
 
       video.play().catch(() => {
         logStatus("Autoplay blocked. User interaction required.");
-        video.muted = true; video.play().catch(() => { });
       });
 
-      if (!bgAudioSet && track.kind === "audio") {
+      // IDENTIFY: Movie Audio vs Viewer Voice
+      // hostAudID should match track.id (or track.id starts with it if browser prepends)
+      const isMovieAud = track.kind === "audio" && (track.id === hostAudID || (hostAudID && track.id.includes(hostAudID)));
+
+      if (isMovieAud && !bgAudioSet) {
         bgAudioSet = true;
         const bg = document.getElementById("bgAudio");
         bg.srcObject = new MediaStream([track]);
-        video.muted = true;
         
         // Connect to Web Audio for volume control
         const source = audioContext.createMediaStreamSource(bg.srcObject);
@@ -633,9 +637,13 @@ async function proceedJoin(myVid, userName) {
             navigator.mediaSession.setActionHandler('pause', () => bg.pause());
           }
         }).catch(e => logStatus(`Audio play error: ${e.message}`));
-      } else if (track.kind === "audio" && sessionType !== 'broadcast') {
+      } else if (track.kind === "audio" && !isMovieAud && sessionType !== 'broadcast') {
+        // Only play if it's NOT our own voice track (precautionary)
+        const auId = `voice_${track.id}`;
+        if (document.getElementById(auId)) return;
+
         const au = document.createElement("audio");
-        au.id = `voice_${track.id}`;
+        au.id = auId;
         au.autoplay = true;
         au.srcObject = new MediaStream([track]);
         document.body.appendChild(au);
@@ -780,7 +788,7 @@ function startChatListener() {
       <div class="chat-msg-header"><div class="chat-av" style="background:${col}">${init}</div><span class="chat-sender" style="color:${isMe ? "var(--accent)" : "var(--cyan)"}">${isMe ? "You" : esc(d.sender)}</span><span class="chat-time">${time}</span></div>
       <div class="chat-bubble ${isMe ? "me" : "other"}">${contentHtml}</div>
     `;
-    const c = document.getElementById("chatMessages"); if (c) { c.appendChild(wrap); c.scrollTop = c.scrollHeight; }
+    const c = document.getElementById("chatMessages"); if (c) { c.appendChild(wrap); scrollChat(); }
     if (!document.getElementById("contentChat")?.classList.contains("active")) {
       const badge = document.getElementById("chatBadge"); if (badge) { badge.style.display = "inline-flex"; }
       try { new Audio("https://actions.google.com/sounds/v1/water/water_drop.ogg").play(); } catch (e) { }
