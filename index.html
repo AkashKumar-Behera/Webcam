@@ -1375,16 +1375,15 @@
   <div class="bg-gradient"></div>
   <div class="bg-pattern"></div>
 
-  </div>
-  </div>
-  </div>
+  <!-- BACKGROUND KEEP-ALIVE -->
+  <audio id="silenceLoop" loop playsinline></audio>
 
   <!-- MAIN APP -->
   <div class="app-layout">
     <div class="main-col">
       <div class="video-wrap">
-        <video id="remoteVideo" autoplay playsinline></video>
-        <audio id="bgAudio"></audio>
+        <video id="remoteVideo" autoplay playsinline muted></video>
+        <audio id="bgAudio" playsinline loop></audio>
         <div class="no-signal" id="noSignal">
           <div class="ns-icon"><span class="material-symbols-outlined"
               style="font-size:24px;color:var(--accent);">screen_share</span></div>

@@ -72,20 +72,25 @@ let movieGainNode = null; // Removed redundant 'audioContext' let, using global 
 const MAX_ICE_RESTARTS = 3;
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
+let wakeLock = null;
+async function requestWakeLock() {
+  try { if ('wakeLock' in navigator) { wakeLock = await navigator.wakeLock.request('screen'); logStatus("WakeLock active"); } } catch (_) { }
+}
+
 function gestureUnlock() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   if (audioCtx.state === "suspended") audioCtx.resume();
   
-  // Warm up the hardware with a 0.1s silent buffer
   const osc = audioCtx.createOscillator();
   const g = audioCtx.createGain();
   g.gain.value = 0; osc.connect(g); g.connect(audioCtx.destination);
   osc.start(); osc.stop(audioCtx.currentTime + 0.1);
 
-  // Prime the HTML5 audio elements
-  const bg = document.getElementById("bgAudio");
+  const bg = document.getElementById("bgAudio"), sl = document.getElementById("silenceLoop");
   if (bg) { bg.play().catch(() => { }); bg.pause(); }
-  logStatus("Audio system unlocked by user gesture.");
+  if (sl) { sl.play().catch(() => { }); sl.pause(); }
+  requestWakeLock();
+  logStatus("Audio & WakeLock unlocked.");
 }
 
 function logIce(pc, label) { pc.onicegatheringstatechange = () => console.log(`[ICE ${label}] gather:${pc.iceGatheringState}`); pc.oniceconnectionstatechange = () => console.log(`[ICE ${label}] ice:${pc.iceConnectionState}`); }
@@ -109,21 +114,21 @@ function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").
 function startSilenceLoop() {
   if (silenceLoop) return;
   try {
+    const audio = document.getElementById("silenceLoop");
+    if (!audio) return;
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     const dest = ctx.createMediaStreamDestination();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain(); gain.gain.value = 0.0001;
     osc.connect(gain); gain.connect(dest);
     osc.start();
-    const audio = new Audio();
     audio.srcObject = dest.stream;
-    audio.loop = true;
     audio.play().then(() => { silenceLoop = { audio, osc, ctx }; }).catch(() => { });
   } catch (e) { }
 }
 function stopSilenceLoop() {
   if (silenceLoop) {
-    try { silenceLoop.osc.stop(); silenceLoop.ctx.close(); silenceLoop.audio.pause(); } catch (e) { }
+    try { silenceLoop.osc.stop(); silenceLoop.ctx.close(); silenceLoop.audio.pause(); silenceLoop.audio.srcObject = null; } catch (e) { }
     silenceLoop = null;
   }
 }
@@ -202,10 +207,9 @@ window.refreshMicMeter = async () => {
     setTimeout(() => { clearInterval(micMeterInterval); stream.getTracks().forEach(t => t.stop()); ctx.close(); if (fill) fill.style.width = "0%"; }, 5000);
   } catch (_) { }
 };
-// Trigger device list on load
+// Trigger device list on load WITHOUT requesting permission immediately
 navigator.mediaDevices.addEventListener("devicechange", refreshAudioDevices);
-refreshAudioDevices().then(() => { if (navigator.mediaDevices.getUserMedia) navigator.mediaDevices.getUserMedia({ audio: true }).then(refreshAudioDevices).catch(() => { }); });
-
+refreshAudioDevices(); // Only enumerates, doesn't prompt
 
 /* STABILITY HELPERS */
 function mungerPreferOpus(sdp) {
@@ -346,12 +350,26 @@ window.replaceScreenShareBtn = async () => {
   Object.values(screenPcMap).forEach(pc => {
     const senders = pc.getSenders();
     localStream.getTracks().forEach(track => {
-      const sender = senders.find(s => s.track && s.track.kind === track.kind);
-      if (sender) { sender.replaceTrack(track); }
-      else { pc.addTrack(track, localStream); }
+      const kind = track.kind;
+      const sender = senders.find(s => s.track && s.track.kind === kind);
+      if (sender) { 
+        sender.replaceTrack(track); 
+      } else {
+        pc.addTransceiver(track, { direction: 'sendonly' });
+      }
     });
   });
-  showToast("🔄 Screen updated successfully");
+
+  // Update Firebase host metadata with STABLE NAMES (already movie-v/movie-a)
+  set(ref(db, `rooms/${roomId}/host`), {
+    name: myName,
+    created: Date.now(),
+    cfSessionId: cfApp.sessionId,
+    cfTrackVideo: "movie-v",
+    cfTrackAudio: "movie-a",
+    role: 'host'
+  });
+  showToast("🔄 Quality updated & audio stabilized");
 };
 
 /* CAPTURE */
@@ -488,15 +506,15 @@ window.confirmHost = async () => {
   logStatus("Cloudflare SFU Host Session Created.");
   myCfSessionId = cfApp.sessionId;
 
-  let trackObjects = localTransceivers.map(t => { return { location: 'local', mid: t.mid, trackName: t.sender.track.id }; });
+  let trackObjects = localTransceivers.map(t => { 
+    const isVid = t.sender.track.kind === 'video';
+    return { location: 'local', mid: t.mid, trackName: isVid ? "movie-v" : "movie-a" }; 
+  });
 
   await pc.setLocalDescription(await pc.createOffer());
   const newLocalTracksResult = await cfApp.newTracks(trackObjects, pc.localDescription.sdp);
   await pc.setRemoteDescription(new RTCSessionDescription(newLocalTracksResult.sessionDescription));
   logStatus("Tracks published to Cloudflare SFU.");
-
-  myCfTrackNames.video = localTransceivers.find(t => t.sender.track.kind === 'video')?.sender.track.id;
-  myCfTrackNames.audio = localTransceivers.find(t => t.sender.track.kind === 'audio')?.sender.track.id;
 
   const roomRef = ref(db, `rooms/${roomId}`);
   logStatus(`Registering host in room: ${roomId}`);
@@ -504,8 +522,8 @@ window.confirmHost = async () => {
     name: myName,
     created: Date.now(),
     cfSessionId: myCfSessionId,
-    cfTrackVideo: myCfTrackNames.video || null,
-    cfTrackAudio: myCfTrackNames.audio || null,
+    cfTrackVideo: "movie-v",
+    cfTrackAudio: "movie-a",
     role: 'host'
   }).catch(e => logStatus(`Firebase Error: ${e.message}`));
   onDisconnect(roomRef).remove();
@@ -597,8 +615,8 @@ async function proceedJoin(myVid, userName) {
     cfApp = new RealtimeApp(cfAppId);
     const pc = new RTCPeerConnection(servers); viewerPc = pc;
     const video = document.getElementById("remoteVideo"), remoteStream = new MediaStream();
-    video.srcObject = remoteStream; video.muted = true; // IMPORTANT: Keep muted, use bgAudio/GainNode
-    const hostAudID = hostData.cfTrackAudio;
+    video.srcObject = remoteStream; video.muted = true; // Use bgAudio sink
+    const hostAudID = "movie-a"; // Always use stable name for audio
 
     let currentDelayHint = 0.05;
 
@@ -652,11 +670,12 @@ async function proceedJoin(myVid, userName) {
         bg.play().then(() => {
           logStatus("Movie audio started (via Web Audio)");
           if ("mediaSession" in navigator) {
-            navigator.mediaSession.metadata = new MediaMetadata({ title: `Watching: ${roomId}`, artist: myName, artwork: [{ src: "https://img.icons8.com/bubbles/200/popcorn.png", sizes: "200x200", type: "image/png" }] });
-            navigator.mediaSession.setActionHandler('play', () => bg.play());
+            navigator.mediaSession.metadata = new MediaMetadata({ title: `Room: ${roomId}`, artist: "Live Party", album: "Watch Party", artwork: [{ src: "https://cdn-icons-png.flaticon.com/512/3163/3163478.png", sizes: "512x512", type: "image/png" }] });
+            const playP = () => { bg.play(); if (audioCtx.state === 'suspended') audioCtx.resume(); };
+            navigator.mediaSession.setActionHandler('play', playP);
             navigator.mediaSession.setActionHandler('pause', () => bg.pause());
           }
-        }).catch(e => logStatus(`Audio play error: ${e.message}`));
+        }).catch(e => logStatus(`Audio play error trace: ${e.message}`));
       } else if (track.kind === "audio" && !isMovieAud && sessionType !== 'broadcast') {
         // Only play if it's NOT our own voice track (precautionary)
         const auId = `voice_${track.id}`;
