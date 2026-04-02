@@ -68,9 +68,25 @@ let firebaseUnsubs = [], bgAudioSet = false, iceRestartCount = 0;
 let audioCtx = null, movieNode = null, duckingActive = false;
 let myVoiceStream = null, voicePcs = {}, silenceLoop = null;
 let cfApp = null, myCfSessionId = null, myCfTrackNames = {};
-let movieGainNode = null, audioContext = null;
+let movieGainNode = null; // Removed redundant 'audioContext' let, using global 'audioCtx'
 const MAX_ICE_RESTARTS = 3;
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+function gestureUnlock() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === "suspended") audioCtx.resume();
+  
+  // Warm up the hardware with a 0.1s silent buffer
+  const osc = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  g.gain.value = 0; osc.connect(g); g.connect(audioCtx.destination);
+  osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+
+  // Prime the HTML5 audio elements
+  const bg = document.getElementById("bgAudio");
+  if (bg) { bg.play().catch(() => { }); bg.pause(); }
+  logStatus("Audio system unlocked by user gesture.");
+}
 
 function logIce(pc, label) { pc.onicegatheringstatechange = () => console.log(`[ICE ${label}] gather:${pc.iceGatheringState}`); pc.oniceconnectionstatechange = () => console.log(`[ICE ${label}] ice:${pc.iceConnectionState}`); }
 function logCandidate(c, label) { if (!c) return; const t = c.candidate?.match(/typ (\w+)/)?.[1] || '?'; console.log(`[ICE ${label}] ${t}|${c.candidate?.substring(0, 60)}`); }
@@ -411,6 +427,7 @@ async function optimizeHostSender(pc, vid = null) {
 
 /* HOST */
 window.confirmHost = async () => {
+  gestureUnlock();
   roomId = document.getElementById("roomId").value.trim(); myName = document.getElementById("userName").value.trim() || "Host";
   if (!roomId) { roomId = Math.random().toString(36).substr(2, 8).toUpperCase(); document.getElementById("roomId").value = roomId; }
   sessionType = document.getElementById("modalMode")?.value || "party";
@@ -525,6 +542,7 @@ window.confirmHost = async () => {
 
 /* VIEWER */
 window.confirmJoin = async () => {
+  gestureUnlock();
   roomId = document.getElementById("roomId").value.trim(); myName = document.getElementById("userName").value.trim() || "Viewer";
   if (!roomId) return showToast("⚠️ Enter Room Code");
   logStatus(`Joining room: ${roomId}`);
@@ -588,13 +606,15 @@ async function proceedJoin(myVid, userName) {
       const track = e.track;
       logStatus(`Received track: ${track.kind} (ID: ${track.id})`);
       
-      // Volume/Audio Control Setup (ensure context is active)
-      if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      // Volume/Audio Control Setup (already unlocked by gesture)
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === "suspended") audioCtx.resume();
+
       if (!movieGainNode) {
-        movieGainNode = audioContext.createGain();
+        movieGainNode = audioCtx.createGain();
         movieGainNode.gain.value = window._movieVol || 1.0;
-        movieGainNode.connect(audioContext.destination);
-        window.updateGain = (v) => { if (movieGainNode) movieGainNode.gain.setValueAtTime(v, audioContext.currentTime); };
+        movieGainNode.connect(audioCtx.destination);
+        window.updateGain = (v) => { if (movieGainNode) movieGainNode.gain.setValueAtTime(v, audioCtx.currentTime); };
       }
 
       if (e.receiver) {
@@ -626,7 +646,7 @@ async function proceedJoin(myVid, userName) {
         bg.srcObject = new MediaStream([track]);
         
         // Connect to Web Audio for volume control
-        const source = audioContext.createMediaStreamSource(bg.srcObject);
+        const source = audioCtx.createMediaStreamSource(bg.srcObject);
         source.connect(movieGainNode);
         
         bg.play().then(() => {
