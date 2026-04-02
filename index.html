@@ -1318,7 +1318,7 @@
         flex: 1;
         border-left: none;
         border-top: 1px solid var(--glass-border);
-        overflow: hidden;
+        overflow: visible;
       }
 
       .emoji-float {
@@ -1573,19 +1573,26 @@
             </div>
             <div class="form-row">
               <div class="form-group"><label>Quality</label><select class="form-select" id="scrResS"
-                  onchange="document.getElementById('scrRes').value=this.value; window.pushHostSettings();">
-                  <option value="4k">4K</option>
-                  <option value="2k">2K</option>
+                  onchange="document.getElementById('scrRes').value=this.value;">
+                  <option value="2160p">4K (2160p)</option>
+                  <option value="1440p">2K (1440p)</option>
                   <option value="1080p" selected>1080p</option>
                   <option value="720p">720p</option>
+                  <option value="480p">480p</option>
+                  <option value="360p">360p</option>
+                  <option value="240p">240p</option>
+                  <option value="144p">144p</option>
                 </select></div>
               <div class="form-group"><label>FPS</label><select class="form-select" id="scrFpsS"
-                  onchange="document.getElementById('scrFps').value=this.value; window.pushHostSettings();">
+                  onchange="document.getElementById('scrFps').value=this.value;">
                   <option value="60">60 fps</option>
                   <option value="30" selected>30 fps</option>
                   <option value="24">24 fps</option>
                 </select></div>
             </div>
+            <button class="btn-action" onclick="window.replaceScreenShareBtn(); window.pushHostSettings();"
+              style="width:100%; margin-top:10px; font-size:12px; height:32px; background:var(--accent-dim); color:var(--accent); border-color:var(--accent-glow);"><span
+                class="material-symbols-outlined" style="font-size:16px;">task_alt</span> Apply Settings Now</button>
             <div class="form-group">
               <label style="display:flex;justify-content:space-between;">Bitrate <span id="bitrateValLabel">4
                   Mbps</span></label>
@@ -1706,10 +1713,14 @@
               <div class="modal-section-title">Quality &amp; FPS</div>
               <div class="form-row">
                 <select class="form-select" id="scrRes">
-                  <option value="4k">4K</option>
-                  <option value="2k">2K</option>
+                  <option value="2160p">4K (2160p)</option>
+                  <option value="1440p">2K (1440p)</option>
                   <option value="1080p" selected>1080p</option>
                   <option value="720p">720p</option>
+                  <option value="480p">480p</option>
+                  <option value="360p">360p</option>
+                  <option value="240p">240p</option>
+                  <option value="144p">144p</option>
                 </select>
                 <select class="form-select" id="scrFps">
                   <option value="60">60 fps</option>
@@ -1727,8 +1738,21 @@
             </div>
           </div>
         </div>
+        <div class="modal-section-title">Session Mode</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:4px;">
+          <div id="modeParty" class="modal-btn"
+            style="background:var(--accent-dim); border-color:var(--accent); font-size:12px; padding:10px;"
+            onclick="setMode('party')">
+            <span class="material-symbols-outlined">groups</span> Watch Party
+          </div>
+          <div id="modeBroadcast" class="modal-btn" style="background:var(--surface); font-size:12px; padding:10px;"
+            onclick="setMode('broadcast')">
+            <span class="material-symbols-outlined">radio</span> Broadcast
+          </div>
+        </div>
+        <input type="hidden" id="modalMode" value="party" />
         <div class="modal-divider"></div>
-        <div
+        <div id="micOptionHost"
           style="background:rgba(16,185,129,0.05); border:1px solid rgba(16,185,129,0.2); padding:12px; border-radius:12px; display:flex; align-items:center; gap:10px; cursor:pointer;"
           onclick="document.getElementById('modalHostMic').click()">
           <input type="checkbox" id="modalHostMic" style="width:18px;height:18px; cursor:pointer;"
@@ -1757,7 +1781,16 @@
         document.getElementById('content' + tab[0].toUpperCase() + tab.slice(1))?.classList.add('active');
         if (tab === 'chat') { const b = document.getElementById('chatBadge'); if (b) b.style.display = 'none'; }
       };
-      window.setMovieVolume = v => { const vol = v / 100; const vid = document.getElementById('remoteVideo'), aud = document.getElementById('bgAudio'); if (vid) vid.volume = vol; if (aud) aud.volume = vol; document.getElementById('movieVolVal').textContent = v + '%'; };
+      window.setMovieVolume = v => {
+        const vol = v / 100;
+        window._movieVol = vol; // Globally accessible
+        const vid = document.getElementById('remoteVideo'), aud = document.getElementById('bgAudio');
+        if (vid) vid.volume = vol;
+        if (aud) aud.volume = vol;
+        // Sync with app.js GainNode if it exists
+        if (window.updateGain) window.updateGain(vol);
+        document.getElementById('movieVolVal').textContent = v + '%';
+      };
 
       /* FULLSCREEN */
       window.toggleFullscreen = () => {
