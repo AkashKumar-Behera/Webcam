@@ -381,23 +381,24 @@ async function captureScreen() {
   try { localStream = await navigator.mediaDevices.getDisplayMedia(con); }
   catch { con.audio = true; try { localStream = await navigator.mediaDevices.getDisplayMedia(con); } catch { con.audio = false; localStream = await navigator.mediaDevices.getDisplayMedia(con); } }
 
-  // Mix Mic if enabled
-  if (document.getElementById("modalHostMic")?.checked) {
+  // Mix Mic if enabled (only if not in broadcast mode)
+  if (document.getElementById("modalHostMic")?.checked && sessionType !== 'broadcast') {
     try {
       const micStream = await navigator.mediaDevices.getUserMedia(getMicConstraints());
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
       const dest = ctx.createMediaStreamDestination();
 
-      if (localStream.getAudioTracks().length > 0) {
-        const source1 = ctx.createMediaStreamSource(new MediaStream([localStream.getAudioTracks()[0]]));
+      const existingAudioTracks = localStream.getAudioTracks();
+      if (existingAudioTracks.length > 0) {
+        const source1 = ctx.createMediaStreamSource(new MediaStream([existingAudioTracks[0]]));
         source1.connect(dest);
       }
       const source2 = ctx.createMediaStreamSource(micStream);
       source2.connect(dest);
 
       const mixedTrack = dest.stream.getAudioTracks()[0];
-      localStream.getAudioTracks().forEach(t => t.stop());
-      localStream.removeTrack(localStream.getAudioTracks()[0]);
+      // Do NOT stop existing tracks since source1 needs them flowing!
+      existingAudioTracks.forEach(t => localStream.removeTrack(t));
       localStream.addTrack(mixedTrack);
       localStream._micStream = micStream; // store to stop later
     } catch (e) { console.warn("Mic capture failed", e); }
