@@ -17,16 +17,16 @@
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL@20..48,100..700,0..1" rel="stylesheet" />
   <style>
     :root {
-      --bg: #0D0A14;
+      --bg: #1a0a12;
       --surface: rgba(255,255,255,0.05);
       --surface-hover: rgba(255,255,255,0.09);
       --glass-border: rgba(255,255,255,0.08);
-      --glass-border-strong: rgba(201,75,123,0.25);
+      --glass-border-strong: rgba(201,75,123,0.28);
       --text: #F5E6EF;
       --text-muted: rgba(245,230,239,0.45);
       --accent: #C94B7B;
       --accent-dim: rgba(201,75,123,0.15);
-      --accent-glow: rgba(201,75,123,0.35);
+      --accent-glow: rgba(201,75,123,0.4);
       --accent2: #7C3AED;
       --accent2-dim: rgba(124,58,237,0.15);
       --pink-soft: #F472B6;
@@ -34,7 +34,7 @@
       --gold: #F59E0B;
       --radius: 16px;
       --radius-sm: 10px;
-      --panel-bg: rgba(13,10,20,0.97);
+      --panel-bg: rgba(20,8,16,0.98);
     }
 
     * { margin:0; padding:0; box-sizing:border-box; }
@@ -600,10 +600,178 @@
       background:linear-gradient(135deg, var(--accent), var(--accent2)); cursor:pointer;
     }
 
+    /* ===== NEW COUPLE FEATURES CSS ===== */
+
+    /* AMBIENT GLOW — cinema feel when streaming */
+    .video-wrap.streaming::before {
+      content:''; position:absolute; inset:-2px; z-index:1; pointer-events:none;
+      border-radius:0;
+      box-shadow: inset 0 0 60px rgba(201,75,123,0.18), inset 0 0 30px rgba(201,75,123,0.08);
+      animation: cinemaGlow 3s ease-in-out infinite alternate;
+    }
+    @keyframes cinemaGlow {
+      0%   { box-shadow: inset 0 0 60px rgba(201,75,123,0.18), inset 0 0 30px rgba(201,75,123,0.06); }
+      100% { box-shadow: inset 0 0 80px rgba(201,75,123,0.28), inset 0 0 40px rgba(124,58,237,0.1); }
+    }
+
+    /* ONLY US BADGE */
+    #onlyUsBadge {
+      display:none; position:absolute; top:50px; left:50%; transform:translateX(-50%);
+      background:rgba(26,10,18,0.82); backdrop-filter:blur(12px);
+      border:1px solid rgba(201,75,123,0.3); border-radius:20px;
+      padding:4px 14px; font-size:10px; font-weight:600; letter-spacing:.5px;
+      color:var(--accent); z-index:6; pointer-events:none;
+      animation:onlyUsFade 1s ease;
+    }
+    @keyframes onlyUsFade { from{opacity:0;transform:translateX(-50%) translateY(-8px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
+
+    /* DRAWING CANVAS */
+    #drawCanvas {
+      position:absolute; inset:0; z-index:15;
+      pointer-events:none; touch-action:none;
+      cursor: crosshair;
+    }
+    #drawCanvas.active { pointer-events:all; }
+
+    /* DRAWING TOOLBAR */
+    #drawToolbar {
+      display:none; position:absolute; top:50px; left:12px; z-index:20;
+      flex-direction:column; gap:6px;
+    }
+    .draw-btn {
+      width:36px; height:36px; border-radius:10px;
+      background:rgba(26,10,18,0.82); backdrop-filter:blur(8px);
+      border:1px solid rgba(201,75,123,0.25); color:var(--text);
+      display:flex; align-items:center; justify-content:center;
+      cursor:pointer; transition:all .15s; font-size:14px;
+    }
+    .draw-btn:hover,.draw-btn.active { background:rgba(201,75,123,0.2); border-color:var(--accent); }
+    .draw-color { width:20px; height:20px; border-radius:50%; border:2px solid rgba(255,255,255,0.4); cursor:pointer; }
+
+    /* HEARTBEAT BUTTON */
+    .vbtn.heartbeat-btn { background:rgba(201,75,123,0.12); border-color:rgba(201,75,123,0.35); }
+    @keyframes heartPop {
+      0%   { transform:scale(1); }
+      25%  { transform:scale(1.4); }
+      50%  { transform:scale(1); }
+      75%  { transform:scale(1.25); }
+      100% { transform:scale(1); }
+    }
+    .heartbeat-anim { animation:heartPop .6s ease; }
+
+    /* HEARTBEAT FULL-SCREEN WAVE */
+    .heart-wave {
+      position:fixed; inset:0; z-index:8888; pointer-events:none;
+      display:flex; align-items:center; justify-content:center;
+      animation:heartWave 1.8s ease forwards;
+    }
+    .heart-wave span { font-size:80px; filter:drop-shadow(0 0 30px rgba(201,75,123,0.8)); }
+    @keyframes heartWave {
+      0%   { opacity:0; transform:scale(0.3); }
+      30%  { opacity:1; transform:scale(1.1); }
+      60%  { opacity:1; transform:scale(0.95); }
+      100% { opacity:0; transform:scale(0.8); }
+    }
+
+    /* MOOD RING */
+    .mood-bar { display:flex; gap:6px; flex-wrap:wrap; }
+    .mood-btn {
+      flex:1; min-width:80px; padding:9px 6px; border-radius:10px;
+      border:1px solid rgba(201,75,123,0.15); background:rgba(201,75,123,0.04);
+      color:var(--text-muted); font-family:inherit; font-size:11px; font-weight:600;
+      cursor:pointer; text-align:center; transition:all .2s;
+    }
+    .mood-btn:hover { border-color:rgba(201,75,123,0.35); background:rgba(201,75,123,0.1); color:var(--text); }
+    .mood-btn.active-mood { background:rgba(201,75,123,0.18); border-color:var(--accent); color:var(--accent); }
+
+    /* SECRET NOTE DRAWER */
+    #secretNoteDrawer {
+      position:fixed; right:0; bottom:0; top:0; z-index:888;
+      width:300px; background:rgba(20,8,16,0.97); backdrop-filter:blur(20px);
+      border-left:1px solid rgba(201,75,123,0.2);
+      display:flex; flex-direction:column; gap:0;
+      transform:translateX(105%); transition:transform .3s cubic-bezier(.4,0,.2,1);
+      box-shadow:-8px 0 40px rgba(201,75,123,0.1);
+    }
+    #secretNoteDrawer.open { transform:translateX(0); }
+    .sn-header {
+      padding:16px; border-bottom:1px solid rgba(201,75,123,0.12);
+      display:flex; align-items:center; justify-content:space-between;
+    }
+    .sn-title { font-family:'Playfair Display',serif; font-size:15px; color:var(--accent); }
+    .sn-close { background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:20px; line-height:1; }
+    .sn-notes { flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:10px; }
+    .sn-note {
+      background:rgba(201,75,123,0.07); border:1px solid rgba(201,75,123,0.15);
+      border-radius:10px; padding:10px 12px; font-size:12px; line-height:1.5;
+    }
+    .sn-note-sender { font-size:9px; font-weight:700; color:var(--accent); margin-bottom:4px; letter-spacing:.5px; }
+    .sn-note-time { font-size:9px; color:var(--text-muted); float:right; }
+    .sn-input-area { padding:12px; border-top:1px solid rgba(201,75,123,0.12); display:flex; gap:8px; }
+    .sn-input {
+      flex:1; padding:9px 12px; background:rgba(201,75,123,0.06);
+      border:1px solid rgba(201,75,123,0.2); border-radius:10px;
+      color:var(--text); font-family:inherit; font-size:12px; outline:none;
+    }
+    .sn-input::placeholder { color:var(--text-muted); }
+    .sn-send {
+      width:34px; height:34px; border-radius:8px; flex-shrink:0;
+      background:linear-gradient(135deg, var(--accent), var(--accent2));
+      border:none; color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center;
+    }
+
+    /* COUNTDOWN OVERLAY */
+    #countdownOverlay {
+      display:none; position:fixed; inset:0; z-index:7777;
+      background:rgba(26,10,18,0.92); backdrop-filter:blur(8px);
+      flex-direction:column; align-items:center; justify-content:center; gap:16px;
+    }
+    #countdownOverlay.active { display:flex; }
+    #countdownNum {
+      font-family:'Playfair Display',serif; font-size:120px; font-weight:700; line-height:1;
+      background:linear-gradient(135deg, var(--accent), var(--pink-soft));
+      -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+      animation:countPop .9s ease;
+    }
+    @keyframes countPop {
+      0%   { transform:scale(1.4); opacity:0; }
+      40%  { transform:scale(0.95); opacity:1; }
+      100% { transform:scale(1); opacity:1; }
+    }
+    #countdownOverlay p { font-size:14px; color:var(--text-muted); letter-spacing:1px; }
+
+    /* CONFETTI CANVAS */
+    #confettiCanvas { position:fixed; inset:0; z-index:7776; pointer-events:none; display:none; }
+
+    /* CURSOR EFFECTS */
+    body.host-cursor { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='5' fill='%23C94B7B' opacity='0.9'/%3E%3Ccircle cx='12' cy='12' r='9' fill='none' stroke='%23C94B7B' stroke-width='1.5' opacity='0.5'/%3E%3C/svg%3E") 12 12, crosshair; }
+    body.viewer-cursor { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='5' fill='%237C3AED' opacity='0.9'/%3E%3Ccircle cx='12' cy='12' r='9' fill='none' stroke='%237C3AED' stroke-width='1.5' opacity='0.5'/%3E%3C/svg%3E") 12 12, crosshair; }
+
+    /* REMOTE CURSOR (partner's position) */
+    #partnerCursor {
+      position:fixed; z-index:9990; pointer-events:none;
+      width:20px; height:20px; border-radius:50%; opacity:0;
+      transition:left .1s, top .1s, opacity .3s;
+      display:flex; align-items:center; justify-content:center;
+    }
+    #partnerCursor::before { content:''; width:10px; height:10px; border-radius:50%; background:var(--accent2); box-shadow:0 0 12px var(--accent2); }
+    #partnerCursor::after { content:attr(data-name); position:absolute; top:-20px; left:50%; transform:translateX(-50%); font-size:9px; font-weight:600; color:#fff; background:var(--accent2); padding:2px 6px; border-radius:5px; white-space:nowrap; }
+
+    /* DRIFTED OFF BUTTON */
+    #driftedOffBtn {
+      display:none; position:absolute; bottom:60px; left:50%; transform:translateX(-50%);
+      z-index:14; background:rgba(26,10,18,0.88); backdrop-filter:blur(10px);
+      border:1px solid rgba(201,75,123,0.3); border-radius:20px;
+      padding:8px 18px; font-size:11px; font-weight:600; color:var(--text-muted);
+      cursor:pointer; display:none; gap:6px; align-items:center; white-space:nowrap;
+      transition:all .2s;
+    }
+    #driftedOffBtn:hover { background:rgba(201,75,123,0.15); color:var(--text); }
+
     /* MOBILE */
     @media(max-width:768px) {
       .bg-pattern { display:none; }
-      .aurora-blob { opacity:.1; }
+      .aurora-blob { opacity:.12; }
       .app-layout { flex-direction:column; }
       .main-col { flex:none; }
       .video-wrap { height:35vh; border-radius:0; }
@@ -611,6 +779,7 @@
       .modal-card { padding:20px 16px 16px; gap:14px; border-radius:20px; }
       .modal-header h1 { font-size:19px; }
       .couple-header { padding:10px 14px 8px; }
+      #secretNoteDrawer { width:100%; }
     }
     @media(max-width:480px) {
       .video-wrap { height:30vh; }
@@ -635,9 +804,24 @@
   <!-- MAIN APP -->
   <div class="app-layout">
     <div class="main-col">
-      <div class="video-wrap">
+      <div class="video-wrap" id="videoWrap">
         <video id="remoteVideo" autoplay playsinline muted></video>
         <audio id="bgAudio" playsinline loop></audio>
+
+        <!-- Drawing Canvas -->
+        <canvas id="drawCanvas"></canvas>
+
+        <!-- Drawing Toolbar -->
+        <div id="drawToolbar">
+          <button class="draw-btn active" id="drawToggleBtn" onclick="toggleDraw()" title="Draw">✏️</button>
+          <div class="draw-btn" style="cursor:default;padding:4px;gap:4px;height:auto;flex-direction:column;">
+            <div class="draw-color" style="background:#C94B7B;" onclick="setDrawColor('#C94B7B')"></div>
+            <div class="draw-color" style="background:#7C3AED;" onclick="setDrawColor('#7C3AED')"></div>
+            <div class="draw-color" style="background:#F472B6;" onclick="setDrawColor('#F472B6')"></div>
+            <div class="draw-color" style="background:#fff;" onclick="setDrawColor('#ffffff')"></div>
+          </div>
+          <button class="draw-btn" onclick="clearDrawCanvas()" title="Clear">🗑️</button>
+        </div>
 
         <!-- No Signal State -->
         <div class="no-signal" id="noSignal">
@@ -658,17 +842,28 @@
           </div>
         </div>
 
+        <!-- Only Us Badge -->
+        <div id="onlyUsBadge">🔒 Just the two of us</div>
+
         <!-- Autoplay Recovery Overlay -->
         <div id="autoplayOverlay" onclick="recoverAutoplay()">
           <span class="material-symbols-outlined" style="font-size:52px;color:var(--accent);filter:drop-shadow(0 0 20px rgba(201,75,123,0.5));">play_circle</span>
           <h3>Tap to Unmute & Play</h3>
         </div>
 
+        <!-- I Drifted Off Button -->
+        <button id="driftedOffBtn" onclick="sendDriftedOff()">
+          🌙 I Drifted Off
+        </button>
+
         <!-- Video Control Buttons -->
         <div class="video-btns">
           <button class="vbtn" onclick="toggleFullscreen()" title="Fullscreen"><span class="material-symbols-outlined" id="fsIcon">fullscreen</span></button>
           <button class="vbtn" id="pipBtn" onclick="togglePip()" title="Picture-in-Picture" style="display:none"><span class="material-symbols-outlined">picture_in_picture</span></button>
           <button class="vbtn" id="refreshBtn" onclick="manualResync()" title="Refresh Stream" style="display:none"><span class="material-symbols-outlined">refresh</span></button>
+          <button class="vbtn heartbeat-btn" id="heartbeatBtn" onclick="sendHeartbeat()" title="Send Heartbeat ❤️" style="display:none"><span class="material-symbols-outlined" id="heartbeatIcon">favorite</span></button>
+          <button class="vbtn" id="drawToggleToolbar" onclick="toggleDrawToolbar()" title="Draw on Screen" style="display:none"><span class="material-symbols-outlined">draw</span></button>
+          <button class="vbtn" id="secretNoteBtn" onclick="document.getElementById('secretNoteDrawer').classList.toggle('open')" title="Secret Note 💌" style="display:none"><span class="material-symbols-outlined">edit_note</span></button>
           <button class="vbtn" id="micBtnMain" onclick="toggleVoiceChat()" title="Toggle Microphone" style="background:rgba(239,68,68,0.2);border-color:rgba(239,68,68,0.3)"><span class="material-symbols-outlined" id="micIconMain">mic_off</span></button>
         </div>
 
@@ -689,6 +884,12 @@
           <span class="couple-brand-name">Saath</span>
         </div>
         <span class="couple-together-badge" id="togetherBadge">Watch Together ✨</span>
+      </div>
+
+      <!-- Mood display (shows current mood in header) -->
+      <div id="moodBar" style="display:none; padding:6px 16px; border-bottom:1px solid rgba(201,75,123,0.1); font-size:10px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
+        <span id="moodEmoji">🎬</span> <span id="moodLabel" style="font-weight:600;">Movie Night</span>
+        <span style="margin-left:auto; font-size:9px; opacity:.5;">Mood</span>
       </div>
 
       <!-- Tabs -->
@@ -1000,7 +1201,15 @@
         </div>
         <input type="hidden" id="modalMode" value="party" />
 
+        <!-- MOOD RING -->
         <div class="modal-divider" style="margin:10px 0;"></div>
+        <div class="modal-section-title">Your Mood Tonight 🌙</div>
+        <div class="mood-bar">
+          <button class="mood-btn active-mood" id="mood_movie" onclick="setMood('movie','🎬','Movie Night')">🎬 Movie</button>
+          <button class="mood-btn" id="mood_chill" onclick="setMood('chill','🎵','Chill Vibes')">🎵 Chill</button>
+          <button class="mood-btn" id="mood_study" onclick="setMood('study','💻','Study Mode')">💻 Study</button>
+          <button class="mood-btn" id="mood_game" onclick="setMood('game','🎮','Gaming')">🎮 Gaming</button>
+        </div>
         <div class="mic-option" id="micOptionHost" onclick="document.getElementById('modalHostMic').click()">
           <input type="checkbox" id="modalHostMic" style="width:18px;height:18px;cursor:pointer;" onclick="event.stopPropagation()" />
           <div>
@@ -1113,7 +1322,188 @@
       const params = new URLSearchParams(location.search), roomFromUrl = params.get('room'), savedName = localStorage.getItem('watchparty_name');
       if (savedName) { document.getElementById('modalName').value = savedName; document.getElementById('userName').value = savedName; }
       if (roomFromUrl) { document.getElementById('modalRoom').value = roomFromUrl; document.getElementById('roomId').value = roomFromUrl; }
+
+      // Init drawing canvas
+      initDrawCanvas();
     });
+
+    /* MOOD */
+    window._currentMood = { id:'movie', emoji:'🎬', label:'Movie Night' };
+    window.setMood = (id, emoji, label) => {
+      document.querySelectorAll('.mood-btn').forEach(b => b.classList.remove('active-mood'));
+      document.getElementById('mood_'+id)?.classList.add('active-mood');
+      window._currentMood = { id, emoji, label };
+    };
+
+    /* COUNTDOWN */
+    window.startPreShowCountdown = (from=5) => {
+      if (!roomId) return showToast('⚠️ Join a room first');
+      const ov = document.getElementById('countdownOverlay');
+      const num = document.getElementById('countdownNum');
+      ov.classList.add('active');
+      let n = from;
+      num.textContent = n;
+      const interval = setInterval(() => {
+        n--;
+        if (n <= 0) {
+          clearInterval(interval);
+          ov.classList.remove('active');
+          launchConfetti();
+          showToast('🎬 Movie starting!');
+        } else {
+          num.style.animation = 'none';
+          requestAnimationFrame(() => { requestAnimationFrame(() => { num.style.animation = 'countPop .9s ease'; }); });
+          num.textContent = n;
+        }
+      }, 1000);
+    };
+
+    /* CONFETTI */
+    function launchConfetti() {
+      const canvas = document.getElementById('confettiCanvas');
+      canvas.style.display = 'block';
+      canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+      const ctx = canvas.getContext('2d');
+      const colors = ['#C94B7B','#7C3AED','#F472B6','#fff','#fbbf24'];
+      const pieces = Array.from({length:120}, () => ({
+        x: Math.random()*canvas.width, y: Math.random()*-100,
+        r: Math.random()*6+3, color: colors[Math.floor(Math.random()*colors.length)],
+        vx: (Math.random()-0.5)*4, vy: Math.random()*3+2,
+        angle: Math.random()*360, spin: (Math.random()-0.5)*10
+      }));
+      let frame = 0;
+      function drawConfetti() {
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        let alive = false;
+        pieces.forEach(p => {
+          p.x+=p.vx; p.y+=p.vy; p.angle+=p.spin;
+          if (p.y < canvas.height+20) alive = true;
+          ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.angle*Math.PI/180);
+          ctx.fillStyle=p.color; ctx.fillRect(-p.r,-p.r/2,p.r*2,p.r);
+          ctx.restore();
+        });
+        if (alive && frame < 150) { frame++; requestAnimationFrame(drawConfetti); }
+        else { canvas.style.display='none'; }
+      }
+      drawConfetti();
+    }
+
+    /* DRAWING CANVAS */
+    let drawActive = false, drawCtx = null, currentDrawColor = '#C94B7B', isDrawing = false, lastX=0, lastY=0;
+    function initDrawCanvas() {
+      const canvas = document.getElementById('drawCanvas');
+      const wrap = document.getElementById('videoWrap');
+      if (!canvas || !wrap) return;
+      function resize() { canvas.width = wrap.offsetWidth; canvas.height = wrap.offsetHeight; }
+      resize();
+      new ResizeObserver(resize).observe(wrap);
+      drawCtx = canvas.getContext('2d');
+
+      canvas.addEventListener('mousedown', e => { if (!drawActive) return; isDrawing=true; [lastX,lastY]=getXY(e,canvas); });
+      canvas.addEventListener('mousemove', e => { if (!drawActive||!isDrawing) return; draw(e,canvas); });
+      canvas.addEventListener('mouseup', () => { isDrawing=false; broadcastDraw(null); });
+      canvas.addEventListener('touchstart', e => { if (!drawActive) return; e.preventDefault(); isDrawing=true; [lastX,lastY]=getXY(e.touches[0],canvas); }, {passive:false});
+      canvas.addEventListener('touchmove', e => { if (!drawActive||!isDrawing) return; e.preventDefault(); draw(e.touches[0],canvas); }, {passive:false});
+      canvas.addEventListener('touchend', () => { isDrawing=false; broadcastDraw(null); });
+    }
+    function getXY(e, canvas) {
+      const r = canvas.getBoundingClientRect();
+      return [(e.clientX-r.left)/r.width*100, (e.clientY-r.top)/r.height*100];
+    }
+    function draw(e, canvas) {
+      const [x,y] = getXY(e,canvas);
+      const w=canvas.width, h=canvas.height;
+      drawCtx.strokeStyle = currentDrawColor;
+      drawCtx.lineWidth = 3; drawCtx.lineCap='round'; drawCtx.lineJoin='round';
+      drawCtx.beginPath();
+      drawCtx.moveTo(lastX/100*w, lastY/100*h);
+      drawCtx.lineTo(x/100*w, y/100*h);
+      drawCtx.stroke();
+      broadcastDraw({x1:lastX,y1:lastY,x2:x,y2:y,c:currentDrawColor});
+      [lastX,lastY]=[x,y];
+      // Auto-fade after 3 seconds
+      clearTimeout(draw._fadeTimer);
+      draw._fadeTimer = setTimeout(() => { if(drawCtx) { drawCtx.clearRect(0,0,canvas.width,canvas.height); } }, 3000);
+    }
+    function broadcastDraw(seg) {
+      if (!window._roomId) return;
+      const { set, ref: fbRef } = window._fbHelpers || {};
+      if (!set||!fbRef) return;
+      const path = `rooms/${window._roomId}/drawing/cur`;
+      if (seg) set(fbRef(window._db, path), {...seg, name:window._myName, ts:Date.now()});
+      else set(fbRef(window._db, path), null);
+    }
+    window.toggleDraw = () => {
+      drawActive = !drawActive;
+      const canvas = document.getElementById('drawCanvas');
+      canvas.classList.toggle('active', drawActive);
+      document.getElementById('drawToggleBtn').classList.toggle('active', drawActive);
+      if (!drawActive) { drawCtx?.clearRect(0,0,canvas.width,canvas.height); }
+    };
+    window.toggleDrawToolbar = () => {
+      const t = document.getElementById('drawToolbar');
+      t.style.display = t.style.display === 'flex' ? 'none' : 'flex';
+    };
+    window.setDrawColor = (c) => { currentDrawColor = c; };
+    window.clearDrawCanvas = () => {
+      const c = document.getElementById('drawCanvas');
+      if (drawCtx) drawCtx.clearRect(0,0,c.width,c.height);
+    };
+
+    /* INCOMING DRAW RENDERER */
+    window._startDrawListener = (roomIdVal, db, helpers) => {
+      window._roomId = roomIdVal; window._db = db; window._fbHelpers = helpers;
+      const { onValue, ref: fbRef } = helpers;
+      onValue(fbRef(db, `rooms/${roomIdVal}/drawing/cur`), snap => {
+        const seg = snap.val(); if (!seg || seg.name === window._myName) return;
+        const canvas = document.getElementById('drawCanvas');
+        if (!drawCtx) return;
+        const w=canvas.width, h=canvas.height;
+        drawCtx.strokeStyle=seg.c||'#C94B7B'; drawCtx.lineWidth=3; drawCtx.lineCap='round';
+        drawCtx.beginPath();
+        drawCtx.moveTo(seg.x1/100*w,seg.y1/100*h); drawCtx.lineTo(seg.x2/100*w,seg.y2/100*h);
+        drawCtx.stroke();
+        clearTimeout(window._remoteFadeTimer);
+        window._remoteFadeTimer = setTimeout(() => { drawCtx?.clearRect(0,0,w,h); }, 3000);
+      });
+    };
+
+    /* SECRET NOTE */
+    window.sendSecretNote = () => {
+      const inp = document.getElementById('snInput');
+      const text = inp.value.trim(); if (!text || !window._roomId) return;
+      inp.value = '';
+      const { set, ref: fbRef, push } = window._fbHelpers || {}; if (!set) return;
+      push(fbRef(window._db, `rooms/${window._roomId}/secretNotes`), {
+        text, name: window._myName, ts: Date.now()
+      });
+    };
+    window._startSecretNoteListener = (roomIdVal, db, helpers) => {
+      const { onChildAdded, ref: fbRef } = helpers;
+      onChildAdded(fbRef(db, `rooms/${roomIdVal}/secretNotes`), snap => {
+        const d = snap.val(); if (!d) return;
+        const container = document.getElementById('snNotes');
+        if (!container) return;
+        if (container.querySelector('.sn-empty')) container.innerHTML='';
+        const time = new Date(d.ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+        const div = document.createElement('div'); div.className='sn-note';
+        div.innerHTML = `<div class="sn-note-sender">${d.name.toUpperCase()} <span class="sn-note-time">${time}</span></div>${d.text}`;
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
+        // Show secret note button
+        const btn = document.getElementById('secretNoteBtn');
+        if (btn && d.name !== window._myName) { btn.style.display='flex'; showToast('💌 New secret note!'); }
+      });
+    };
+
+    /* HEARTBEAT wave on receive */
+    window._showHeartWave = () => {
+      const el = document.createElement('div'); el.className='heart-wave';
+      el.innerHTML='<span>❤️</span>'; document.body.appendChild(el);
+      setTimeout(() => el.remove(), 1900);
+      // Play a ting sound
+      try { const ctx2 = new AudioContext(); const o=ctx2.createOscillator(); const g2=ctx2.createGain(); o.connect(g2); g2.connect(ctx2.destination); o.frequency.value=880; g2.gain.setValueAtTime(0.4,ctx2.currentTime); g2.gain.exponentialRampToValueAtTime(0.001,ctx2.currentTime+0.5); o.start(); o.stop(ctx2.currentTime+0.5); } catch(_){}
+    };
   </script>
   <script type="module" src="app.js"></script>
 </body>

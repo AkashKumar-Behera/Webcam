@@ -145,30 +145,168 @@ function startSilenceLoop() {
   try {
     const audio = document.getElementById("silenceLoop");
     if (!audio) return;
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const dest = ctx.createMediaStreamDestination();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain(); gain.gain.value = 0.001; // slightly higher
-    osc.connect(gain); gain.connect(dest);
-    osc.start();
-    audio.srcObject = dest.stream;
-    audio.play().then(() => { 
-      silenceLoop = { audio, osc, ctx }; 
-      logStatus("Silence keep-alive active.");
-    }).catch(() => { });
-    
-    // Prevent suspension
-    const ping = () => { if(ctx.state === 'suspended') ctx.resume(); setTimeout(ping, 5000); };
-    ping();
+
+    // True silent WAV (44 bytes, 1 sample, 16-bit PCM, value=0) — zero humming
+    const silentWav = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
+    audio.src = silentWav;
+    audio.loop = true;
+    audio.volume = 0; // absolute zero — no hum possible
+    audio.play().then(() => {
+      silenceLoop = { audio };
+      logStatus("Silence keep-alive active (silent WAV).");
+    }).catch(() => {});
   } catch (e) { }
 }
 function stopSilenceLoop() {
   if (silenceLoop) {
-    try { silenceLoop.osc.stop(); silenceLoop.ctx.close(); silenceLoop.audio.pause(); silenceLoop.audio.srcObject = null; } catch (e) { }
+    try { silenceLoop.audio.pause(); silenceLoop.audio.src = ""; } catch (e) { }
     silenceLoop = null;
   }
 }
 function nameToHsl(n) { let h = 0; for (const c of String(n)) h = c.charCodeAt(0) + ((h << 5) - h); return `hsl(${Math.abs(h) % 360},65%,48%)`; }
+
+/* ===== COUPLE FEATURES ===== */
+
+// Reaction sounds via Web Audio
+function playReactionSound(emoji) {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const ctx = audioCtx;
+    const freqMap = { '❤️':880, '💕':1047, '😍':783, '🎉':1319, '✨':1046, '🔥':220, '😂':523, '👍':659, '🍿':440, '😮':587, '💀':196, '👏':330 };
+    const freq = freqMap[emoji] || 523;
+    const o = ctx.createOscillator(); const g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.type = ['❤️','💕','😍'].includes(emoji) ? 'sine' : 'triangle';
+    o.frequency.value = freq;
+    g.gain.setValueAtTime(0.2, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    o.start(); o.stop(ctx.currentTime + 0.4);
+  } catch(_) {}
+}
+
+// Heartbeat – sends to Firebase, both screens show heart
+window.sendHeartbeat = async () => {
+  if (!roomId) return showToast('⚠️ Join a room first');
+  const icon = document.getElementById('heartbeatIcon');
+  if (icon) { icon.classList.add('heartbeat-anim'); setTimeout(() => icon.classList.remove('heartbeat-anim'), 700); }
+  await set(ref(db, `rooms/${roomId}/heartbeat`), { from: myName, ts: Date.now() });
+  window._showHeartWave?.();
+  playReactionSound('❤️');
+};
+
+// Drifted Off – sends notification to partner
+window.sendDriftedOff = async () => {
+  if (!roomId) return;
+  await set(ref(db, `rooms/${roomId}/signals/driftedOff`), { from: myName, ts: Date.now() });
+  showToast('🌙 Your partner has been notified');
+};
+
+// Apply ambient glow to video wrap when streaming
+function setAmbientGlow(on) {
+  const wrap = document.getElementById('videoWrap');
+  if (wrap) wrap.classList.toggle('streaming', on);
+}
+
+// Show only-us badge when exactly 2 people in room
+function updateOnlyUsBadge() {
+  const count = Object.keys(connectedViewers).length;
+  const badge = document.getElementById('onlyUsBadge');
+  if (!badge) return;
+  if (count === 1) { badge.style.display = 'block'; }
+  else { badge.style.display = 'none'; }
+}
+
+// Set cursor style based on role
+function applyRoleCursor() {
+  document.body.classList.remove('host-cursor', 'viewer-cursor');
+  if (isHost) document.body.classList.add('host-cursor');
+  else document.body.classList.add('viewer-cursor');
+}
+
+// Show session buttons after joining
+function showSessionButtons() {
+  ['heartbeatBtn','drawToggleToolbar','secretNoteBtn','driftedOffBtn'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'flex';
+  });
+}
+
+// Hide session buttons when leaving
+function hideSessionButtons() {
+  ['heartbeatBtn','drawToggleToolbar','secretNoteBtn','driftedOffBtn'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+}
+
+// Announce mood to Firebase at session start
+async function publishMood() {
+  if (!roomId || !window._currentMood) return;
+  const mood = window._currentMood;
+  await set(ref(db, `rooms/${roomId}/mood`), { ...mood, name: myName });
+  // Update panel mood bar
+  const bar = document.getElementById('moodBar');
+  const moodEl = document.getElementById('moodEmoji');
+  const labelEl = document.getElementById('moodLabel');
+  if (bar) { bar.style.display = 'flex'; }
+  if (moodEl) moodEl.textContent = mood.emoji;
+  if (labelEl) labelEl.textContent = mood.label;
+}
+
+// Listen to partner's mood
+function listenMood() {
+  onValue(ref(db, `rooms/${roomId}/mood`), snap => {
+    const m = snap.val(); if (!m || m.name === myName) return;
+    const bar = document.getElementById('moodBar');
+    if (bar) bar.style.display = 'flex';
+    document.getElementById('moodEmoji').textContent = m.emoji;
+    document.getElementById('moodLabel').textContent = `${m.label} (${m.name})`;
+  });
+}
+
+// Listen to heartbeat events
+function listenHeartbeat() {
+  onValue(ref(db, `rooms/${roomId}/heartbeat`), snap => {
+    const h = snap.val(); if (!h || h.from === myName) return;
+    window._showHeartWave?.();
+    playReactionSound('❤️');
+  });
+}
+
+// Listen to drifted off events
+function listenDriftedOff() {
+  onValue(ref(db, `rooms/${roomId}/signals/driftedOff`), snap => {
+    const d = snap.val(); if (!d || d.from === myName) return;
+    showToast(`🌙 ${d.from} drifted off... waiting for you 💤`);
+  });
+}
+
+// Time capsule – save session on leave
+function saveTimeCapsule() {
+  if (!roomId || !startTime) return;
+  const dur = Math.floor((Date.now() - startTime) / 60000);
+  const capsule = { roomId, date: new Date().toLocaleDateString(), duration: dur + ' min', mood: window._currentMood?.label || '—', role: isHost ? 'Host' : 'Viewer' };
+  const prev = JSON.parse(localStorage.getItem('saath_memories') || '[]');
+  prev.unshift(capsule); if (prev.length > 20) prev.pop();
+  localStorage.setItem('saath_memories', JSON.stringify(prev));
+  if (dur >= 2) showToast(`✨ ${dur} min together saved in memories!`);
+}
+
+// Bootstrap draw + secret note listeners for both host and viewer
+function bootstrapCoupleFeatures() {
+  const helpers = { set, ref, onValue, onChildAdded, push };
+  window._myName = myName;
+  window._startDrawListener?.(roomId, db, helpers);
+  window._startSecretNoteListener?.(roomId, db, helpers);
+  listenHeartbeat();
+  listenDriftedOff();
+  listenMood();
+  publishMood();
+  applyRoleCursor();
+  showSessionButtons();
+  updateOnlyUsBadge();
+}
 
 function logStatus(msg) {
   console.log(`[STATUS] ${msg}`);
@@ -521,6 +659,18 @@ window.confirmHost = async () => {
     document.getElementById("micBtnChat").style.display = "none";
   }
   window.switchTab("chat"); renderPeopleTab();
+  setAmbientGlow(true);
+  bootstrapCoupleFeatures();
+  
+  // Add pre-show countdown button
+  const hostBtns = document.getElementById("hostOnlySettings");
+  if (hostBtns && !document.getElementById('countdownTriggerBtn')) {
+    const cb = document.createElement('button');
+    cb.id = 'countdownTriggerBtn'; cb.className = 'btn-action'; cb.style.cssText = 'background:rgba(201,75,123,0.1);border-color:rgba(201,75,123,0.3);color:var(--accent);font-size:12px;height:34px;margin-bottom:10px;';
+    cb.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;">movie</span> Pre-Show Countdown';
+    cb.onclick = () => { startPreShowCountdown(5); };
+    hostBtns.prepend(cb);
+  }
 
   cfApp = new RealtimeApp(cfAppId);
   const pc = new RTCPeerConnection(servers);
@@ -579,7 +729,8 @@ window.confirmHost = async () => {
     cfSessionId: myCfSessionId,
     cfTrackVideo: "movie-v",
     cfTrackAudio: "movie-a",
-    role: 'host'
+    role: 'host',
+    mood: window._currentMood?.label || 'Movie Night'
   }).catch(e => logStatus(`Firebase Error: ${e.message}`));
   onDisconnect(roomRef).remove();
 
@@ -866,6 +1017,7 @@ async function proceedJoin(myVid, userName) {
     }); firebaseUnsubs.push(unsubVoice);
 
     startChatListener(); startReactionListener(); startStats(pc);
+    bootstrapCoupleFeatures();
 
   } catch (err) {
     logStatus(`Viewer Crash: ${err.message}`);
@@ -879,6 +1031,10 @@ async function proceedJoin(myVid, userName) {
 /* LEAVE */
 /* LEAVE */
 window.leaveCall = async () => {
+  saveTimeCapsule();
+  setAmbientGlow(false);
+  hideSessionButtons();
+  document.body.classList.remove('host-cursor','viewer-cursor');
   stopStats(); stopSilenceLoop(); firebaseUnsubs.forEach(u => { try { u(); } catch (_) { } }); firebaseUnsubs = [];
   Object.values(screenPcMap).forEach(pc => { try { pc.close(); } catch (_) { } }); screenPcMap = {};
   if (viewerPc) { try { viewerPc.close(); } catch (_) { } viewerPc = null; }
@@ -891,6 +1047,9 @@ window.leaveCall = async () => {
   document.getElementById("liveBadge").style.display = "none";
   ["sourceTag", "qualityTag", "refreshBtn"].forEach(id => { const e = document.getElementById(id); if (e) e.style.display = "none"; });
   document.getElementById("hostOnlySettings") && (document.getElementById("hostOnlySettings").style.display = "none");
+  const moodBar = document.getElementById("moodBar"); if (moodBar) moodBar.style.display = "none";
+  const ou = document.getElementById("onlyUsBadge"); if (ou) ou.style.display = "none";
+  const snd = document.getElementById("secretNoteDrawer"); if (snd) snd.classList.remove("open");
   updateConnStatus("disconnected"); changeActionBtns("init");
   document.getElementById("chatMessages").innerHTML = `<div style="text-align:center;color:var(--text-muted);margin-top:30px;font-size:11px;">💬 Messages visible to everyone</div>`;
   connectedViewers = {}; pendingViewers = {}; renderPeopleTab();
@@ -958,7 +1117,12 @@ window.fullScreenImg = (src) => {
 };
 
 /* REACTIONS */
-window.sendReaction = emoji => { if (!roomId) return showToast("⚠️ Connect first"); push(ref(db, `rooms/${roomId}/reactions`), { emoji, time: Date.now() + Math.random() }); triggerEmojiUI(emoji); };
+window.sendReaction = emoji => {
+  if (!roomId) return showToast("⚠️ Connect first");
+  push(ref(db, `rooms/${roomId}/reactions`), { emoji, time: Date.now() + Math.random() });
+  triggerEmojiUI(emoji);
+  playReactionSound(emoji);
+};
 function startReactionListener() { if (!roomId) return; const ts = Date.now(); const u = onChildAdded(ref(db, `rooms/${roomId}/reactions`), snap => { const d = snap.val(); if (!d || d.time < ts) return; triggerEmojiUI(d.emoji); }); firebaseUnsubs.push(u); }
 function triggerEmojiUI(emoji) { const ov = document.getElementById("emojiOverlay"); if (!ov) return; const el = document.createElement("div"); el.className = "emoji-float"; el.textContent = emoji; el.style.left = (15 + Math.random() * 70) + "%"; ov.appendChild(el); el.addEventListener("animationend", () => el.remove(), { once: true }); }
 
