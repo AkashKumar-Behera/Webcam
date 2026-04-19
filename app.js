@@ -53,6 +53,17 @@ class RealtimeApp {
     const res = await this.sendRequest(`${this.prefixPath}/sessions/${this.sessionId}/renegotiate`, { sessionDescription: { type: 'answer', sdp: answer } }, 'PUT');
     this.checkErrors(res);
   }
+  async renegotiate() {
+    const pc = isHost ? screenPcMap["host_cf"] : viewerPc;
+    if (!pc) return;
+    logStatus("Starting Renegotiation/ICE Restart...");
+    const offer = await pc.createOffer({ iceRestart: true });
+    await pc.setLocalDescription(offer);
+    const res = await this.sendRequest(`${this.prefixPath}/sessions/${this.sessionId}/renegotiate`, { sessionDescription: { type: 'offer', sdp: offer.sdp } }, 'PUT');
+    this.checkErrors(res);
+    await pc.setRemoteDescription(new RTCSessionDescription(res.sessionDescription));
+    logStatus("Renegotiation complete.");
+  }
 }
 
 const RES_MAP = { 
@@ -126,11 +137,18 @@ function startSilenceLoop() {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     const dest = ctx.createMediaStreamDestination();
     const osc = ctx.createOscillator();
-    const gain = ctx.createGain(); gain.gain.value = 0.0001;
+    const gain = ctx.createGain(); gain.gain.value = 0.001; // slightly higher
     osc.connect(gain); gain.connect(dest);
     osc.start();
     audio.srcObject = dest.stream;
-    audio.play().then(() => { silenceLoop = { audio, osc, ctx }; }).catch(() => { });
+    audio.play().then(() => { 
+      silenceLoop = { audio, osc, ctx }; 
+      logStatus("Silence keep-alive active.");
+    }).catch(() => { });
+    
+    // Prevent suspension
+    const ping = () => { if(ctx.state === 'suspended') ctx.resume(); setTimeout(ping, 5000); };
+    ping();
   } catch (e) { }
 }
 function stopSilenceLoop() {
@@ -714,10 +732,12 @@ async function proceedJoin(myVid, userName) {
         bg.play().then(() => {
           logStatus("Movie audio started (via Web Audio)");
           if ("mediaSession" in navigator) {
-            navigator.mediaSession.metadata = new MediaMetadata({ title: `Room: ${roomId}`, artist: "Live Party", album: "Watch Party", artwork: [{ src: "https://cdn-icons-png.flaticon.com/512/3163/3163478.png", sizes: "512x512", type: "image/png" }] });
-            const playP = () => { bg.play(); if (audioCtx.state === 'suspended') audioCtx.resume(); };
+            navigator.mediaSession.metadata = new MediaMetadata({ title: `Room: ${roomId}`, artist: "Live Party", album: "Watch Party", artwork: [{ src: "https://webrtc-cd5af.firebaseapp.com/icon.png", sizes: "512x512", type: "image/png" }] });
+            navigator.mediaSession.playbackState = "playing";
+            const playP = () => { bg.play(); if (audioCtx.state === 'suspended') audioCtx.resume(); navigator.mediaSession.playbackState = "playing"; };
+            const pauseP = () => { bg.pause(); navigator.mediaSession.playbackState = "paused"; };
             navigator.mediaSession.setActionHandler('play', playP);
-            navigator.mediaSession.setActionHandler('pause', () => bg.pause());
+            navigator.mediaSession.setActionHandler('pause', pauseP);
           }
         }).catch(e => logStatus(`Audio play error trace: ${e.message}`));
       } else if (track.kind === "audio" && !isMovieAud) {
@@ -1070,10 +1090,17 @@ window.applyBitrateNow = async () => {
 
 /* PiP — auto on visibility change */
 document.addEventListener("visibilitychange", async () => {
-  if (!document.hidden) return;
   const video = document.getElementById("remoteVideo");
-  if (!video?.srcObject) return;
-  if (document.pictureInPictureEnabled && !document.pictureInPictureElement) { try { await video.requestPictureInPicture(); } catch (_) { } }
+  if (document.hidden) {
+    if (video?.srcObject && document.pictureInPictureEnabled && !document.pictureInPictureElement) {
+       try { await video.requestPictureInPicture(); } catch (_) { }
+    }
+  } else {
+    // Return from PiP if needed (optional)
+    if (document.pictureInPictureElement) {
+      try { await document.exitPictureInPicture(); } catch (_) { }
+    }
+  }
 });
 document.getElementById("remoteVideo")?.addEventListener("enterpictureinpicture", () => { const v = document.getElementById("remoteVideo"), a = document.getElementById("bgAudio"); if (v) v.muted = false; if (a) a.muted = true; });
 document.getElementById("remoteVideo")?.addEventListener("leavepictureinpicture", () => { const v = document.getElementById("remoteVideo"), a = document.getElementById("bgAudio"); if (v) v.muted = true; if (a) a.muted = false; });
@@ -1081,12 +1108,15 @@ document.getElementById("remoteVideo")?.addEventListener("leavepictureinpicture"
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => { }));
 
 // Seamless Connectivity (Mobile Data <-> WiFi)
-window.addEventListener('online', () => {
-  logStatus("Network online. Triggering ICE Restart...");
-  const pc = isHost ? screenPcMap["host_cf"] : viewerPc;
-  if (pc) {
-    pc.restartIce();
-    cfApp?.renegotiate().catch(() => { });
-    showToast("📶 Network switched. Stabilizing...");
+window.addEventListener('online', async () => {
+  logStatus("Network online. Stabilizing connection...");
+  if (cfApp) {
+    try {
+      await cfApp.renegotiate();
+      showToast("📶 Connection stabilized");
+    } catch (e) {
+      logStatus("Auto-Reconnect failed, reloading...");
+      location.reload(); 
+    }
   }
 });
