@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -768,6 +768,69 @@
     }
     #driftedOffBtn:hover { background:rgba(201,75,123,0.15); color:var(--text); }
 
+    /* ===== THEME CUSTOMIZER ===== */
+    .theme-section { display:flex; flex-direction:column; gap:14px; }
+    .preset-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; }
+    .preset-card {
+      border-radius:10px; padding:8px 4px; text-align:center; cursor:pointer;
+      border:2px solid transparent; font-size:10px; font-weight:700; letter-spacing:.4px;
+      transition:all .2s;
+    }
+    .preset-card:hover { transform:translateY(-2px); box-shadow:0 6px 20px rgba(0,0,0,0.3); }
+    .preset-card.active-preset { border-color:#fff; box-shadow:0 0 0 3px rgba(255,255,255,0.2); }
+    .preset-swatch { width:28px; height:28px; border-radius:50%; margin:0 auto 5px; border:2px solid rgba(255,255,255,0.2); }
+
+    .color-group { background:var(--surface); border:1px solid var(--glass-border); border-radius:12px; overflow:hidden; }
+    .color-group-header {
+      padding:9px 12px; display:flex; align-items:center; justify-content:space-between;
+      cursor:pointer; user-select:none; font-size:11px; font-weight:700;
+      text-transform:uppercase; letter-spacing:.8px; color:var(--text-muted);
+      transition:.15s;
+    }
+    .color-group-header:hover { color:var(--text); background:rgba(201,75,123,0.05); }
+    .color-group-body { padding:10px 12px; display:flex; flex-direction:column; gap:8px; border-top:1px solid var(--glass-border); }
+    .color-group-body.collapsed { display:none; }
+    .color-row { display:flex; align-items:center; gap:10px; }
+    .color-row label { flex:1; font-size:11px; color:var(--text-muted); }
+    .color-row span { font-size:10px; color:var(--text-muted); min-width:58px; text-align:right; font-family:monospace; }
+    input[type=color].cpick {
+      width:32px; height:26px; border:none; border-radius:6px; cursor:pointer;
+      background:none; padding:0; overflow:hidden; flex-shrink:0;
+    }
+    input[type=color].cpick::-webkit-color-swatch-wrapper { padding:0; }
+    input[type=color].cpick::-webkit-color-swatch { border:none; border-radius:5px; }
+
+    .theme-toggle-row { display:flex; align-items:center; gap:10px; padding:8px 12px;
+      background:var(--surface); border:1px solid var(--glass-border); border-radius:10px; }
+    .theme-toggle-row label { flex:1; font-size:12px; font-weight:600; }
+    .theme-toggle-row small { font-size:10px; color:var(--text-muted); display:block; margin-top:1px; }
+    .toggle-sw {
+      width:40px; height:22px; background:rgba(255,255,255,0.1); border-radius:11px;
+      position:relative; cursor:pointer; flex-shrink:0; transition:.2s;
+    }
+    .toggle-sw::after {
+      content:''; position:absolute; width:16px; height:16px; border-radius:50%;
+      background:#fff; top:3px; left:3px; transition:.2s;
+    }
+    .toggle-sw.on { background:var(--accent); }
+    .toggle-sw.on::after { transform:translateX(18px); }
+
+    .theme-actions { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+    .theme-btn {
+      padding:9px; border-radius:10px; border:1px solid var(--glass-border);
+      background:var(--surface); color:var(--text-muted); font-family:inherit;
+      font-size:11px; font-weight:600; cursor:pointer; transition:.15s; text-align:center;
+    }
+    .theme-btn:hover { background:rgba(201,75,123,0.1); border-color:rgba(201,75,123,0.3); color:var(--text); }
+    .theme-btn.danger { border-color:rgba(239,68,68,0.3); color:#fca5a5; }
+    .theme-btn.danger:hover { background:rgba(239,68,68,0.1); }
+    .theme-export-box {
+      background:rgba(0,0,0,0.3); border:1px solid var(--glass-border); border-radius:8px;
+      padding:8px; font-family:monospace; font-size:9px; color:var(--text-muted);
+      resize:none; width:100%; max-height:80px; overflow-y:auto;
+    }
+    /* ===== END THEME CSS ===== */
+
     /* MOBILE */
     @media(max-width:768px) {
       .bg-pattern { display:none; }
@@ -1124,6 +1187,214 @@
             <div class="section-title">Share</div>
             <button class="btn-action share" onclick="shareRoom()"><span class="material-symbols-outlined">share</span>Share Invite Link</button>
           </div>
+
+          <!-- ===== THEME CUSTOMIZER ===== -->
+          <div class="theme-section" id="themeCustomizer">
+            <div class="section-title" style="color:var(--accent);display:flex;align-items:center;gap:6px;">
+              <span class="material-symbols-outlined" style="font-size:14px;">palette</span>
+              Theme Customizer
+            </div>
+
+            <!-- PRESETS -->
+            <div>
+              <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;">Quick Presets</div>
+              <div class="preset-grid" id="presetGrid">
+                <div class="preset-card" id="preset_rose" onclick="applyPreset('rose')" style="background:linear-gradient(135deg,#1a0a12,#3d1025);color:#F472B6;">
+                  <div class="preset-swatch" style="background:linear-gradient(135deg,#C94B7B,#7C3AED);"></div>
+                  Evening Rose
+                </div>
+                <div class="preset-card" id="preset_violet" onclick="applyPreset('violet')" style="background:linear-gradient(135deg,#0d0a1a,#1e0a3d);color:#c4b5fd;">
+                  <div class="preset-swatch" style="background:linear-gradient(135deg,#7C3AED,#3b82f6);"></div>
+                  Deep Violet
+                </div>
+                <div class="preset-card" id="preset_ocean" onclick="applyPreset('ocean')" style="background:linear-gradient(135deg,#071a2a,#0f3054);color:#7dd3fc;">
+                  <div class="preset-swatch" style="background:linear-gradient(135deg,#0891b2,#06b6d4);"></div>
+                  Ocean Dark
+                </div>
+                <div class="preset-card" id="preset_forest" onclick="applyPreset('forest')" style="background:linear-gradient(135deg,#071a0f,#0f3020);color:#86efac;">
+                  <div class="preset-swatch" style="background:linear-gradient(135deg,#16a34a,#4ade80);"></div>
+                  Forest Dark
+                </div>
+                <div class="preset-card" id="preset_mono" onclick="applyPreset('mono')" style="background:linear-gradient(135deg,#0a0a0a,#1a1a1a);color:#e5e5e5;">
+                  <div class="preset-swatch" style="background:linear-gradient(135deg,#737373,#d4d4d4);"></div>
+                  Mono Dark
+                </div>
+                <div class="preset-card" id="preset_gold" onclick="applyPreset('gold')" style="background:linear-gradient(135deg,#1a1200,#3d2d00);color:#fde68a;">
+                  <div class="preset-swatch" style="background:linear-gradient(135deg,#d97706,#fbbf24);"></div>
+                  Gold Rush
+                </div>
+              </div>
+            </div>
+
+            <!-- COLORS: BACKGROUND -->
+            <div class="color-group">
+              <div class="color-group-header" onclick="toggleColorGroup('grpBg')">
+                🖼️ Background & Surfaces
+                <span class="material-symbols-outlined" style="font-size:14px;">expand_more</span>
+              </div>
+              <div class="color-group-body collapsed" id="grpBg">
+                <div class="color-row">
+                  <input type="color" class="cpick" id="cp_bg" oninput="liveApply('--bg',this.value)" />
+                  <label>Page Background</label><span id="lbl_bg">#1a0a12</span>
+                </div>
+                <div class="color-row">
+                  <input type="color" class="cpick" id="cp_panel" oninput="liveApply('--panel-bg-raw',this.value)" />
+                  <label>Side Panel</label><span id="lbl_panel">#140810</span>
+                </div>
+                <div class="color-row">
+                  <input type="color" class="cpick" id="cp_surface" oninput="liveApplySurface(this.value)" />
+                  <label>Card Surface</label><span id="lbl_surface">#ffffff08</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- COLORS: ACCENT -->
+            <div class="color-group">
+              <div class="color-group-header" onclick="toggleColorGroup('grpAccent')">
+                🎨 Accent & Buttons
+                <span class="material-symbols-outlined" style="font-size:14px;">expand_more</span>
+              </div>
+              <div class="color-group-body collapsed" id="grpAccent">
+                <div class="color-row">
+                  <input type="color" class="cpick" id="cp_accent" oninput="liveApplyAccent(this.value)" />
+                  <label>Primary Accent</label><span id="lbl_accent">#C94B7B</span>
+                </div>
+                <div class="color-row">
+                  <input type="color" class="cpick" id="cp_accent2" oninput="liveApply('--accent2',this.value)" />
+                  <label>Secondary Accent</label><span id="lbl_accent2">#7C3AED</span>
+                </div>
+                <div class="color-row">
+                  <input type="color" class="cpick" id="cp_soft" oninput="liveApply('--pink-soft',this.value)" />
+                  <label>Soft Highlight</label><span id="lbl_soft">#F472B6</span>
+                </div>
+                <div class="color-row">
+                  <input type="color" class="cpick" id="cp_red" oninput="liveApply('--red',this.value)" />
+                  <label>Danger / Mic Off</label><span id="lbl_red">#ef4444</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- COLORS: TEXT -->
+            <div class="color-group">
+              <div class="color-group-header" onclick="toggleColorGroup('grpText')">
+                🔤 Text & Fonts
+                <span class="material-symbols-outlined" style="font-size:14px;">expand_more</span>
+              </div>
+              <div class="color-group-body collapsed" id="grpText">
+                <div class="color-row">
+                  <input type="color" class="cpick" id="cp_text" oninput="liveApply('--text',this.value)" />
+                  <label>Main Text</label><span id="lbl_text">#F5E6EF</span>
+                </div>
+                <div class="color-row">
+                  <input type="color" class="cpick" id="cp_muted" oninput="liveApplyMuted(this.value)" />
+                  <label>Muted Text</label><span id="lbl_muted">#99667a</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- COLORS: BORDERS -->
+            <div class="color-group">
+              <div class="color-group-header" onclick="toggleColorGroup('grpBorder')">
+                📏 Borders & Lines
+                <span class="material-symbols-outlined" style="font-size:14px;">expand_more</span>
+              </div>
+              <div class="color-group-body collapsed" id="grpBorder">
+                <div class="color-row">
+                  <input type="color" class="cpick" id="cp_border" oninput="liveApplyBorder(this.value,'--glass-border')" />
+                  <label>Regular Borders</label><span id="lbl_border">#ffffff14</span>
+                </div>
+                <div class="color-row">
+                  <input type="color" class="cpick" id="cp_border2" oninput="liveApplyBorder(this.value,'--glass-border-strong')" />
+                  <label>Strong Borders</label><span id="lbl_border2">#C94B7B47</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- COLORS: CHAT BUBBLES -->
+            <div class="color-group">
+              <div class="color-group-header" onclick="toggleColorGroup('grpChat')">
+                💬 Chat Bubbles
+                <span class="material-symbols-outlined" style="font-size:14px;">expand_more</span>
+              </div>
+              <div class="color-group-body collapsed" id="grpChat">
+                <div class="color-row">
+                  <input type="color" class="cpick" id="cp_bubble_me" oninput="liveApplyBubble('me',this.value)" />
+                  <label>My Bubble Color</label><span id="lbl_bubble_me">#C94B7B</span>
+                </div>
+                <div class="color-row">
+                  <input type="color" class="cpick" id="cp_bubble_other" oninput="liveApplyBubble('other',this.value)" />
+                  <label>Other's Bubble</label><span id="lbl_bubble_other">#ffffff</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- EFFECTS -->
+            <div class="color-group">
+              <div class="color-group-header" onclick="toggleColorGroup('grpFx')">
+                ✨ Visual Effects
+                <span class="material-symbols-outlined" style="font-size:14px;">expand_more</span>
+              </div>
+              <div class="color-group-body collapsed" id="grpFx">
+                <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;">Glow Intensity</div>
+                <input type="range" class="styled-range" id="glowSlider" min="0" max="100" value="40"
+                  oninput="liveApplyGlow(this.value)" />
+                <div style="font-size:10px;color:var(--text-muted);margin:8px 0 4px;">Aurora Speed</div>
+                <input type="range" class="styled-range" id="auroraSpeed" min="4" max="30" value="12"
+                  oninput="liveApplyAurora(this.value)" />
+                <div style="display:flex;align-items:center;gap:8px;margin-top:10px;">
+                  <input type="checkbox" id="particlesToggle" checked style="width:14px;height:14px;cursor:pointer;" onchange="liveApplyParticles(this.checked)" />
+                  <label for="particlesToggle" style="font-size:12px;cursor:pointer;">Background Particles</label>
+                </div>
+              </div>
+            </div>
+
+            <!-- DYNAMIC / SYNC / GRADIENT MODES -->
+            <div class="theme-toggle-row">
+              <div style="flex:1;">
+                <label style="font-size:12px;font-weight:600;">🌈 Dynamic Mode</label>
+                <small>Video colors → UI colors (Chrome only)</small>
+              </div>
+              <div class="toggle-sw" id="dynamicToggle" onclick="toggleDynamic()"></div>
+            </div>
+            <div class="theme-toggle-row" id="syncToggleRow">
+              <div style="flex:1;">
+                <label style="font-size:12px;font-weight:600;">🔗 Sync with Host</label>
+                <small>Use host's theme (viewers only)</small>
+              </div>
+              <div class="toggle-sw" id="syncToggle" onclick="toggleThemeSync()"></div>
+            </div>
+            <div class="theme-toggle-row">
+              <div style="flex:1;">
+                <label style="font-size:12px;font-weight:600;">🎨 Gradient Background</label>
+                <small>Two-color gradient instead of flat color</small>
+              </div>
+              <div class="toggle-sw" id="gradientToggle" onclick="toggleGradientBg()"></div>
+            </div>
+            <div id="gradientPickers" style="display:none;">
+              <div class="color-group">
+                <div class="color-group-body" style="display:flex;">
+                  <div class="color-row">
+                    <input type="color" class="cpick" id="cp_grad1" value="#1a0a12" oninput="updateGradientBg()" />
+                    <label>Gradient Start</label>
+                  </div>
+                  <div class="color-row">
+                    <input type="color" class="cpick" id="cp_grad2" value="#0d0a1a" oninput="updateGradientBg()" />
+                    <label>End</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ACTIONS -->
+            <div class="theme-actions">
+              <button class="theme-btn" onclick="saveTheme()">💾 Save Theme</button>
+              <button class="theme-btn danger" onclick="resetTheme()">↩️ Reset</button>
+              <button class="theme-btn" onclick="exportTheme()">📤 Export</button>
+              <button class="theme-btn" onclick="importTheme()">📥 Import</button>
+            </div>
+            <textarea class="theme-export-box" id="themeExportBox" placeholder="Export/import JSON here..."></textarea>
+          </div>
+          <!-- ===== END THEME CUSTOMIZER ===== -->
         </div>
       </div>
 
@@ -1140,6 +1411,9 @@
   </div>
 
   <div id="toast"></div>
+
+  <!-- Hidden canvas for dynamic color extraction -->
+  <canvas id="colorExtractCanvas" width="16" height="9" style="display:none;"></canvas>
 
   <!-- ONBOARDING MODAL -->
   <div class="modal-overlay" id="modalOverlay">
@@ -1634,6 +1908,266 @@
       try { const ctx2 = new AudioContext(); const o=ctx2.createOscillator(); const g2=ctx2.createGain(); o.connect(g2); g2.connect(ctx2.destination); o.frequency.value=880; g2.gain.setValueAtTime(0.4,ctx2.currentTime); g2.gain.exponentialRampToValueAtTime(0.001,ctx2.currentTime+0.5); o.start(); o.stop(ctx2.currentTime+0.5); } catch(_){}
     };
   </script>
+
+  <!-- ===== THEME ENGINE ===== -->
+  <script>
+  /* Dynamic stylesheet for bubble/aurora overrides */
+  const _themeStyle = document.createElement('style');
+  _themeStyle.id = 'themeOverride';
+  document.head.appendChild(_themeStyle);
+
+  const THEME_DEFAULTS = {
+    '--bg':'#1a0a12','--accent':'#C94B7B','--accent2':'#7C3AED',
+    '--pink-soft':'#F472B6','--text':'#F5E6EF','--text-muted-base':'#99667a',
+    '--red':'#ef4444','bubble-me':'#C94B7B','bubble-other':'#ffffff',
+    '--panel-bg-raw':'#140810','--surface-raw':'#ffffff','--surface-alpha':0.05,
+    '--glass-border-raw':'#ffffff','--glass-border-alpha':0.08,
+    '--glass-border-strong-raw':'#C94B7B','--glass-border-strong-alpha':0.28,
+    'glow':40,'aurora-speed':12,'particles':true,'gradient':false,
+    'grad1':'#1a0a12','grad2':'#0d0a1a','preset':'rose'
+  };
+
+  const PRESETS = {
+    rose:   {'--bg':'#1a0a12','--accent':'#C94B7B','--accent2':'#7C3AED','--pink-soft':'#F472B6','--text':'#F5E6EF','--text-muted-base':'#99667a','--red':'#ef4444','bubble-me':'#C94B7B','bubble-other':'#ffffff','--panel-bg-raw':'#140810','--surface-raw':'#ffffff','--surface-alpha':0.05,'--glass-border-raw':'#ffffff','--glass-border-alpha':0.08,'--glass-border-strong-raw':'#C94B7B','--glass-border-strong-alpha':0.28},
+    violet: {'--bg':'#0d0a1a','--accent':'#7C3AED','--accent2':'#3b82f6','--pink-soft':'#a78bfa','--text':'#ede9fe','--text-muted-base':'#6d5a9e','--red':'#ef4444','bubble-me':'#7C3AED','bubble-other':'#6d28d9','--panel-bg-raw':'#080814','--surface-raw':'#7C3AED','--surface-alpha':0.05,'--glass-border-raw':'#7C3AED','--glass-border-alpha':0.12,'--glass-border-strong-raw':'#7C3AED','--glass-border-strong-alpha':0.35},
+    ocean:  {'--bg':'#071a2a','--accent':'#0891b2','--accent2':'#06b6d4','--pink-soft':'#67e8f9','--text':'#e0f7fa','--text-muted-base':'#5a8a9a','--red':'#ef4444','bubble-me':'#0891b2','bubble-other':'#164e63','--panel-bg-raw':'#051420','--surface-raw':'#0891b2','--surface-alpha':0.05,'--glass-border-raw':'#0891b2','--glass-border-alpha':0.12,'--glass-border-strong-raw':'#0891b2','--glass-border-strong-alpha':0.35},
+    forest: {'--bg':'#071a0f','--accent':'#16a34a','--accent2':'#4ade80','--pink-soft':'#86efac','--text':'#dcfce7','--text-muted-base':'#4a7a5a','--red':'#ef4444','bubble-me':'#16a34a','bubble-other':'#14532d','--panel-bg-raw':'#050f08','--surface-raw':'#16a34a','--surface-alpha':0.05,'--glass-border-raw':'#16a34a','--glass-border-alpha':0.12,'--glass-border-strong-raw':'#16a34a','--glass-border-strong-alpha':0.35},
+    mono:   {'--bg':'#0a0a0a','--accent':'#737373','--accent2':'#d4d4d4','--pink-soft':'#e5e5e5','--text':'#ffffff','--text-muted-base':'#666666','--red':'#ef4444','bubble-me':'#525252','bubble-other':'#262626','--panel-bg-raw':'#080808','--surface-raw':'#ffffff','--surface-alpha':0.05,'--glass-border-raw':'#ffffff','--glass-border-alpha':0.1,'--glass-border-strong-raw':'#ffffff','--glass-border-strong-alpha':0.25},
+    gold:   {'--bg':'#1a1200','--accent':'#d97706','--accent2':'#fbbf24','--pink-soft':'#fde68a','--text':'#fef9ee','--text-muted-base':'#8a6a20','--red':'#ef4444','bubble-me':'#d97706','bubble-other':'#78350f','--panel-bg-raw':'#100c00','--surface-raw':'#d97706','--surface-alpha':0.05,'--glass-border-raw':'#d97706','--glass-border-alpha':0.12,'--glass-border-strong-raw':'#d97706','--glass-border-strong-alpha':0.35}
+  };
+
+  let _theme = Object.assign({}, THEME_DEFAULTS);
+
+  function _hexToRgb(hex) {
+    if (!hex || !hex.startsWith('#')) return '201,75,123';
+    const r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return r ? parseInt(r[1],16)+','+parseInt(r[2],16)+','+parseInt(r[3],16) : '201,75,123';
+  }
+
+  function _applyAllVars(t) {
+    const root = document.documentElement;
+    root.style.setProperty('--bg', t['--bg']);
+    root.style.setProperty('--accent', t['--accent']);
+    root.style.setProperty('--accent2', t['--accent2']);
+    root.style.setProperty('--pink-soft', t['--pink-soft']);
+    root.style.setProperty('--text', t['--text']);
+    root.style.setProperty('--red', t['--red']);
+    const mutedRgb = _hexToRgb(t['--text-muted-base'] || '#99667a');
+    root.style.setProperty('--text-muted', 'rgba('+mutedRgb+',0.7)');
+    root.style.setProperty('--accent-dim', 'rgba('+_hexToRgb(t['--accent'])+',0.15)');
+    const glowAlpha = ((t.glow||40)/100*0.5).toFixed(2);
+    root.style.setProperty('--accent-glow', 'rgba('+_hexToRgb(t['--accent'])+','+glowAlpha+')');
+    root.style.setProperty('--panel-bg', 'rgba('+_hexToRgb(t['--panel-bg-raw']||'#140810')+',0.98)');
+    root.style.setProperty('--surface', 'rgba('+_hexToRgb(t['--surface-raw']||'#ffffff')+','+(t['--surface-alpha']||0.05)+')');
+    root.style.setProperty('--glass-border', 'rgba('+_hexToRgb(t['--glass-border-raw']||'#ffffff')+','+(t['--glass-border-alpha']||0.08)+')');
+    root.style.setProperty('--glass-border-strong', 'rgba('+_hexToRgb(t['--glass-border-strong-raw']||'#C94B7B')+','+(t['--glass-border-strong-alpha']||0.28)+')');
+
+    const bme = _hexToRgb(t['bubble-me'] || t['--accent']);
+    const bother = _hexToRgb(t['bubble-other'] || '#ffffff');
+    const accRgb = _hexToRgb(t['--accent']);
+    const acc2Rgb = _hexToRgb(t['--accent2']);
+    const softRgb = _hexToRgb(t['--pink-soft']);
+    const spd = t['aurora-speed'] || 12;
+    const g = t.glow || 40;
+
+    _themeStyle.textContent =
+      '.chat-bubble.me{background:rgba('+bme+',0.22)!important;border-color:rgba('+bme+',0.3)!important;}' +
+      '.chat-bubble.other{background:rgba('+bother+',0.06)!important;border-color:rgba('+bother+',0.1)!important;}' +
+      '.aurora-blob:nth-child(1){background:radial-gradient(circle,'+t['--accent']+',transparent)!important;}' +
+      '.aurora-blob:nth-child(2){background:radial-gradient(circle,'+t['--accent2']+',transparent)!important;}' +
+      '.aurora-blob:nth-child(3){background:radial-gradient(circle,'+t['--pink-soft']+',transparent)!important;}' +
+      '.aurora-blob{animation-duration:'+spd+'s!important;}' +
+      '.video-wrap.streaming::before{box-shadow:inset 0 0 '+(g*0.6)+'px rgba('+accRgb+',0.22),inset 0 0 '+(g*0.3)+'px rgba('+accRgb+',0.1)!important;}';
+
+    if (t.gradient) {
+      document.body.style.background = 'linear-gradient(135deg,'+t.grad1+','+t.grad2+')';
+    } else {
+      document.body.style.background = '';
+    }
+    const p = document.querySelector('.bg-pattern');
+    if (p) p.style.display = t.particles === false ? 'none' : '';
+    document.querySelectorAll('.aurora-blob').forEach(function(b){ b.style.animationDuration = spd+'s'; });
+  }
+
+  function _syncPickersToTheme(t) {
+    function setColor(id, val) {
+      var el = document.getElementById(id);
+      if (!el || !val) return;
+      try { el.value = val.length >= 7 ? val.slice(0,7) : val; } catch(e) {}
+    }
+    setColor('cp_bg', t['--bg']); setColor('cp_accent', t['--accent']);
+    setColor('cp_accent2', t['--accent2']); setColor('cp_soft', t['--pink-soft']);
+    setColor('cp_red', t['--red']); setColor('cp_text', t['--text']);
+    setColor('cp_muted', t['--text-muted-base']||'#99667a');
+    setColor('cp_bubble_me', t['bubble-me']||t['--accent']);
+    setColor('cp_bubble_other', t['bubble-other']||'#ffffff');
+    setColor('cp_panel', t['--panel-bg-raw']||'#140810');
+    setColor('cp_surface', t['--surface-raw']||'#ffffff');
+    setColor('cp_border', t['--glass-border-raw']||'#ffffff');
+    setColor('cp_border2', t['--glass-border-strong-raw']||'#C94B7B');
+    setColor('cp_grad1', t.grad1||'#1a0a12'); setColor('cp_grad2', t.grad2||'#0d0a1a');
+    var gs = document.getElementById('glowSlider'); if(gs) gs.value = t.glow||40;
+    var as = document.getElementById('auroraSpeed'); if(as) as.value = t['aurora-speed']||12;
+    var pt = document.getElementById('particlesToggle'); if(pt) pt.checked = t.particles !== false;
+    var gt = document.getElementById('gradientToggle'); if(gt) gt.classList.toggle('on', !!t.gradient);
+    var gp = document.getElementById('gradientPickers'); if(gp) gp.style.display = t.gradient ? '' : 'none';
+    var lbls = {'lbl_bg':t['--bg'],'lbl_accent':t['--accent'],'lbl_accent2':t['--accent2'],'lbl_soft':t['--pink-soft'],'lbl_red':t['--red'],'lbl_text':t['--text'],'lbl_muted':t['--text-muted-base']||'#99667a','lbl_bubble_me':t['bubble-me']||t['--accent'],'lbl_bubble_other':t['bubble-other']||'#ffffff'};
+    Object.keys(lbls).forEach(function(id){ var el=document.getElementById(id); if(el&&lbls[id]) el.textContent=lbls[id].slice(0,9); });
+  }
+
+  /* ===== PUBLIC API ===== */
+
+  window.toggleColorGroup = function(id) {
+    var el = document.getElementById(id); if(!el) return;
+    el.classList.toggle('collapsed');
+  };
+  window.liveApply = function(v, val) { _theme[v] = val; _applyAllVars(_theme); };
+  window.liveApplyAccent = function(val) { _theme['--accent'] = val; _applyAllVars(_theme); };
+  window.liveApplyMuted = function(val) { _theme['--text-muted-base'] = val; _applyAllVars(_theme); };
+  window.liveApplySurface = function(val) { _theme['--surface-raw'] = val; _applyAllVars(_theme); };
+  window.liveApplyBorder = function(val, varName) {
+    if (varName === '--glass-border') _theme['--glass-border-raw'] = val;
+    else _theme['--glass-border-strong-raw'] = val;
+    _applyAllVars(_theme);
+  };
+  window.liveApplyBubble = function(who, val) { _theme['bubble-'+who] = val; _applyAllVars(_theme); };
+  window.liveApplyGlow = function(v) { _theme['glow'] = parseInt(v); _applyAllVars(_theme); };
+  window.liveApplyAurora = function(v) { _theme['aurora-speed'] = parseInt(v); _applyAllVars(_theme); };
+  window.liveApplyParticles = function(checked) { _theme['particles'] = checked; _applyAllVars(_theme); };
+
+  window.toggleGradientBg = function() {
+    _theme['gradient'] = !_theme['gradient'];
+    var gt = document.getElementById('gradientToggle'); if(gt) gt.classList.toggle('on', _theme['gradient']);
+    var gp = document.getElementById('gradientPickers'); if(gp) gp.style.display = _theme['gradient'] ? '' : 'none';
+    _applyAllVars(_theme);
+  };
+  window.updateGradientBg = function() {
+    var g1 = document.getElementById('cp_grad1'); var g2 = document.getElementById('cp_grad2');
+    if(g1) _theme['grad1'] = g1.value; if(g2) _theme['grad2'] = g2.value;
+    _applyAllVars(_theme);
+  };
+
+  window.applyPreset = function(name) {
+    var p = PRESETS[name]; if(!p) return;
+    _theme = Object.assign({}, _theme, p, {preset:name});
+    _applyAllVars(_theme); _syncPickersToTheme(_theme);
+    document.querySelectorAll('.preset-card').forEach(function(c){ c.classList.remove('active-preset'); });
+    var pc = document.getElementById('preset_'+name); if(pc) pc.classList.add('active-preset');
+    showToast('🎨 ' + name.charAt(0).toUpperCase() + name.slice(1) + ' theme applied!');
+  };
+
+  window.saveTheme = function() {
+    localStorage.setItem('saath_theme', JSON.stringify(_theme));
+    showToast('💾 Theme saved!');
+  };
+  window.resetTheme = function() {
+    _theme = Object.assign({}, THEME_DEFAULTS);
+    _applyAllVars(_theme); _syncPickersToTheme(_theme);
+    localStorage.removeItem('saath_theme');
+    document.querySelectorAll('.preset-card').forEach(function(c){ c.classList.remove('active-preset'); });
+    var pc = document.getElementById('preset_rose'); if(pc) pc.classList.add('active-preset');
+    showToast('↩️ Theme reset!');
+  };
+  window.exportTheme = function() {
+    var json = JSON.stringify(_theme, null, 2);
+    var box = document.getElementById('themeExportBox'); if(box) box.value = json;
+    if(navigator.clipboard) navigator.clipboard.writeText(json).then(function(){ showToast('📤 Copied!'); }).catch(function(){ showToast('📤 Check box below'); });
+    else showToast('📤 Check box below');
+  };
+  window.importTheme = function() {
+    var box = document.getElementById('themeExportBox'); if(!box) return;
+    try {
+      var t = JSON.parse(box.value);
+      _theme = Object.assign({}, THEME_DEFAULTS, t);
+      _applyAllVars(_theme); _syncPickersToTheme(_theme);
+      showToast('📥 Theme imported!');
+    } catch(e) { showToast('⚠️ Invalid JSON'); }
+  };
+
+  /* ===== DYNAMIC MODE ===== */
+  var _dynamicMode = false, _dynamicInterval = null, _dynamicPushTimer = null;
+
+  window.toggleDynamic = function() {
+    _dynamicMode = !_dynamicMode;
+    var t = document.getElementById('dynamicToggle'); if(t) t.classList.toggle('on', _dynamicMode);
+    if (_dynamicMode) {
+      _dynamicInterval = setInterval(_extractVideoColors, 2000);
+      showToast('🌈 Dynamic mode ON');
+    } else {
+      clearInterval(_dynamicInterval); _dynamicInterval = null;
+      _applyAllVars(_theme);
+      showToast('🌈 Dynamic mode OFF');
+    }
+  };
+
+  function _extractVideoColors() {
+    var video = document.getElementById('remoteVideo');
+    if (!video || !video.srcObject || video.paused || video.readyState < 2) return;
+    var canvas = document.getElementById('colorExtractCanvas'); if(!canvas) return;
+    var ctx = canvas.getContext('2d');
+    try {
+      ctx.drawImage(video, 0, 0, 16, 9);
+      var corners = [ctx.getImageData(0,0,1,1).data, ctx.getImageData(15,0,1,1).data, ctx.getImageData(0,8,1,1).data, ctx.getImageData(15,8,1,1).data, ctx.getImageData(7,4,1,1).data];
+      var r=0,g=0,b=0;
+      corners.forEach(function(c){ r+=c[0]; g+=c[1]; b+=c[2]; });
+      r=Math.round(r/5); g=Math.round(g/5); b=Math.round(b/5);
+      var dr=Math.round(r*0.25), dg=Math.round(g*0.25), db=Math.round(b*0.25);
+      function toHex(v){ return v.toString(16).padStart(2,'0'); }
+      var accentHex = '#'+toHex(r)+toHex(g)+toHex(b);
+      var bgHex = '#'+toHex(dr)+toHex(dg)+toHex(db);
+      document.documentElement.style.setProperty('--bg', bgHex);
+      document.documentElement.style.setProperty('--accent', accentHex);
+      document.documentElement.style.setProperty('--accent-glow', 'rgba('+r+','+g+','+b+',0.4)');
+      var blob1 = document.querySelectorAll('.aurora-blob')[0];
+      if(blob1) blob1.style.background = 'radial-gradient(circle,'+accentHex+',transparent)';
+      if(window._syncModeActive && window._roomId && window._fbHelpers) {
+        clearTimeout(_dynamicPushTimer);
+        _dynamicPushTimer = setTimeout(function(){
+          window._fbHelpers.set(window._fbHelpers.ref(window._db, 'rooms/'+window._roomId+'/theme'), {accent:accentHex, bg:bgHex, ts:Date.now()});
+        }, 1500);
+      }
+    } catch(e) {}
+  }
+
+  /* ===== THEME SYNC ===== */
+  var _syncModeActive = false;
+  window._syncModeActive = false;
+
+  window.toggleThemeSync = function() {
+    _syncModeActive = !_syncModeActive;
+    window._syncModeActive = _syncModeActive;
+    var t = document.getElementById('syncToggle'); if(t) t.classList.toggle('on', _syncModeActive);
+    showToast(_syncModeActive ? '🔗 Theme sync ON' : '🔗 Theme sync OFF');
+  };
+
+  window._startThemeSyncListener = function(roomIdVal, db, helpers) {
+    helpers.onValue(helpers.ref(db, 'rooms/'+roomIdVal+'/theme'), function(snap) {
+      if (!_syncModeActive) return;
+      var t = snap.val(); if(!t) return;
+      if(t.accent) document.documentElement.style.setProperty('--accent', t.accent);
+      if(t.bg) document.documentElement.style.setProperty('--bg', t.bg);
+      document.documentElement.style.setProperty('--accent-glow', 'rgba('+_hexToRgb(t.accent||'#C94B7B')+',0.4)');
+      var b1 = document.querySelectorAll('.aurora-blob')[0];
+      if(b1) b1.style.background = 'radial-gradient(circle,'+(t.accent||'#C94B7B')+',transparent)';
+    });
+  };
+
+  /* ===== BOOT ===== */
+  (function bootTheme() {
+    try {
+      var saved = localStorage.getItem('saath_theme');
+      if(saved) _theme = Object.assign({}, THEME_DEFAULTS, JSON.parse(saved));
+    } catch(e) {}
+    _applyAllVars(_theme);
+    window.addEventListener('DOMContentLoaded', function() {
+      _syncPickersToTheme(_theme);
+      var activePreset = _theme.preset || 'rose';
+      var pc = document.getElementById('preset_'+activePreset);
+      if(pc) pc.classList.add('active-preset');
+    });
+  })();
+  </script>
+  <!-- ===== END THEME ENGINE ===== -->
   <script type="module" src="app.js"></script>
 </body>
 </html>

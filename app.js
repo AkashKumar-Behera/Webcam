@@ -299,6 +299,7 @@ function bootstrapCoupleFeatures() {
   window._myName = myName;
   window._startDrawListener?.(roomId, db, helpers);
   window._startSecretNoteListener?.(roomId, db, helpers);
+  window._startThemeSyncListener?.(roomId, db, helpers);
   listenHeartbeat();
   listenDriftedOff();
   listenMood();
