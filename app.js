@@ -7,20 +7,27 @@ const firebaseConfig = { apiKey: "AIzaSyBGnFw13ko0b4KAs7plpFmHlg0GohowElA", auth
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
+const cfAppId = 'e6be1e8812248470630854d4277238af';
+const cfAppSecret = '3f671947386a7bf692d8326e509e3797be3c37c295337c98a6414d563c0bfeb3';
+const turnId = '86014ad259cbd5b3dbef1f0867bbe15b';
+
+async function fetchIceServers() {
+  try {
+    const res = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${turnId}/credentials/generate-ice-servers`, {
+      method: "POST", headers: { Authorization: `Bearer ${cfAppSecret}` }
+    });
+    const data = await res.json();
+    if (data.iceServers) servers.iceServers = data.iceServers;
+    logStatus("Cloudflare TURN Credentials loaded.");
+  } catch (e) { console.warn("Failed to fetch CF TURN", e); }
+}
+fetchIceServers();
+
 const servers = {
-  iceServers: [
-    { urls: "stun:stun.cloudflare.com:3478" },
-    { urls: "turn:82.25.104.130:3478", username: "akash", credential: "hostinger_vps_123" },
-    { urls: "turn:82.25.104.130:5349", username: "akash", credential: "hostinger_vps_123" },
-    { urls: "turn:82.25.104.130:3478?transport=tcp", username: "akash", credential: "hostinger_vps_123" },
-    { urls: "turn:82.25.104.130:5349?transport=tcp", username: "akash", credential: "hostinger_vps_123" }
-  ],
+  iceServers: [{ urls: "stun:stun.cloudflare.com:3478" }],
   iceCandidatePoolSize: 10,
   bundlePolicy: "max-bundle"
 };
-
-const cfAppId = 'e6be1e8812248470630854d4277238af';
-const cfAppSecret = '3f671947386a7bf692d8326e509e3797be3c37c295337c98a6414d563c0bfeb3';
 
 class RealtimeApp {
   constructor(appId, basePath = 'https://rtc.live.cloudflare.com/v1') { this.prefixPath = `${basePath}/apps/${appId}`; }
@@ -346,18 +353,15 @@ window.replaceScreenShareBtn = async () => {
   const video = document.getElementById("remoteVideo"); video.srcObject = localStream;
   vt.onended = () => leaveCall();
 
-  // Replace tracks in all active peer connections
-  Object.values(screenPcMap).forEach(pc => {
+  // Replace tracks and apply bitrate
+  Object.values(screenPcMap).forEach(async pc => {
     const senders = pc.getSenders();
-    localStream.getTracks().forEach(track => {
-      const kind = track.kind;
-      const sender = senders.find(s => s.track && s.track.kind === kind);
-      if (sender) { 
-        sender.replaceTrack(track); 
-      } else {
-        pc.addTransceiver(track, { direction: 'sendonly' });
-      }
-    });
+    for (const track of localStream.getTracks()) {
+      const sender = senders.find(s => s.track && s.track.kind === track.kind);
+      if (sender) await sender.replaceTrack(track);
+      else pc.addTransceiver(track, { direction: 'sendonly' });
+    }
+    await optimizeHostSender(pc);
   });
 
   // Update Firebase host metadata with STABLE NAMES (already movie-v/movie-a)
@@ -376,10 +380,33 @@ window.replaceScreenShareBtn = async () => {
 async function captureScreen() {
   const resStr = document.getElementById("scrRes")?.value || "1080p", fpsStr = document.getElementById("scrFps")?.value || "30";
   const { width, height } = RES_MAP[resStr] || RES_MAP["1080p"], fps = parseInt(fpsStr) || 30;
-  const con = { video: { width: { ideal: width }, height: { ideal: height }, frameRate: { ideal: fps, max: fps } }, audio: { channelCount: 2, sampleRate: 48000, autoGainControl: false, echoCancellation: false, noiseSuppression: false } };
+  const con = { 
+    video: { 
+      width: { ideal: width }, 
+      height: { ideal: height }, 
+      frameRate: { ideal: fps, max: fps },
+      displaySurface: "monitor" 
+    }, 
+    audio: { 
+      echoCancellation: false, 
+      noiseSuppression: false, 
+      autoGainControl: false,
+      channelCount: 2,
+      sampleRate: 48000,
+      suppressLocalAudioPlayback: false 
+    },
+    systemAudio: "include" // Modern hint for system audio
+  };
 
-  try { localStream = await navigator.mediaDevices.getDisplayMedia(con); }
-  catch { con.audio = true; try { localStream = await navigator.mediaDevices.getDisplayMedia(con); } catch { con.audio = false; localStream = await navigator.mediaDevices.getDisplayMedia(con); } }
+  try { 
+    // Attempt with system audio inclusion
+    localStream = await navigator.mediaDevices.getDisplayMedia(con); 
+  } catch (e) {
+    console.warn("Screen capture with audio failed, retrying without audio hint", e);
+    delete con.systemAudio;
+    try { localStream = await navigator.mediaDevices.getDisplayMedia(con); }
+    catch { con.audio = false; localStream = await navigator.mediaDevices.getDisplayMedia(con); }
+  }
 
   // Mix Mic if enabled (only if not in broadcast mode)
   if (document.getElementById("modalHostMic")?.checked && sessionType !== 'broadcast') {
@@ -440,8 +467,9 @@ async function optimizeHostSender(pc, vid = null) {
       p.encodings[0].networkPriority = "high";
       p.encodings[0].priority = "high"; // Audio priority over video
     }
-    try { await s.setParameters(p); } catch (_) { }
+    try { await s.setParameters(p); } catch (e) { console.warn("Failed to set bitrate parameters", e); }
   }
+  logStatus(`Host Bitrate set to ${mbps} Mbps`);
 }
 
 /* HOST */
@@ -536,7 +564,7 @@ window.confirmHost = async () => {
     pendingViewers[vid] = { name: data.name || "Viewer" }; renderPeopleTab(); showToast(`🔔 ${data.name} wants to join`); window.switchTab("people");
   });
 
-  // Voice Pull Listener
+  // Voice Pull Listener - Skip in broadcast mode
   const unsubVoice = onChildAdded(ref(db, `rooms/${roomId}/voice`), async snap => {
     if (sessionType === 'broadcast') return;
     const peerVid = snap.key; if (peerVid === window._myVid || !snap.val()) return;
@@ -694,9 +722,37 @@ async function proceedJoin(myVid, userName) {
 
     pc.onconnectionstatechange = () => {
       logStatus(`[Viewer] ${pc.connectionState}`);
-      if (pc.connectionState === "connected") { updateConnStatus("connected"); document.getElementById("noSignal").classList.add("hidden"); document.getElementById("sourceTag").style.display = ""; document.getElementById("sourceTag").textContent = "WATCHING"; changeActionBtns("session"); window.switchTab("chat"); renderPeopleTab(); showToast("🎬 Connected!"); }
-      if (pc.connectionState === "disconnected") { updateConnStatus("connecting"); showToast("⚡ Reconnecting..."); cfApp?.renegotiate().catch(() => { }); }
-      if (pc.connectionState === "failed") { logStatus("Connection Failed definitively."); updateConnStatus("disconnected"); leaveCall(); }
+      if (pc.connectionState === "connected") { 
+        updateConnStatus("connected"); 
+        document.getElementById("noSignal").classList.add("hidden"); 
+        document.getElementById("sourceTag").style.display = ""; 
+        document.getElementById("sourceTag").textContent = "WATCHING"; 
+        changeActionBtns("session"); 
+        window.switchTab("chat"); 
+        renderPeopleTab(); 
+        showToast("🎬 Connected!"); 
+        iceRestartCount = 0; // reset on success
+      }
+      if (pc.connectionState === "disconnected") { 
+        updateConnStatus("connecting"); 
+        showToast("⚡ Reconnecting..."); 
+        if (iceRestartCount < MAX_ICE_RESTARTS) {
+           iceRestartCount++;
+           cfApp?.renegotiate().catch(() => { }); 
+        }
+      }
+      if (pc.connectionState === "failed") { 
+        logStatus("Connection Failed. Attempting ICE Restart...");
+        if (iceRestartCount < MAX_ICE_RESTARTS) {
+           iceRestartCount++;
+           pc.restartIce();
+           cfApp?.renegotiate().catch(() => { });
+        } else {
+           updateConnStatus("disconnected"); 
+           leaveCall(); 
+           showToast("❌ Connection lost");
+        }
+      }
     };
 
     onValue(ref(db, `rooms/${roomId}/viewers/${myVid}/kicked`), s => { if (s.val()) { showToast("⛔ Removed by host"); leaveCall(); } });
@@ -935,7 +991,8 @@ async function pullVoiceTracks(sessionId, trackName, pc) {
 
 /* VOICE CHAT (CLOUDFLARE SFU) */
 window.toggleVoiceChat = async () => {
-  if (!roomId) return showToast("⚠️ Join a room first");
+  if (sessionType === 'broadcast') return showToast("🚫 Mic disabled in Broadcast mode");
+  
   const micBtnMain = document.getElementById("micBtnMain"), micBtnChat = document.getElementById("micBtnChat");
   const micIconMain = document.getElementById("micIconMain"), micIconChat = document.getElementById("micIconChat");
 
@@ -984,6 +1041,16 @@ window.toggleVoiceChat = async () => {
     // The listener for pulling others' voice tracks should be in join flows!
 
   } catch (e) { console.error(e); logStatus(`Voice Chat Error: ${e.message}`); showToast("❌ Mic Access or Network Denied"); }
+};
+
+window.applyBitrateNow = async () => {
+  const pc = isHost ? screenPcMap["host_cf"] : null;
+  if (pc) {
+    await optimizeHostSender(pc);
+    showToast("📶 Bitrate updated");
+  } else {
+    logStatus("Bitrate dynamically managed by Cloudflare SFU.");
+  }
 };
 
 /* PiP — auto on visibility change */
