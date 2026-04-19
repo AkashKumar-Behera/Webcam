@@ -75,7 +75,7 @@ let firebaseUnsubs = [], bgAudioSet = false, iceRestartCount = 0;
 let audioCtx = null, movieNode = null, duckingActive = false;
 let myVoiceStream = null, voicePcs = {}, silenceLoop = null;
 let cfApp = null, myCfSessionId = null, myCfTrackNames = {};
-let movieGainNode = null; // Removed redundant 'audioContext' let, using global 'audioCtx'
+let movieGainNode = null, hostInfo = null; 
 const MAX_ICE_RESTARTS = 3;
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
@@ -263,7 +263,6 @@ function addSystemMsg(text) { const c = document.getElementById("chatMessages");
 
 function addFloatingChatMsg(sender, text) {
   const overlay = document.getElementById("fullscreenChatOverlay"); if (!overlay) return;
-  if (!document.fullscreenElement && !document.webkitFullscreenElement) return;
   const el = document.createElement("div"); el.className = "fs-chat-msg";
   el.innerHTML = `<b>${esc(sender)}</b> ${esc(text)}`; overlay.appendChild(el);
   el.addEventListener("animationend", () => el.remove(), { once: true });
@@ -284,19 +283,16 @@ function renderPeopleTab() {
 
   html += `<div class="ppl-section">👥 In Session</div>`;
   
-  // Show Host info (Prefetched or from Firebase)
-  get(ref(db, `rooms/${roomId}/host`)).then(s => {
-    const h = s.val();
-    if (h && h.name !== myName) {
-      const col = nameToHsl(h.name);
-      const hostHtml = `<div class="ppl-item"><div class="ppl-av" style="background:${col}">${h.name[0].toUpperCase()}</div><div class="ppl-name">${esc(h.name)} <span class="role-badge">HOST</span></div></div>`;
-      if (!c.innerHTML.includes(h.name)) c.innerHTML = hostHtml + c.innerHTML;
-    }
-  });
-
   // Show "You"
   const colMe = nameToHsl(myName || "User");
-  html += `<div class="ppl-item"><div class="ppl-av" style="background:${colMe}">${(myName || "U")[0].toUpperCase()}</div><div class="ppl-name">${esc(myName || "User")} <span class="role-badge">${isHost ? "HOST" : "YOU"}</span></div></div>`;
+  const myRole = isHost ? "HOST" : "YOU";
+  html += `<div class="ppl-item"><div class="ppl-av" style="background:${colMe}">${(myName || "U")[0].toUpperCase()}</div><div class="ppl-name">${esc(myName || "User")} <span class="role-badge">${myRole}</span></div></div>`;
+
+  // Show Host if someone else is hosting
+  if (!isHost && hostInfo && hostInfo.name !== myName) {
+    const colHost = nameToHsl(hostInfo.name);
+    html += `<div class="ppl-item"><div class="ppl-av" style="background:${colHost}">${hostInfo.name[0].toUpperCase()}</div><div class="ppl-name">${esc(hostInfo.name)} <span class="role-badge">HOST</span></div></div>`;
+  }
 
   const connectedArr = Object.entries(connectedViewers);
   for (const [vid, p] of connectedArr) {
@@ -488,6 +484,7 @@ window.confirmHost = async () => {
   document.getElementById("liveBadge").style.display = "flex";
   document.getElementById("sourceTag").style.display = ""; document.getElementById("sourceTag").textContent = "HOSTING";
   updateConnStatus("connected"); changeActionBtns("session");
+  hostInfo = { name: myName, role: 'host' };
   document.getElementById("hostOnlySettings")?.style.removeProperty("display");
   document.getElementById("lowDataGroup") && (document.getElementById("lowDataGroup").style.display = "none");
   if (sessionType === "broadcast") {
@@ -564,21 +561,38 @@ window.confirmHost = async () => {
     pendingViewers[vid] = { name: data.name || "Viewer" }; renderPeopleTab(); showToast(`🔔 ${data.name} wants to join`); window.switchTab("people");
   });
 
-  // Voice Pull Listener - Skip in broadcast mode
+  // Voice Pull Listener
   const unsubVoice = onChildAdded(ref(db, `rooms/${roomId}/voice`), async snap => {
-    if (sessionType === 'broadcast') return;
     const peerVid = snap.key; if (peerVid === window._myVid || !snap.val()) return;
     pullVoiceTracks(snap.val().cfSessionId, snap.val().trackName, pc);
   });
 
   firebaseUnsubs.push(unsubW, unsubVoice);
 
-  const unsubV = onChildAdded(ref(db, `rooms/${roomId}/viewers`), async snap => {
-    const vid = snap.key; if (!vid) return;
-    const ts = snap.val()?.requestedAt || 0;
-    if (ts < Date.now() - 3600000) return;
-    logStatus(`Viewer ${vid.substring(0, 6)} confirmed entry`);
-    get(ref(db, `rooms/${roomId}/viewers/${vid}/ready`)).then(s => { const n = s.val()?.name || "Viewer"; connectedViewers[vid] = { name: n }; renderPeopleTab(); addSystemMsg(`👋 ${n} joined`); playProceduralSound("join"); });
+  const unsubV = onValue(ref(db, `rooms/${roomId}/viewers`), snap => {
+    const current = snap.val() || {};
+    // Check for newcomers
+    Object.keys(current).forEach(vid => {
+       if (!connectedViewers[vid]) {
+         get(ref(db, `rooms/${roomId}/viewers/${vid}/ready`)).then(s => { 
+           const n = s.val()?.name || "Viewer"; 
+           connectedViewers[vid] = { name: n }; 
+           renderPeopleTab(); 
+           addSystemMsg(`👋 ${n} joined`); 
+           playProceduralSound("join"); 
+         });
+       }
+    });
+    // Check for departures
+    Object.keys(connectedViewers).forEach(vid => {
+       if (!current[vid]) {
+         const n = connectedViewers[vid].name;
+         delete connectedViewers[vid];
+         renderPeopleTab();
+         addSystemMsg(`🚪 ${n} left`);
+       }
+    });
+
   }); firebaseUnsubs.push(unsubV);
 
   startHostStats(); startChatListener(); startReactionListener();
@@ -631,6 +645,7 @@ async function proceedJoin(myVid, userName) {
       showToast("❌ Host not broadcasting");
       return leaveCall();
     }
+    hostInfo = hostData;
     logStatus(`Host found with CF Session: ${hostData.cfSessionId.substring(0, 6)}...`);
     sessionType = (await get(ref(db, `rooms/${roomId}/settings/type`))).val() || "party";
     logStatus(`Session Mode: ${sessionType}`);
@@ -705,7 +720,7 @@ async function proceedJoin(myVid, userName) {
             navigator.mediaSession.setActionHandler('pause', () => bg.pause());
           }
         }).catch(e => logStatus(`Audio play error trace: ${e.message}`));
-      } else if (track.kind === "audio" && !isMovieAud && sessionType !== 'broadcast') {
+      } else if (track.kind === "audio" && !isMovieAud) {
         // Only play if it's NOT our own voice track (precautionary)
         const auId = `voice_${track.id}`;
         if (document.getElementById(auId)) return;
@@ -809,7 +824,7 @@ async function proceedJoin(myVid, userName) {
       pullVoiceTracks(snap.val().cfSessionId, snap.val().trackName, pc);
     }); firebaseUnsubs.push(unsubVoice);
 
-    startChatListener(); startReactionListener();
+    startChatListener(); startReactionListener(); startStats(pc);
 
   } catch (err) {
     logStatus(`Viewer Crash: ${err.message}`);
@@ -838,7 +853,7 @@ window.leaveCall = async () => {
   updateConnStatus("disconnected"); changeActionBtns("init");
   document.getElementById("chatMessages").innerHTML = `<div style="text-align:center;color:var(--text-muted);margin-top:30px;font-size:11px;">💬 Messages visible to everyone</div>`;
   connectedViewers = {}; pendingViewers = {}; renderPeopleTab();
-  roomId = ""; isHost = false; bgAudioSet = false; myName = ""; showToast("👋 Disconnected");
+  roomId = ""; isHost = false; bgAudioSet = false; myName = ""; hostInfo = null; showToast("👋 Disconnected");
 };
 
 /* CHAT */
@@ -1064,3 +1079,14 @@ document.getElementById("remoteVideo")?.addEventListener("enterpictureinpicture"
 document.getElementById("remoteVideo")?.addEventListener("leavepictureinpicture", () => { const v = document.getElementById("remoteVideo"), a = document.getElementById("bgAudio"); if (v) v.muted = true; if (a) a.muted = false; });
 
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => { }));
+
+// Seamless Connectivity (Mobile Data <-> WiFi)
+window.addEventListener('online', () => {
+  logStatus("Network online. Triggering ICE Restart...");
+  const pc = isHost ? screenPcMap["host_cf"] : viewerPc;
+  if (pc) {
+    pc.restartIce();
+    cfApp?.renegotiate().catch(() => { });
+    showToast("📶 Network switched. Stabilizing...");
+  }
+});

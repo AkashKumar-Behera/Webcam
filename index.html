@@ -271,17 +271,14 @@
     /* FULLSCREEN CHAT OVERLAY */
     .fs-chat-overlay {
       position: absolute;
-      bottom: 56px;
+      bottom: 64px;
       left: 12px;
-      right: 100px;
+      right: 80px;
       pointer-events: none;
       z-index: 20;
-      display: none;
-    }
-
-    :fullscreen .fs-chat-overlay,
-    :-webkit-full-screen .fs-chat-overlay {
-      display: block;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
     }
 
     .fs-chat-msg {
