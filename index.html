@@ -1087,25 +1087,27 @@
       else { navigator.clipboard?.writeText(url).then(() => { const t = document.getElementById('toast'); t.textContent = '🔗 Link copied!'; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2500); }); }
     };
 
-    /* Stat health bar update */
-    const origStatBitrate = document.getElementById('statBitrate');
-    function updateConnHealth(bitrateStr) {
-      const br = parseFloat(bitrateStr) || 0;
+    /* Stat health bar update - uses RTT + connection state */
+    function updateConnHealth() {
       const bar = document.getElementById('connHealthBar');
       const text = document.getElementById('connHealthText');
       if (!bar || !text) return;
-      const pct = Math.min(br / 8 * 100, 100);
-      bar.style.width = pct + '%';
-      if (br === 0) { text.textContent = 'Waiting for signal...'; text.style.color = 'var(--text-muted)'; }
-      else if (br >= 4) { text.textContent = 'Crystal Clear 🌟'; text.style.color = 'var(--accent)'; }
-      else if (br >= 1.5) { text.textContent = 'Good Signal 📶'; text.style.color = '#fbbf24'; }
-      else { text.textContent = 'Weak Signal 🌀'; text.style.color = 'var(--red)'; }
+
+      const connLabel = document.getElementById('connLabel')?.textContent || '';
+      const isConnected = connLabel === 'CONNECTED';
+
+      if (!isConnected) { bar.style.width = '0%'; text.textContent = 'Waiting for signal...'; text.style.color = 'var(--text-muted)'; return; }
+
+      const rttEl = document.getElementById('statRtt');
+      const rttText = rttEl?.textContent || '';
+      const rtt = parseInt(rttText) || 999;
+
+      if (rtt <= 80) { bar.style.width = '100%'; bar.style.background = 'linear-gradient(90deg, var(--accent), var(--pink-soft))'; text.textContent = 'Crystal Clear 🌟'; text.style.color = 'var(--accent)'; }
+      else if (rtt <= 150) { bar.style.width = '70%'; bar.style.background = 'linear-gradient(90deg, #fbbf24, #f59e0b)'; text.textContent = 'Good Signal 📶'; text.style.color = '#fbbf24'; }
+      else if (rtt <= 300) { bar.style.width = '40%'; bar.style.background = 'linear-gradient(90deg, #f97316, #ef4444)'; text.textContent = 'Some Delay ⚡'; text.style.color = '#f97316'; }
+      else { bar.style.width = '15%'; bar.style.background = '#ef4444'; text.textContent = 'High Latency 🌀'; text.style.color = 'var(--red)'; }
     }
-    // Poll stat bitrate to update health
-    setInterval(() => {
-      const el = document.getElementById('statBitrate');
-      if (el) updateConnHealth(el.textContent);
-    }, 2500);
+    setInterval(updateConnHealth, 2500);
 
     window.addEventListener('DOMContentLoaded', () => {
       const params = new URLSearchParams(location.search), roomFromUrl = params.get('room'), savedName = localStorage.getItem('watchparty_name');
