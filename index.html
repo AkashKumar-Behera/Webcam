@@ -1259,9 +1259,138 @@
     document.getElementById('remoteVideo')?.addEventListener('webkitbeginfullscreen', () => { const i = document.getElementById('fsIcon'); if (i) i.textContent = 'fullscreen_exit'; });
     document.getElementById('remoteVideo')?.addEventListener('webkitendfullscreen', () => { const i = document.getElementById('fsIcon'); if (i) i.textContent = 'fullscreen'; });
 
-    /* PiP */
-    window.togglePip = async () => { const v = document.getElementById('remoteVideo'); if (!v) return; if (document.pictureInPictureElement) { await document.exitPictureInPicture(); } else if (document.pictureInPictureEnabled) { try { await v.requestPictureInPicture(); } catch (_) { } } };
-    if (document.pictureInPictureEnabled) document.getElementById('pipBtn')?.style.removeProperty('display');
+    /* PiP — Document PiP with mini chat (Chrome 116+), fallback to video PiP */
+    let pipWin = null;
+
+    window.togglePip = async () => {
+      const v = document.getElementById('remoteVideo');
+      if (!v) return;
+
+      // Close existing PiP
+      if (pipWin && !pipWin.closed) { pipWin.close(); pipWin = null; return; }
+      if (document.pictureInPictureElement) { await document.exitPictureInPicture(); }
+
+      // Try Document PiP (Google Meet style)
+      if ('documentPictureInPicture' in window) {
+        try {
+          pipWin = await window.documentPictureInPicture.requestWindow({ width: 360, height: 480, disallowReturnToOpener: false });
+
+          // Inject styles into PiP window
+          const style = pipWin.document.createElement('style');
+          style.textContent = `
+            *{margin:0;padding:0;box-sizing:border-box;font-family:'Inter',-apple-system,sans-serif;}
+            body{background:#1a0a12;color:#F5E6EF;display:flex;flex-direction:column;height:100vh;overflow:hidden;}
+            #pip-video{width:100%;flex:1;object-fit:contain;background:#000;min-height:0;}
+            #pip-chat{display:flex;flex-direction:column;height:200px;border-top:1px solid rgba(201,75,123,0.2);}
+            #pip-msgs{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:4px;font-size:11px;}
+            #pip-msgs::-webkit-scrollbar{width:2px;}
+            #pip-msgs::-webkit-scrollbar-thumb{background:rgba(201,75,123,0.3);border-radius:1px;}
+            .pip-msg{padding:4px 8px;border-radius:8px;line-height:1.4;max-width:90%;}
+            .pip-msg.me{background:rgba(201,75,123,0.2);border:1px solid rgba(201,75,123,0.25);margin-left:auto;}
+            .pip-msg.other{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);}
+            .pip-sender{font-size:9px;font-weight:700;color:#C94B7B;margin-bottom:2px;}
+            .pip-bottom{padding:8px;display:flex;gap:6px;border-top:1px solid rgba(201,75,123,0.1);}
+            .pip-reactions{display:flex;gap:4px;padding:4px 8px;overflow-x:auto;border-bottom:1px solid rgba(201,75,123,0.1);}
+            .pip-reactions::-webkit-scrollbar{display:none;}
+            .pip-emj{font-size:18px;background:none;border:none;cursor:pointer;padding:2px 4px;border-radius:4px;transition:.1s;}
+            .pip-emj:hover{background:rgba(201,75,123,0.15);}
+            .pip-input{flex:1;padding:7px 12px;background:rgba(201,75,123,0.06);border:1px solid rgba(201,75,123,0.2);border-radius:20px;color:#F5E6EF;font-size:12px;outline:none;}
+            .pip-input::placeholder{color:rgba(245,230,239,0.4);}
+            .pip-send{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#C94B7B,#7C3AED);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;}
+            .pip-header{padding:6px 10px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(201,75,123,0.15);background:rgba(20,8,16,0.95);}
+            .pip-title{font-size:10px;font-weight:700;background:linear-gradient(135deg,#C94B7B,#F472B6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:.5px;}
+            .pip-conn{font-size:9px;color:rgba(245,230,239,0.4);}
+          `;
+          pipWin.document.head.appendChild(style);
+
+          // Google Fonts in PiP
+          const gf = pipWin.document.createElement('link');
+          gf.rel='stylesheet'; gf.href='https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap';
+          pipWin.document.head.appendChild(gf);
+
+          // Build PiP DOM
+          pipWin.document.body.innerHTML = `
+            <div class="pip-header">
+              <span class="pip-title">❤️ SAATH</span>
+              <span class="pip-conn" id="pip-conn-label">Connected</span>
+            </div>
+            <video id="pip-video" autoplay playsinline muted></video>
+            <div id="pip-chat">
+              <div class="pip-reactions">
+                <button class="pip-emj" data-e="❤️">❤️</button>
+                <button class="pip-emj" data-e="🎉">🎉</button>
+                <button class="pip-emj" data-e="😂">😂</button>
+                <button class="pip-emj" data-e="🔥">🔥</button>
+                <button class="pip-emj" data-e="👍">👍</button>
+                <button class="pip-emj" data-e="😍">😍</button>
+                <button class="pip-emj" data-e="💕">💕</button>
+                <button class="pip-emj" data-e="🍿">🍿</button>
+              </div>
+              <div id="pip-msgs"><div style="text-align:center;color:rgba(245,230,239,0.3);font-size:10px;margin-top:10px;">Messages appear here 💬</div></div>
+              <div class="pip-bottom">
+                <input class="pip-input" id="pip-input" placeholder="Say something..." />
+                <button class="pip-send" id="pip-send-btn">➤</button>
+              </div>
+            </div>
+          `;
+
+          // Attach video stream to PiP video
+          const pipVideo = pipWin.document.getElementById('pip-video');
+          pipVideo.srcObject = v.srcObject;
+          pipVideo.play().catch(() => {});
+
+          // Reaction buttons
+          pipWin.document.querySelectorAll('.pip-emj').forEach(btn => {
+            btn.addEventListener('click', () => { window.sendReaction(btn.dataset.e); });
+          });
+
+          // Send chat from PiP
+          const pipSend = () => {
+            const inp = pipWin.document.getElementById('pip-input');
+            const txt = inp?.value.trim(); if (!txt) return;
+            window.sendChat ? (document.getElementById('chatInput').value = txt, window.sendChat()) : null;
+            inp.value = '';
+          };
+          pipWin.document.getElementById('pip-send-btn').addEventListener('click', pipSend);
+          pipWin.document.getElementById('pip-input').addEventListener('keypress', e => { if (e.key === 'Enter') pipSend(); });
+
+          // Mirror incoming chat messages to PiP
+          window._pipMsgHandler = (sender, text, isMe) => {
+            if (!pipWin || pipWin.closed) return;
+            const container = pipWin.document.getElementById('pip-msgs');
+            if (!container) return;
+            // Remove placeholder
+            if (container.children.length === 1 && container.children[0].tagName === 'DIV' && !container.children[0].className) container.innerHTML = '';
+            const div = pipWin.document.createElement('div');
+            div.className = `pip-msg ${isMe ? 'me' : 'other'}`;
+            div.innerHTML = `<div class="pip-sender">${isMe ? 'You' : sender}</div>${text}`;
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+          };
+
+          // Update connection status
+          const connLabel = document.getElementById('connLabel');
+          if (connLabel) {
+            const updatePipConn = () => { const l = pipWin.document?.getElementById('pip-conn-label'); if (l) l.textContent = connLabel.textContent; };
+            const obs = new MutationObserver(updatePipConn);
+            obs.observe(connLabel, { characterData: true, childList: true });
+          }
+
+          pipWin.addEventListener('pagehide', () => { pipWin = null; window._pipMsgHandler = null; });
+          return;
+        } catch (err) { console.warn('Document PiP failed, falling back:', err); }
+      }
+
+      // Fallback: standard video PiP
+      if (document.pictureInPictureEnabled) {
+        try { await v.requestPictureInPicture(); } catch (_) { }
+      }
+    };
+
+    // Show PiP button if any PiP mode is supported
+    if ('documentPictureInPicture' in window || document.pictureInPictureEnabled) {
+      document.getElementById('pipBtn')?.style.removeProperty('display');
+    }
 
     /* MODAL */
     window.toggleHostSettings = () => { const b = document.getElementById('hostSettingsBody'), t = document.getElementById('hostToggle'); b.classList.toggle('open'); t.classList.toggle('open'); };

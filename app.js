@@ -1096,7 +1096,7 @@ function startChatListener() {
     else contentHtml = esc(d.text);
 
     wrap.innerHTML = `
-      <div class="chat-msg-header"><div class="chat-av" style="background:${col}">${init}</div><span class="chat-sender" style="color:${isMe ? "var(--accent)" : "var(--cyan)"}">${isMe ? "You" : esc(d.sender)}</span><span class="chat-time">${time}</span></div>
+      <div class="chat-msg-header"><div class="chat-av" style="background:${col}">${init}</div><span class="chat-sender" style="color:${isMe ? "var(--accent)" : "var(--pink-soft)"}">${isMe ? "You" : esc(d.sender)}</span><span class="chat-time">${time}</span></div>
       <div class="chat-bubble ${isMe ? "me" : "other"}">${contentHtml}</div>
     `;
     const c = document.getElementById("chatMessages"); if (c) { c.appendChild(wrap); scrollChat(); }
@@ -1104,7 +1104,11 @@ function startChatListener() {
       const badge = document.getElementById("chatBadge"); if (badge) { badge.style.display = "inline-flex"; }
       try { new Audio("https://actions.google.com/sounds/v1/water/water_drop.ogg").play(); } catch (e) { }
     }
-    if (d.text) addFloatingChatMsg(isMe ? "You" : d.sender, d.text);
+    if (d.text) {
+      addFloatingChatMsg(isMe ? "You" : d.sender, d.text);
+      // Mirror to PiP window if open
+      window._pipMsgHandler?.(d.sender, esc(d.text), isMe);
+    }
   }); firebaseUnsubs.push(unsub);
 }
 
