@@ -725,6 +725,8 @@ async function proceedJoin(myVid, userName) {
 
       video.play().catch(() => {
         logStatus("Autoplay blocked. User interaction required.");
+        const overlay = document.getElementById("autoplayOverlay");
+        if (overlay) overlay.style.display = "flex";
       });
 
       // IDENTIFY: Movie Audio vs Viewer Voice
@@ -740,7 +742,11 @@ async function proceedJoin(myVid, userName) {
         const source = audioCtx.createMediaStreamSource(bg.srcObject);
         source.connect(movieGainNode);
         
-        bg.play().then(() => {
+        bg.play().catch(e => {
+          logStatus(`Audio play error trace: ${e.message}`);
+          const overlay = document.getElementById("autoplayOverlay");
+          if (overlay) overlay.style.display = "flex";
+        }).then(() => {
           logStatus("Movie audio started (via Web Audio)");
           if ("mediaSession" in navigator) {
             navigator.mediaSession.metadata = new MediaMetadata({ title: `Room: ${roomId}`, artist: "Live Party", album: "Watch Party", artwork: [{ src: "https://webrtc-cd5af.firebaseapp.com/icon.png", sizes: "512x512", type: "image/png" }] });
@@ -773,6 +779,10 @@ async function proceedJoin(myVid, userName) {
         document.getElementById("noSignal").classList.add("hidden"); 
         document.getElementById("sourceTag").style.display = ""; 
         document.getElementById("sourceTag").textContent = "WATCHING"; 
+        
+        const refreshBtn = document.getElementById("refreshBtn");
+        if (refreshBtn) refreshBtn.style.display = "flex";
+        
         changeActionBtns("session"); 
         window.switchTab("chat"); 
         renderPeopleTab(); 
@@ -879,7 +889,7 @@ window.leaveCall = async () => {
   const ns = document.getElementById("noSignal"); ns.classList.remove("hidden"); ns.querySelector("h3").textContent = "Waiting for Screen Share"; ns.querySelector("p").textContent = "Connect to join or host a session";
   document.getElementById("remoteVideo").srcObject = null;
   document.getElementById("liveBadge").style.display = "none";
-  ["sourceTag", "qualityTag"].forEach(id => { const e = document.getElementById(id); if (e) e.style.display = "none"; });
+  ["sourceTag", "qualityTag", "refreshBtn"].forEach(id => { const e = document.getElementById(id); if (e) e.style.display = "none"; });
   document.getElementById("hostOnlySettings") && (document.getElementById("hostOnlySettings").style.display = "none");
   updateConnStatus("disconnected"); changeActionBtns("init");
   document.getElementById("chatMessages").innerHTML = `<div style="text-align:center;color:var(--text-muted);margin-top:30px;font-size:11px;">💬 Messages visible to everyone</div>`;
@@ -1097,6 +1107,26 @@ window.applyBitrateNow = async () => {
   } else {
     logStatus("Bitrate dynamically managed by Cloudflare SFU.");
   }
+};
+
+window.manualResync = async () => {
+  logStatus("Manual Resync Triggered.");
+  if (cfApp) {
+    try {
+      await cfApp.renegotiate();
+      showToast("🔄 Stream Refreshed");
+    } catch (e) { logStatus("Resync failed"); }
+  }
+};
+
+window.recoverAutoplay = () => {
+  const ov = document.getElementById("autoplayOverlay");
+  if (ov) ov.style.display = "none";
+  gestureUnlock();
+  const vid = document.getElementById("remoteVideo");
+  const aud = document.getElementById("bgAudio");
+  if (vid) vid.play().catch(console.error);
+  if (aud) aud.play().catch(console.error);
 };
 
 /* PiP — auto on visibility change */

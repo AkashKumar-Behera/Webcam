@@ -1397,15 +1397,18 @@
             <span class="overlay-tag" id="qualityTag" style="display:none;">—</span>
           </div>
         </div>
+        <!-- Autoplay Recovery Overlay -->
+        <div id="autoplayOverlay" style="display:none; position:absolute; inset:0; z-index:25; background:rgba(0,0,0,0.7); flex-direction:column; align-items:center; justify-content:center; gap:12px; cursor:pointer;" onclick="recoverAutoplay()">
+          <span class="material-symbols-outlined" style="font-size:48px; color:var(--accent);">play_circle</span>
+          <h3 style="font-size:16px;">Tap to Unmute & Play</h3>
+        </div>
+
         <!-- Video control buttons -->
         <div class="video-btns">
-          <button class="vbtn" onclick="toggleFullscreen()" title="Fullscreen"><span class="material-symbols-outlined"
-              id="fsIcon">fullscreen</span></button>
-          <button class="vbtn" id="pipBtn" onclick="togglePip()" title="Picture-in-Picture" style="display:none"><span
-              class="material-symbols-outlined">picture_in_picture</span></button>
-          <button class="vbtn" id="micBtnMain" onclick="toggleVoiceChat()" title="Toggle Microphone"
-            style="background:var(--red)"><span class="material-symbols-outlined"
-              id="micIconMain">mic_off</span></button>
+          <button class="vbtn" onclick="toggleFullscreen()" title="Fullscreen"><span class="material-symbols-outlined" id="fsIcon">fullscreen</span></button>
+          <button class="vbtn" id="pipBtn" onclick="togglePip()" title="Picture-in-Picture" style="display:none"><span class="material-symbols-outlined">picture_in_picture</span></button>
+          <button class="vbtn" id="refreshBtn" onclick="manualResync()" title="Refresh Stream" style="display:none"><span class="material-symbols-outlined">refresh</span></button>
+          <button class="vbtn" id="micBtnMain" onclick="toggleVoiceChat()" title="Toggle Microphone" style="background:var(--red)"><span class="material-symbols-outlined" id="micIconMain">mic_off</span></button>
         </div>
         <!-- Fullscreen floating chat overlay -->
         <div class="fs-chat-overlay" id="fullscreenChatOverlay"></div>
