@@ -14,12 +14,23 @@ const turnId = '86014ad259cbd5b3dbef1f0867bbe15b';
 async function fetchIceServers() {
   try {
     const res = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${turnId}/credentials/generate-ice-servers`, {
-      method: "POST", headers: { Authorization: `Bearer ${cfAppSecret}` }
+      method: "POST", 
+      headers: { 
+        "Authorization": `Bearer ${cfAppSecret}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ ttl: 86400 })
     });
+    if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
     const data = await res.json();
-    if (data.iceServers) servers.iceServers = data.iceServers;
-    logStatus("Cloudflare TURN Credentials loaded.");
-  } catch (e) { console.warn("Failed to fetch CF TURN", e); }
+    if (data.iceServers) {
+      servers.iceServers = data.iceServers;
+      logStatus("Cloudflare TURN Credentials loaded successfully.");
+    }
+  } catch (e) { 
+    console.error("Failed to fetch CF TURN:", e); 
+    logStatus("Failed to load Cloudflare TURN. Mesh connection may be unstable.");
+  }
 }
 fetchIceServers();
 
