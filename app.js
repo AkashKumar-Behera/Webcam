@@ -214,14 +214,6 @@ function setAmbientGlow(on) {
   if (wrap) wrap.classList.toggle('streaming', on);
 }
 
-// Show only-us badge when exactly 2 people in room
-function updateOnlyUsBadge() {
-  const count = Object.keys(connectedViewers).length;
-  const badge = document.getElementById('onlyUsBadge');
-  if (!badge) return;
-  if (count === 1) { badge.style.display = 'block'; }
-  else { badge.style.display = 'none'; }
-}
 
 // Set cursor style based on role
 function applyRoleCursor() {
@@ -338,7 +330,6 @@ function bootstrapCoupleFeatures() {
   publishMood();
   applyRoleCursor();
   showSessionButtons();
-  updateOnlyUsBadge();
 }
 
 window.logStatus = msg => {

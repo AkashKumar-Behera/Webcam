@@ -141,6 +141,22 @@
     }
     :fullscreen .fs-mob-left, :-webkit-full-screen .fs-mob-left { display:flex; left:20px; align-items:flex-start; }
     :fullscreen .fs-mob-right, :-webkit-full-screen .fs-mob-right { display:flex; right:20px; align-items:flex-end; }
+    
+    /* MOBILE NON-FS CONTROLS (HORIZONTAL) */
+    @media (max-width: 768px) {
+      .video-btns {
+        bottom: 25px;
+        right: 50%;
+        transform: translateX(50%);
+        flex-direction: row !important;
+        width: auto;
+        justify-content: center;
+      }
+      .non-fs-btns {
+        flex-direction: row !important;
+        gap: 12px;
+      }
+    }
     .fs-only { display:none !important; }
     :fullscreen .fs-only, :-webkit-full-screen .fs-only { display:flex !important; }
 
@@ -181,12 +197,6 @@
     .vbtn.mic-active { background:rgba(201,75,123,0.25); border-color:var(--accent); animation:micPulse 2s ease-in-out infinite; }
     @keyframes micPulse { 0%,100%{box-shadow:0 0 0 0 rgba(201,75,123,0.4)} 50%{box-shadow:0 0 0 8px rgba(201,75,123,0)} }
 
-    .fs-mob-left, .fs-mob-right {
-      position: absolute; bottom: 20px; z-index: 50; pointer-events: auto;
-      display: none; flex-direction: column; gap: 12px;
-    }
-    :fullscreen .fs-mob-left, :-webkit-full-screen .fs-mob-left { display:flex; left:20px; align-items:flex-start; }
-    :fullscreen .fs-mob-right, :-webkit-full-screen .fs-mob-right { display:flex; right:20px; align-items:flex-end; }
     .fs-only { display:none !important; }
     :fullscreen .fs-only, :-webkit-full-screen .fs-only { display:flex !important; }
 
@@ -1018,8 +1028,6 @@
         </div>
 
 
-        <!-- Only Us Badge -->
-        <div id="onlyUsBadge">🔒 Just the two of us</div>
 
         <!-- Autoplay Recovery Overlay -->
         <div id="autoplayOverlay" onclick="recoverAutoplay()">
