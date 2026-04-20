@@ -917,7 +917,8 @@ async function proceedJoin(myVid, userName) {
       }
       if (!remoteStream.getTracks().find(t => t.id === track.id)) remoteStream.addTrack(track);
 
-      video.play().catch(() => {
+      video.play().catch((e) => {
+        if (e.name === 'AbortError') return; // Ignore rapid play/pause interrupts
         logStatus("Autoplay blocked. User interaction required.");
         const overlay = document.getElementById("autoplayOverlay");
         if (overlay) overlay.style.display = "flex";
@@ -937,6 +938,7 @@ async function proceedJoin(myVid, userName) {
         source.connect(movieGainNode);
         
         bg.play().catch(e => {
+          if (e.name === 'AbortError') return;
           logStatus(`Audio play error trace: ${e.message}`);
           const overlay = document.getElementById("autoplayOverlay");
           if (overlay) overlay.style.display = "flex";
@@ -1413,8 +1415,7 @@ async function _tryReconnect() {
       if (_reconnectAttempt < 6) {
         _tryReconnect();
       } else {
-        showToast('⚠️ Cannot reconnect. Try rejoining.');
-        _reconnectAttempt = 0;
+        showToast('⚠️ Connection lost permanently. Please refresh.');
       }
     }
   }, delay);
@@ -1429,8 +1430,7 @@ window.addEventListener('online', () => {
     const pc = isHost ? screenPcMap['host_cf'] : viewerPc;
     const state = pc?.iceConnectionState;
     if (state && state !== 'connected' && state !== 'completed') {
-      _reconnectAttempt = 0;
-      _tryReconnect();
+      if (_reconnectAttempt === 0) _tryReconnect();
     } else {
       showToast('📶 Network restored');
     }
@@ -1459,7 +1459,7 @@ document.addEventListener('visibilitychange', () => {
     const pc = isHost ? screenPcMap['host_cf'] : viewerPc;
     if (pc && ['disconnected','failed'].includes(pc.iceConnectionState)) {
       logStatus('Tab visible — connection bad, reconnecting...');
-      _reconnectAttempt = 0; _tryReconnect();
+      if (_reconnectAttempt === 0) _tryReconnect();
     }
   }
 });
