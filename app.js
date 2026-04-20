@@ -101,6 +101,9 @@ let audioCtx = null, movieNode = null, duckingActive = false;
 let myVoiceStream = null, voicePcs = {}, silenceLoop = null;
 let cfApp = null, myCfSessionId = null, myCfTrackNames = {};
 let movieGainNode = null, hostInfo = null; 
+let reconnectToken = localStorage.getItem("nova_reconnect_token") || Math.random().toString(36).substring(2, 10);
+localStorage.setItem("nova_reconnect_token", reconnectToken);
+let approvedTokens = {}; // Host: stores vid -> token
 const MAX_ICE_RESTARTS = 3;
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
@@ -229,22 +232,22 @@ function applyRoleCursor() {
 
 // Show session buttons after joining
 function showSessionButtons() {
-  ['drawToggleToolbar'].forEach(id => {
+  ['drawToggleToolbar', 'drawToggleToolbarFS'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'flex';
   });
-  // Change Screen only for host
+  // Host-only Tools
   if (isHost) {
-    const cs = document.getElementById('changeScreenBtn');
-    if (cs) cs.style.display = 'flex';
-    const qs = document.getElementById('quickResSelect');
-    if (qs) qs.style.display = 'flex';
+    ['changeScreenBtn', 'quickResSelect', 'quickResSelectFS', 'refreshBtn'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'flex';
+    });
   }
 }
 
 // Hide session buttons when leaving
 function hideSessionButtons() {
-  ['drawToggleToolbar', 'changeScreenBtn', 'quickResSelect'].forEach(id => {
+  ['drawToggleToolbar', 'drawToggleToolbarFS', 'changeScreenBtn', 'quickResSelect', 'quickResSelectFS', 'refreshBtn'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
   });
@@ -516,7 +519,13 @@ function renderPeopleTab() {
   }
 }
 
-window.approveViewer = async (vid, name) => { await set(ref(db, `rooms/${roomId}/waitroom/${vid}/status`), "approved"); delete pendingViewers[vid]; renderPeopleTab(); };
+window.approveViewer = async (vid, name) => { 
+  const token = pendingViewers[vid]?.token;
+  if (token) approvedTokens[vid] = token;
+  await set(ref(db, `rooms/${roomId}/waitroom/${vid}/status`), "approved"); 
+  delete pendingViewers[vid]; 
+  renderPeopleTab(); 
+};
 window.denyViewer = async (vid, name) => { await set(ref(db, `rooms/${roomId}/waitroom/${vid}/status`), "denied"); setTimeout(() => remove(ref(db, `rooms/${roomId}/waitroom/${vid}`)), 3000); delete pendingViewers[vid]; renderPeopleTab(); showToast(`✗ ${name} declined`); };
 window.kickViewer = async (vid, name) => { await set(ref(db, `rooms/${roomId}/viewers/${vid}/kicked`), true); setTimeout(() => remove(ref(db, `rooms/${roomId}/viewers/${vid}`)), 2000); try { screenPcMap[vid]?.close(); } catch (_) { } delete screenPcMap[vid]; delete connectedViewers[vid]; renderPeopleTab(); showToast(`👢 ${name} removed`); };
 window.muteAllViewers = async () => { if (!isHost || !roomId) return; await set(ref(db, `rooms/${roomId}/muteAll`), Date.now()); showToast("🤫 Muted all viewers"); };
@@ -793,8 +802,20 @@ window.confirmHost = async () => {
   // Waitroom UI
   const unsubW = onChildAdded(ref(db, `rooms/${roomId}/waitroom`), snap => {
     const vid = snap.key, data = snap.val(); if (!data || !vid || data.status) return;
+    
+    // Auto-Accept logic for network reconnections
+    if (data.token && Object.values(approvedTokens).includes(data.token)) {
+      logStatus(`Auto-approving reconnection for ${data.name}`);
+      set(ref(db, `rooms/${roomId}/waitroom/${vid}/status`), "approved");
+      // Update approvedTokens with new vid
+      Object.keys(approvedTokens).forEach(k => { if (approvedTokens[k] === data.token) delete approvedTokens[k]; });
+      approvedTokens[vid] = data.token;
+      return;
+    }
+
     logStatus(`Approval request from: ${data.name || "Viewer"}`);
-    pendingViewers[vid] = { name: data.name || "Viewer" }; renderPeopleTab(); showToast(`🔔 ${data.name} wants to join`); window.switchTab("people");
+    pendingViewers[vid] = { name: data.name || "Viewer", token: data.token }; 
+    renderPeopleTab(); showToast(`🔔 ${data.name} wants to join`); window.switchTab("people");
   });
 
   // Voice Pull Listener
@@ -854,7 +875,7 @@ window.confirmJoin = async () => {
   const myVid = "v_" + Math.random().toString(36).substr(2, 9);
   window._myVid = myVid;
   logStatus(`Waitroom ID: ${myVid}`);
-  await set(ref(db, `rooms/${roomId}/waitroom/${myVid}`), { name: myName, requestedAt: Date.now() }).catch(e => logStatus(`Waitroom Write Error: ${e.message}`));
+  await set(ref(db, `rooms/${roomId}/waitroom/${myVid}`), { name: myName, requestedAt: Date.now(), token: reconnectToken }).catch(e => logStatus(`Waitroom Write Error: ${e.message}`));
   onDisconnect(ref(db, `rooms/${roomId}/waitroom/${myVid}`)).remove();
   const ns = document.getElementById("noSignal"); ns.classList.remove("hidden");
   ns.querySelector("h3").textContent = "Waiting for host..."; ns.querySelector("p").textContent = "Host will let you in shortly";
@@ -981,44 +1002,35 @@ async function proceedJoin(myVid, userName) {
       }
     };
 
+    iceRestartCount = 0; // reset on success
+
     pc.onconnectionstatechange = () => {
-      logStatus(`[Viewer] ${pc.connectionState}`);
-      if (pc.connectionState === "connected") { 
-        updateConnStatus("connected"); 
-        document.getElementById("noSignal").classList.add("hidden"); 
-        document.getElementById("sourceTag").style.display = ""; 
-        document.getElementById("sourceTag").textContent = "WATCHING"; 
-        
-        const refreshBtn = document.getElementById("refreshBtn");
-        if (refreshBtn) refreshBtn.style.display = "flex";
-        
-        changeActionBtns("session"); 
-        window.switchTab("chat"); 
-        renderPeopleTab(); 
-        showToast("🎬 Connected!"); 
-        iceRestartCount = 0; // reset on success
-      }
-      if (pc.connectionState === "disconnected") { 
-        updateConnStatus("connecting"); 
-        showToast("⚡ Reconnecting..."); 
-        if (iceRestartCount < MAX_ICE_RESTARTS) {
-           iceRestartCount++;
-           cfApp?.renegotiate().catch(() => { }); 
+    logStatus(`[Viewer] ${pc.connectionState}`);
+    if (pc.connectionState === "connected") { 
+      updateConnStatus("connected"); 
+      document.getElementById("noSignal").classList.add("hidden"); 
+      document.getElementById("sourceTag").style.display = ""; 
+      document.getElementById("sourceTag").textContent = "WATCHING"; 
+      
+      const refreshBtn = document.getElementById("refreshBtn");
+      if (refreshBtn) refreshBtn.style.display = "flex";
+      
+      changeActionBtns("session"); 
+      window.switchTab("chat"); 
+      renderPeopleTab(); 
+      showToast("🎬 Connected!"); 
+      iceRestartCount = 0; 
+    }
+    if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+      logStatus("Connection lost. Attempting silent recovery...");
+      updateConnStatus("connecting");
+      setTimeout(() => {
+        if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+          window.attemptSilentReconnect();
         }
-      }
-      if (pc.connectionState === "failed") { 
-        logStatus("Connection Failed. Attempting ICE Restart...");
-        if (iceRestartCount < MAX_ICE_RESTARTS) {
-           iceRestartCount++;
-           pc.restartIce();
-           cfApp?.renegotiate().catch(() => { });
-        } else {
-           updateConnStatus("disconnected"); 
-           leaveCall(); 
-           showToast("❌ Connection lost");
-        }
-      }
-    };
+      }, 3000);
+    }
+  };
 
     onValue(ref(db, `rooms/${roomId}/viewers/${myVid}/kicked`), s => { if (s.val()) { showToast("⛔ Removed by host"); leaveCall(); } });
     onValue(ref(db, `rooms/${roomId}/muteAll`), s => { if (s.val() && myVoiceStream) { toggleVoiceChat(); showToast("🤫 Host muted microphones"); } });
@@ -1128,10 +1140,13 @@ window.sendChat = () => {
   inp.style.height = "auto";
 };
 
-window.handleChatImageUpload = (input) => {
-  if (!input.files || !input.files[0] || !roomId) return;
-  const file = input.files[0];
-  if (file.size > 8000000) { showToast("⚠️ Image too large (Max 8MB)"); input.value = ""; return; }
+window.handleChatImageUpload = (source) => {
+  let file;
+  if (source instanceof File) file = source;
+  else if (source.files && source.files[0]) file = source.files[0];
+  if (!file || !roomId) return;
+
+  if (file.size > 8000000) { showToast("⚠️ Image too large (Max 8MB)"); if(source.value) source.value = ""; return; }
   const reader = new FileReader();
   reader.onload = (e) => {
     const img = new Image();
@@ -1148,8 +1163,24 @@ window.handleChatImageUpload = (input) => {
     img.src = e.target.result;
   };
   reader.readAsDataURL(file);
-  input.value = "";
+  if (source.value) source.value = "";
 };
+
+// Clipboard Paste Support for Images
+["chatInput", "fsChatInput"].forEach(id => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener("paste", (e) => {
+    const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf("image") !== -1) {
+        const file = items[i].getAsFile();
+        window.handleChatImageUpload(file);
+        showToast("📸 Pasting image...");
+      }
+    }
+  });
+});
 
 function startChatListener() {
   if (!roomId) return; const ts = Date.now(); const myN = document.getElementById("userName")?.value.trim() || (isHost ? "Host" : "Viewer");
@@ -1325,6 +1356,8 @@ window.toggleVoiceChat = async () => {
   if (myVoiceStream) {
     myVoiceStream.getTracks().forEach(t => t.stop()); myVoiceStream = null;
     if (micBtnMain) { micBtnMain.style.background = "var(--red)"; micIconMain.textContent = "mic_off"; }
+    const fsMic = document.getElementById("fsMicBtn");
+    if (fsMic) { fsMic.style.background = "var(--red)"; fsMic.querySelector('.material-symbols-outlined').textContent = "mic_off"; }
     if (micIconChat) { micIconChat.textContent = "mic_off"; micIconChat.style.color = "var(--red)"; }
     showToast("🔇 Mic OFF");
     remove(ref(db, `rooms/${roomId}/voice/${window._myVid || "host"}`));
@@ -1334,6 +1367,8 @@ window.toggleVoiceChat = async () => {
   try {
     myVoiceStream = await navigator.mediaDevices.getUserMedia({ audio: true }); // getMicConstraints normally, simplify for tests
     if (micBtnMain) { micBtnMain.style.background = "var(--accent)"; micIconMain.textContent = "mic"; }
+    const fsMic = document.getElementById("fsMicBtn");
+    if (fsMic) { fsMic.style.background = "var(--accent)"; fsMic.querySelector('.material-symbols-outlined').textContent = "mic"; }
     if (micIconChat) { micIconChat.textContent = "mic"; micIconChat.style.color = "var(--accent)"; }
     showToast("🎤 Mic ON");
 
@@ -1381,12 +1416,23 @@ window.applyBitrateNow = async () => {
 
 window.manualResync = async () => {
   logStatus("Manual Resync Triggered.");
-  if (cfApp) {
-    try {
-      await cfApp.renegotiate();
-      showToast("🔄 Stream Refreshed");
-    } catch (e) { logStatus("Resync failed"); }
+  if (isHost) {
+    if (cfApp) {
+      try { await cfApp.renegotiate(); showToast("🔄 Host Stream Refreshed"); }
+      catch (e) { logStatus("Host refresh failed"); }
+    }
+  } else {
+    showToast("🔄 Refreshing Stream...");
+    window.attemptSilentReconnect();
   }
+};
+
+window.attemptSilentReconnect = () => {
+  logStatus("Global Network Recovery initiated...");
+  if (viewerPc) { try { viewerPc.close(); } catch(_) {} viewerPc = null; }
+  firebaseUnsubs.forEach(u => typeof u === 'function' && u());
+  firebaseUnsubs = [];
+  window.confirmJoin(); 
 };
 
 window.recoverAutoplay = () => {
