@@ -1104,22 +1104,29 @@ window.leaveCall = async () => {
 };
 
 /* CHAT */
-window.sendChat = () => { const inp = document.getElementById("chatInput"), msg = inp?.value.trim(); if (!msg || !roomId) return; const name = document.getElementById("userName")?.value.trim() || (isHost ? "Host" : "Viewer"); push(ref(db, `rooms/${roomId}/chat`), { sender: name, text: msg, time: Date.now() }); inp.value = ""; };
+window.sendChat = () => {
+  const inp = document.getElementById("chatInput"), msg = inp?.value.trim();
+  if (!msg || !roomId) return;
+  const name = document.getElementById("userName")?.value.trim() || (isHost ? "Host" : "Viewer");
+  push(ref(db, `rooms/${roomId}/chat`), { sender: name, text: msg, time: Date.now() });
+  inp.value = "";
+  inp.style.height = "auto";
+};
 
 window.handleChatImageUpload = (input) => {
   if (!input.files || !input.files[0] || !roomId) return;
   const file = input.files[0];
-  if (file.size > 2000000) { showToast("⚠️ Image too large (Max 2MB)"); input.value = ""; return; } // basic guard
+  if (file.size > 8000000) { showToast("⚠️ Image too large (Max 8MB)"); input.value = ""; return; }
   const reader = new FileReader();
   reader.onload = (e) => {
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement("canvas");
       let w = img.width, h = img.height;
-      if (w > 400) { h = h * (400 / w); w = 400; } // aggressive resize for firebase
+      if (w > 1280) { h = h * (1280 / w); w = 1280; } // high-quality resize
       canvas.width = w; canvas.height = h;
       canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-      const b64 = canvas.toDataURL("image/jpeg", 0.7);
+      const b64 = canvas.toDataURL("image/jpeg", 0.85);
       const name = document.getElementById("userName")?.value.trim() || (isHost ? "Host" : "Viewer");
       push(ref(db, `rooms/${roomId}/chat`), { sender: name, text: null, image: b64, time: Date.now() });
     };

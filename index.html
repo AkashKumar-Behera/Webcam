@@ -68,8 +68,8 @@
 
     /* LAYOUT */
     .app-layout { display:flex; height:100vh; height:100dvh; position:relative; z-index:1; }
-    .main-col { flex:1; display:flex; flex-direction:column; min-width:0; }
-    .video-wrap { flex:1; position:relative; background:#000; overflow:hidden; min-height:0; }
+    .main-col { flex:1; display:flex; flex-direction:column; min-width:0; padding:15px; padding-bottom:0; gap:10px; }
+    .video-wrap { flex:1; position:relative; background:#000; overflow:hidden; min-height:0; border-radius:14px; }
     #remoteVideo { width:100%; height:100%; object-fit:contain; background:transparent; }
     #bgAudio { display:none; }
 
@@ -95,13 +95,12 @@
 
     @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
 
-    /* OVERLAY TOP */
-    .overlay-top {
-      position:absolute; top:12px; left:12px; right:12px;
-      display:flex; justify-content:space-between; z-index:5; pointer-events:none;
+    /* OVERLAY BADGES (Moved to Top Info Bar) */
+    .video-info-bar {
+      display:flex; justify-content:space-between; align-items:flex-end;
+      width:100%; z-index:20;
     }
-    .overlay-top > * { pointer-events:auto; }
-    .badge-row { display:flex; gap:6px; }
+    .badge-row { display:flex; gap:8px; align-items:center; }
     .badge {
       display:flex; align-items:center; gap:5px; padding:5px 12px;
       background:rgba(13,10,20,0.82); backdrop-filter:blur(12px);
@@ -836,22 +835,21 @@
       .bg-pattern { display:none; }
       .aurora-blob { opacity:.12; }
       .app-layout { flex-direction:column; }
-      .main-col { flex:none; }
+      .main-col { flex:none; padding:0; gap:0; }
+      .video-info-bar { padding: 10px 14px 4px; }
       .video-wrap { height:35vh; border-radius:0; }
       .side-panel { width:100%; flex:1; border-left:none; border-top:1px solid rgba(201,75,123,0.12); overflow:hidden; }
       .modal-card { padding:20px 16px 16px; gap:14px; border-radius:20px; }
       .modal-header h1 { font-size:19px; }
-      .couple-header { padding:10px 14px 8px; }
       #secretNoteDrawer { width:100%; }
     }
     @media(max-width:480px) {
-      .video-wrap { height:36vh; padding-bottom:50px; }
-      #remoteVideo { height:calc(100% - 50px); }
+      .video-wrap { height:36vh; }
       .video-btns {
-        position:absolute; bottom:0; left:0; right:0;
+        position:static;
         flex-direction:row; flex-wrap:wrap; justify-content:center;
         background:rgba(13,10,20,0.95); border-top:1px solid rgba(201,75,123,0.15);
-        padding:8px 0; gap:12px;
+        padding:8px 0; gap:12px; width:100%;
       }
       .couple-header { display:none !important; }
       .fs-chat-overlay { bottom:64px; right:14px; }
@@ -876,6 +874,24 @@
   <!-- MAIN APP -->
   <div class="app-layout">
     <div class="main-col">
+      <!-- Info Bar Above Video -->
+      <div class="video-info-bar">
+        <div class="badge-row">
+          <div class="badge"><span class="dot" id="connDot"></span><span id="connLabel">DISCONNECTED</span></div>
+          <div class="badge" id="liveBadge" style="display:none;"><span class="dot live"></span>LIVE</div>
+        </div>
+        
+        <!-- Mood display (shows current mood in header) -->
+        <div id="moodBar" style="display:none; padding:4px 8px; font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
+          <span id="moodEmoji">🎬</span> <span id="moodLabel" style="font-weight:600;">Movie Night</span>
+        </div>
+
+        <div class="overlay-tags">
+          <span class="overlay-tag" id="sourceTag" style="display:none;">—</span>
+          <span class="overlay-tag" id="qualityTag" style="display:none;">—</span>
+        </div>
+      </div>
+
       <div class="video-wrap" id="videoWrap">
         <video id="remoteVideo" autoplay playsinline muted></video>
         <audio id="bgAudio" playsinline loop></audio>
@@ -898,6 +914,9 @@
             <div class="draw-color" style="background:#7C3AED;" onclick="setDrawColor('#7C3AED')"></div>
             <div class="draw-color" style="background:#F472B6;" onclick="setDrawColor('#F472B6')"></div>
             <div class="draw-color" style="background:#fff;" onclick="setDrawColor('#ffffff')"></div>
+            <label style="cursor:pointer;" title="Custom Color">
+              <input type="color" onchange="window.setDrawColor(this.value);" style="width:20px;height:20px;border:none;padding:0;background:none;cursor:pointer;">
+            </label>
           </div>
           <button class="draw-btn" onclick="clearDrawCanvas()" title="Clear">🗑️</button>
         </div>
@@ -909,17 +928,6 @@
           <p>Start a session to watch together ❤️</p>
         </div>
 
-        <!-- Overlay Top -->
-        <div class="overlay-top">
-          <div class="badge-row">
-            <div class="badge"><span class="dot" id="connDot"></span><span id="connLabel">DISCONNECTED</span></div>
-            <div class="badge" id="liveBadge" style="display:none;"><span class="dot live"></span>LIVE</div>
-          </div>
-          <div class="overlay-tags">
-            <span class="overlay-tag" id="sourceTag" style="display:none;">—</span>
-            <span class="overlay-tag" id="qualityTag" style="display:none;">—</span>
-          </div>
-        </div>
 
         <!-- Only Us Badge -->
         <div id="onlyUsBadge">🔒 Just the two of us</div>
@@ -967,12 +975,6 @@
         <span class="couple-together-badge" id="togetherBadge">Watch Together ✨</span>
       </div>
 
-      <!-- Mood display (shows current mood in header) -->
-      <div id="moodBar" style="display:none; padding:6px 16px; border-bottom:1px solid rgba(201,75,123,0.1); font-size:10px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
-        <span id="moodEmoji">🎬</span> <span id="moodLabel" style="font-weight:600;">Movie Night</span>
-        <span style="margin-left:auto; font-size:9px; opacity:.5;">Mood</span>
-      </div>
-
       <!-- Tabs -->
       <div class="panel-tabs">
         <button class="panel-tab active" onclick="switchTab('chat')" id="tabChat" style="position:relative;">Chat<span class="tab-badge" id="chatBadge" style="background:var(--accent);">!</span></button>
@@ -1000,6 +1002,7 @@
             <button class="emj-btn" onclick="sendReaction('😮')">😮</button>
             <button class="emj-btn" onclick="sendReaction('💀')">💀</button>
             <button class="emj-btn" onclick="sendReaction('✨')">✨</button>
+            <button class="emj-btn add-emj-btn" onclick="window.addCustomReaction()" style="background:var(--surface);border-radius:50%;font-size:16px;" title="Add Custom Emoji">+</button>
           </div>
           <div class="chat-bottom">
             <button class="chat-attach" id="emojiToggleBtn"
@@ -1012,8 +1015,8 @@
             <button class="chat-attach" id="micBtnChat" onclick="toggleVoiceChat()" title="Voice Chat">
               <span class="material-symbols-outlined" id="micIconChat" style="font-size:18px;color:rgba(239,68,68,0.7);">mic_off</span>
             </button>
-            <input class="chat-input" id="chatInput" placeholder="Say something... 💬" onkeypress="if(event.key==='Enter')sendChat()" />
-            <button class="chat-send" onclick="sendChat()"><span class="material-symbols-outlined" style="font-size:17px;">send</span></button>
+            <textarea class="chat-input" id="chatInput" placeholder="Say something... 💬" rows="1" style="resize:none; padding-top:10px; border-radius:20px; overflow-y:auto;" oninput="this.style.height='';this.style.height=Math.min(this.scrollHeight, 100)+'px';" onkeypress="if(event.key==='Enter' && !event.shiftKey){event.preventDefault();sendChat();}"></textarea>
+            <button class="chat-send" onclick="sendChat()" style="margin-right:10px;"><span class="material-symbols-outlined" style="font-size:17px;">send</span></button>
             <input type="file" id="chatFileInput" accept="image/*" style="display:none" onchange="window.handleChatImageUpload(this)">
           </div>
         </div>
@@ -1831,6 +1834,18 @@
 
     /* DRAWING CANVAS */
     let drawActive = false, drawCtx = null, currentDrawColor = '#C94B7B', isDrawing = false, lastX=0, lastY=0;
+    
+    window._getVideoBounds = (v) => {
+      if (!v || !v.videoWidth) return { w: v.offsetWidth||100, h: v.offsetHeight||100, x:0, y:0 };
+      const vRatio = v.videoWidth / v.videoHeight;
+      const w = v.offsetWidth, h = v.offsetHeight;
+      const cRatio = w / h;
+      let renderW, renderH, xOffset=0, yOffset=0;
+      if (vRatio > cRatio) { renderW = w; renderH = w / vRatio; yOffset = (h - renderH)/2; }
+      else { renderH = h; renderW = h * vRatio; xOffset = (w - renderW)/2; }
+      return { w: renderW, h: renderH, x: xOffset, y: yOffset };
+    };
+
     function initDrawCanvas() {
       const canvas = document.getElementById('drawCanvas');
       const wrap = document.getElementById('videoWrap');
@@ -1848,17 +1863,21 @@
       canvas.addEventListener('touchend', () => { isDrawing=false; broadcastDraw(null); });
     }
     function getXY(e, canvas) {
+      const v = document.getElementById('remoteVideo');
+      const b = window._getVideoBounds(v);
       const r = canvas.getBoundingClientRect();
-      return [(e.clientX-r.left)/r.width*100, (e.clientY-r.top)/r.height*100];
+      let cx = e.clientX - r.left, cy = e.clientY - r.top;
+      return [((cx - b.x) / b.w) * 100, ((cy - b.y) / b.h) * 100];
     }
     function draw(e, canvas) {
       const [x,y] = getXY(e,canvas);
-      const w=canvas.width, h=canvas.height;
+      const v = document.getElementById('remoteVideo');
+      const b = window._getVideoBounds(v);
       drawCtx.strokeStyle = currentDrawColor;
       drawCtx.lineWidth = 3; drawCtx.lineCap='round'; drawCtx.lineJoin='round';
       drawCtx.beginPath();
-      drawCtx.moveTo(lastX/100*w, lastY/100*h);
-      drawCtx.lineTo(x/100*w, y/100*h);
+      drawCtx.moveTo(b.x + (lastX/100)*b.w, b.y + (lastY/100)*b.h);
+      drawCtx.lineTo(b.x + (x/100)*b.w, b.y + (y/100)*b.h);
       drawCtx.stroke();
       broadcastDraw({x1:lastX,y1:lastY,x2:x,y2:y,c:currentDrawColor});
       [lastX,lastY]=[x,y];
@@ -1898,14 +1917,16 @@
       onValue(fbRef(db, `rooms/${roomIdVal}/drawing/cur`), snap => {
         const seg = snap.val(); if (!seg || seg.name === window._myName) return;
         const canvas = document.getElementById('drawCanvas');
-        if (!drawCtx) return;
-        const w=canvas.width, h=canvas.height;
-        drawCtx.strokeStyle=seg.c||'#C94B7B'; drawCtx.lineWidth=3; drawCtx.lineCap='round';
+        const v = document.getElementById('remoteVideo');
+        if (!drawCtx || !v) return;
+        const b = window._getVideoBounds ? window._getVideoBounds(v) : {w:canvas.width, h:canvas.height, x:0, y:0};
+        drawCtx.strokeStyle=seg.c||'#C94B7B'; drawCtx.lineWidth=3; drawCtx.lineCap='round'; drawCtx.lineJoin='round';
         drawCtx.beginPath();
-        drawCtx.moveTo(seg.x1/100*w,seg.y1/100*h); drawCtx.lineTo(seg.x2/100*w,seg.y2/100*h);
+        drawCtx.moveTo(b.x + (seg.x1/100)*b.w, b.y + (seg.y1/100)*b.h);
+        drawCtx.lineTo(b.x + (seg.x2/100)*b.w, b.y + (seg.y2/100)*b.h);
         drawCtx.stroke();
         clearTimeout(window._remoteFadeTimer);
-        window._remoteFadeTimer = setTimeout(() => { drawCtx?.clearRect(0,0,w,h); }, 3000);
+        window._remoteFadeTimer = setTimeout(() => { drawCtx?.clearRect(0,0,canvas.width,canvas.height); }, 3000);
       });
     };
 
@@ -2206,6 +2227,33 @@
   })();
   </script>
   <!-- ===== END THEME ENGINE ===== -->
+  <script>
+    /* CUSTOM EMOJI LOAD */
+    window.addCustomReaction = () => {
+      const e = prompt("Enter an emoji to save & send:");
+      if (!e || e.trim() === '') return;
+      const emj = e.trim();
+      let saved = JSON.parse(localStorage.getItem('saved_emojis') || '[]');
+      if (!saved.includes(emj)) { saved.push(emj); localStorage.setItem('saved_emojis', JSON.stringify(saved)); }
+      if (window.sendReaction) window.sendReaction(emj);
+      window.renderCustomEmojis();
+    };
+    window.renderCustomEmojis = () => {
+      let saved = JSON.parse(localStorage.getItem('saved_emojis') || '[]');
+      const bar = document.getElementById('chatEmojiBar');
+      if (!bar) return;
+      bar.querySelectorAll('.custom-emj').forEach(b => b.remove());
+      const addBtn = bar.querySelector('.add-emj-btn');
+      saved.forEach(emj => {
+        const b = document.createElement('button');
+        b.className = 'emj-btn custom-emj';
+        b.textContent = emj;
+        b.onclick = () => { if (window.sendReaction) window.sendReaction(emj); };
+        if (addBtn) bar.insertBefore(b, addBtn);
+      });
+    };
+    window.addEventListener('DOMContentLoaded', () => { window.renderCustomEmojis(); });
+  </script>
   <script type="module" src="app.js"></script>
 </body>
 </html>
