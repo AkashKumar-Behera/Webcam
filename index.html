@@ -992,6 +992,26 @@
       .modal-card { max-width:100%; }
     }
     @media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation-duration:.01ms !important; transition-duration:.01ms !important; } }
+    /* EMOJI REACTIONS */
+    .emoji-overlay { position:absolute; inset:0; z-index:20; pointer-events:none; overflow:hidden; }
+    .emoji-bubble {
+      position:absolute; bottom:50px; font-size:42px; transition:none;
+      animation:floatUp 2.8s cubic-bezier(0.42, 0, 0.58, 1) forwards;
+      filter: drop-shadow(0 0 15px rgba(201,75,123,0.4));
+      user-select:none; pointer-events:none;
+    }
+    @keyframes floatUp {
+      0% { transform:translateY(0) scale(0) rotate(0deg); opacity:0; }
+      15% { transform:translateY(-10%) scale(1.2) rotate(10deg); opacity:1; }
+      85% { opacity:0.8; }
+      100% { transform:translateY(-400px) scale(0.8) rotate(-15deg); opacity:0; }
+    }
+    /* PiP Emoji Animation */
+    @keyframes pipEmojiFloat {
+      0% { opacity:0; transform:translateY(0) scale(0.5); }
+      20% { opacity:1; transform:translateY(-20px) scale(1.1); }
+      100% { opacity:0; transform:translateY(-120px) scale(0.7); }
+    }
   </style>
 </head>
 

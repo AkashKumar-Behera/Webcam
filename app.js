@@ -1236,9 +1236,12 @@ function startReactionListener() {
 function triggerEmojiUI(emoji) {
   const ov = document.getElementById("emojiOverlay");
   if (ov) {
-    const el = document.createElement("div"); el.className = "emoji-bubble";
-    el.textContent = emoji; el.style.left = (15 + Math.random() * 70) + "%";
-    ov.appendChild(el); el.addEventListener("animationend", () => el.remove(), { once: true });
+    const el = document.createElement("div"); 
+    el.className = "emoji-bubble";
+    el.textContent = emoji; 
+    el.style.left = (5 + Math.random() * 85) + "%";
+    ov.appendChild(el); 
+    el.onanimationend = () => el.remove();
   }
   // Mirror to PiP window if open
   try {
