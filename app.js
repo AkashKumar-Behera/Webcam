@@ -226,7 +226,7 @@ function applyRoleCursor() {
 
 // Show session buttons after joining
 function showSessionButtons() {
-  ['heartbeatBtn','drawToggleToolbar','secretNoteBtn','driftedOffBtn'].forEach(id => {
+  ['heartbeatBtn','drawToggleToolbar'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'flex';
   });
@@ -234,7 +234,7 @@ function showSessionButtons() {
 
 // Hide session buttons when leaving
 function hideSessionButtons() {
-  ['heartbeatBtn','drawToggleToolbar','secretNoteBtn','driftedOffBtn'].forEach(id => {
+  ['heartbeatBtn','drawToggleToolbar'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
   });
@@ -298,10 +298,8 @@ function bootstrapCoupleFeatures() {
   const helpers = { set, ref, onValue, onChildAdded, push };
   window._myName = myName;
   window._startDrawListener?.(roomId, db, helpers);
-  window._startSecretNoteListener?.(roomId, db, helpers);
   window._startThemeSyncListener?.(roomId, db, helpers);
   listenHeartbeat();
-  listenDriftedOff();
   listenMood();
   publishMood();
   applyRoleCursor();
@@ -662,7 +660,8 @@ window.confirmHost = async () => {
   window.switchTab("chat"); renderPeopleTab();
   setAmbientGlow(true);
   bootstrapCoupleFeatures();
-  
+  _reconnectAttempt = 0; _startConnPoll();
+
   // Add pre-show countdown button
   const hostBtns = document.getElementById("hostOnlySettings");
   if (hostBtns && !document.getElementById('countdownTriggerBtn')) {
@@ -1019,6 +1018,7 @@ async function proceedJoin(myVid, userName) {
 
     startChatListener(); startReactionListener(); startStats(pc);
     bootstrapCoupleFeatures();
+    _reconnectAttempt = 0; _startConnPoll();
 
   } catch (err) {
     logStatus(`Viewer Crash: ${err.message}`);
@@ -1129,7 +1129,27 @@ window.sendReaction = emoji => {
   playReactionSound(emoji);
 };
 function startReactionListener() { if (!roomId) return; const ts = Date.now(); const u = onChildAdded(ref(db, `rooms/${roomId}/reactions`), snap => { const d = snap.val(); if (!d || d.time < ts) return; triggerEmojiUI(d.emoji); }); firebaseUnsubs.push(u); }
-function triggerEmojiUI(emoji) { const ov = document.getElementById("emojiOverlay"); if (!ov) return; const el = document.createElement("div"); el.className = "emoji-float"; el.textContent = emoji; el.style.left = (15 + Math.random() * 70) + "%"; ov.appendChild(el); el.addEventListener("animationend", () => el.remove(), { once: true }); }
+function triggerEmojiUI(emoji) {
+  const ov = document.getElementById("emojiOverlay");
+  if (ov) {
+    const el = document.createElement("div"); el.className = "emoji-float";
+    el.textContent = emoji; el.style.left = (15 + Math.random() * 70) + "%";
+    ov.appendChild(el); el.addEventListener("animationend", () => el.remove(), { once: true });
+  }
+  // Mirror to PiP window if open
+  try {
+    if (window._pipWin && !window._pipWin.closed) {
+      const pipOv = window._pipWin.document.getElementById('pip-reaction-overlay');
+      if (pipOv) {
+        const pe = window._pipWin.document.createElement('div');
+        pe.textContent = emoji;
+        pe.style.cssText = 'position:absolute;font-size:28px;left:'+(10+Math.random()*70)+'%;bottom:220px;animation:pipEmojiFloat 1.8s ease forwards;pointer-events:none;';
+        pipOv.appendChild(pe);
+        setTimeout(() => pe.remove(), 1900);
+      }
+    }
+  } catch(_) {}
+}
 
 /* STATS — Viewer (inbound) */
 let cumulativeBytes = 0;
@@ -1317,16 +1337,85 @@ document.getElementById("remoteVideo")?.addEventListener("leavepictureinpicture"
 
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => { }));
 
-// Seamless Connectivity (Mobile Data <-> WiFi)
-window.addEventListener('online', async () => {
-  logStatus("Network online. Stabilizing connection...");
-  if (cfApp) {
+// ===== SMART NETWORK RECONNECT =====
+let _reconnectTimer = null, _reconnectAttempt = 0, _connPollInterval = null;
+
+async function _tryReconnect() {
+  if (!roomId || !cfApp) return;
+  _reconnectAttempt++;
+  const delay = Math.min(1500 * _reconnectAttempt, 12000);
+  logStatus(`Reconnect attempt #${_reconnectAttempt} in ${delay}ms...`);
+  showToast(`🔄 Reconnecting... (${_reconnectAttempt})`);
+
+  clearTimeout(_reconnectTimer);
+  _reconnectTimer = setTimeout(async () => {
     try {
+      const pc = isHost ? screenPcMap['host_cf'] : viewerPc;
+      const state = pc?.iceConnectionState;
+
+      if (state === 'connected' || state === 'completed') {
+        logStatus('Connection self-recovered.');
+        showToast('✅ Connected!');
+        _reconnectAttempt = 0;
+        return;
+      }
+
       await cfApp.renegotiate();
-      showToast("📶 Connection stabilized");
+      logStatus('Renegotiate succeeded.');
+      showToast('✅ Reconnected!');
+      _reconnectAttempt = 0;
     } catch (e) {
-      logStatus("Auto-Reconnect failed, reloading...");
-      location.reload(); 
+      logStatus(`Reconnect #${_reconnectAttempt} failed: ${e.message}`);
+      if (_reconnectAttempt < 6) {
+        _tryReconnect();
+      } else {
+        showToast('⚠️ Cannot reconnect. Try rejoining.');
+        _reconnectAttempt = 0;
+      }
+    }
+  }, delay);
+}
+
+// Trigger reconnect when network comes back
+window.addEventListener('online', () => {
+  logStatus('Network online — checking connection...');
+  // Small stabilization delay
+  setTimeout(() => {
+    if (!roomId) return;
+    const pc = isHost ? screenPcMap['host_cf'] : viewerPc;
+    const state = pc?.iceConnectionState;
+    if (state && state !== 'connected' && state !== 'completed') {
+      _reconnectAttempt = 0;
+      _tryReconnect();
+    } else {
+      showToast('📶 Network restored');
+    }
+  }, 1200);
+});
+
+// Poll connection health every 8s and auto-restart if stuck in disconnected/failed
+function _startConnPoll() {
+  clearInterval(_connPollInterval);
+  _connPollInterval = setInterval(() => {
+    if (!roomId || !cfApp) return;
+    const pc = isHost ? screenPcMap['host_cf'] : viewerPc;
+    if (!pc) return;
+    const bad = ['disconnected','failed','closed'];
+    if (bad.includes(pc.iceConnectionState)) {
+      logStatus(`Poll detected bad ICE state: ${pc.iceConnectionState}`);
+      if (_reconnectAttempt === 0) { _reconnectAttempt = 0; _tryReconnect(); }
+    }
+  }, 8000);
+}
+
+window.addEventListener('offline', () => { logStatus('Network offline.'); showToast('📵 Network offline...'); });
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && roomId) {
+    const pc = isHost ? screenPcMap['host_cf'] : viewerPc;
+    if (pc && ['disconnected','failed'].includes(pc.iceConnectionState)) {
+      logStatus('Tab visible — connection bad, reconnecting...');
+      _reconnectAttempt = 0; _tryReconnect();
     }
   }
 });

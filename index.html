@@ -1,8 +1,8 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Saath — Watch Together ❤️</title>
+  <title>Nova — Watch Together ❤️</title>
   <meta name="description" content="Watch movies, shows and more together — in sync, in love." />
   <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no" />
   <link rel="manifest" href="manifest.json" />
@@ -915,10 +915,6 @@
         </div>
 
         <!-- I Drifted Off Button -->
-        <button id="driftedOffBtn" onclick="sendDriftedOff()">
-          🌙 I Drifted Off
-        </button>
-
         <!-- Video Control Buttons -->
         <div class="video-btns">
           <button class="vbtn" onclick="toggleFullscreen()" title="Fullscreen"><span class="material-symbols-outlined" id="fsIcon">fullscreen</span></button>
@@ -926,7 +922,6 @@
           <button class="vbtn" id="refreshBtn" onclick="manualResync()" title="Refresh Stream" style="display:none"><span class="material-symbols-outlined">refresh</span></button>
           <button class="vbtn heartbeat-btn" id="heartbeatBtn" onclick="sendHeartbeat()" title="Send Heartbeat ❤️" style="display:none"><span class="material-symbols-outlined" id="heartbeatIcon">favorite</span></button>
           <button class="vbtn" id="drawToggleToolbar" onclick="toggleDrawToolbar()" title="Draw on Screen" style="display:none"><span class="material-symbols-outlined">draw</span></button>
-          <button class="vbtn" id="secretNoteBtn" onclick="document.getElementById('secretNoteDrawer').classList.toggle('open')" title="Secret Note 💌" style="display:none"><span class="material-symbols-outlined">edit_note</span></button>
           <button class="vbtn" id="micBtnMain" onclick="toggleVoiceChat()" title="Toggle Microphone" style="background:rgba(239,68,68,0.2);border-color:rgba(239,68,68,0.3)"><span class="material-symbols-outlined" id="micIconMain">mic_off</span></button>
         </div>
 
@@ -944,7 +939,7 @@
       <div class="couple-header">
         <div class="couple-brand">
           <div class="couple-brand-icon"><span class="material-symbols-outlined">favorite</span></div>
-          <span class="couple-brand-name">Saath</span>
+          <span class="couple-brand-name">Nova</span>
         </div>
         <span class="couple-together-badge" id="togetherBadge">Watch Together ✨</span>
       </div>
@@ -1088,10 +1083,13 @@
             <div class="section-title host-controls-header">
               Host Controls
               <div class="host-mini-btns">
-                <button class="host-mini-btn change" onclick="window.replaceScreenShareBtn()">Change Screen</button>
                 <button class="host-mini-btn mute-all" onclick="window.muteAllViewers()">Mute All</button>
               </div>
             </div>
+            <!-- Always-visible Change Screen button -->
+            <button class="btn-action" onclick="window.replaceScreenShareBtn()" style="height:36px;font-size:12px;background:rgba(124,58,237,0.1);color:var(--accent2);border-color:rgba(124,58,237,0.35);margin-bottom:10px;width:100%;">
+              <span class="material-symbols-outlined" style="font-size:16px;">screen_share</span> Change Screen
+            </button>
             <div class="form-row">
               <div class="form-group"><label>Quality</label>
                 <select class="form-select" id="scrResS" onchange="document.getElementById('scrRes').value=this.value;">
@@ -1420,7 +1418,7 @@
     <div class="modal-card">
       <div class="modal-header">
         <div class="modal-logo"><span class="material-symbols-outlined">favorite</span></div>
-        <h1>Saath 🎬</h1>
+        <h1>Nova 🎬</h1>
         <p>Watch movies, reels & more — together</p>
       </div>
       <div class="modal-divider"></div>
@@ -1523,10 +1521,22 @@
     /* FULLSCREEN */
     window.toggleFullscreen = () => {
       const video = document.getElementById('remoteVideo'), wrap = document.querySelector('.video-wrap'), icon = document.getElementById('fsIcon');
-      if (isIOS) { if (video?.webkitEnterFullscreen) video.webkitEnterFullscreen(); return; }
+      if (!video || !wrap) return;
+      // Try native video fullscreen first (works best on iOS)
+      if (video.webkitEnterFullscreen && (!document.fullscreenEnabled)) {
+        video.webkitEnterFullscreen(); return;
+      }
       const inFs = document.fullscreenElement || document.webkitFullscreenElement;
-      if (!inFs) { if (wrap.requestFullscreen) wrap.requestFullscreen(); else if (wrap.webkitRequestFullscreen) wrap.webkitRequestFullscreen(); if (icon) icon.textContent = 'fullscreen_exit'; }
-      else { if (document.exitFullscreen) document.exitFullscreen(); else if (document.webkitExitFullscreen) document.webkitExitFullscreen(); if (icon) icon.textContent = 'fullscreen'; }
+      if (!inFs) {
+        if (wrap.requestFullscreen) wrap.requestFullscreen();
+        else if (wrap.webkitRequestFullscreen) wrap.webkitRequestFullscreen();
+        else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen();
+        if (icon) icon.textContent = 'fullscreen_exit';
+      } else {
+        if (document.exitFullscreen) document.exitFullscreen();
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+        if (icon) icon.textContent = 'fullscreen';
+      }
     };
     document.addEventListener('fullscreenchange', () => { const i = document.getElementById('fsIcon'); if (i) i.textContent = document.fullscreenElement ? 'fullscreen_exit' : 'fullscreen'; });
     document.addEventListener('webkitfullscreenchange', () => { const i = document.getElementById('fsIcon'); if (i) i.textContent = document.webkitFullscreenElement ? 'fullscreen_exit' : 'fullscreen'; });
@@ -1553,7 +1563,7 @@
           const style = pipWin.document.createElement('style');
           style.textContent = `
             *{margin:0;padding:0;box-sizing:border-box;font-family:'Inter',-apple-system,sans-serif;}
-            body{background:#1a0a12;color:#F5E6EF;display:flex;flex-direction:column;height:100vh;overflow:hidden;}
+            body{background:#1a0a12;color:#F5E6EF;display:flex;flex-direction:column;height:100vh;overflow:hidden;position:relative;}
             #pip-video{width:100%;flex:1;object-fit:contain;background:#000;min-height:0;}
             #pip-chat{display:flex;flex-direction:column;height:200px;border-top:1px solid rgba(201,75,123,0.2);}
             #pip-msgs{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:4px;font-size:11px;}
@@ -1574,6 +1584,8 @@
             .pip-header{padding:6px 10px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(201,75,123,0.15);background:rgba(20,8,16,0.95);}
             .pip-title{font-size:10px;font-weight:700;background:linear-gradient(135deg,#C94B7B,#F472B6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:.5px;}
             .pip-conn{font-size:9px;color:rgba(245,230,239,0.4);}
+            #pip-reaction-overlay{position:absolute;top:0;left:0;right:0;bottom:200px;pointer-events:none;overflow:hidden;}
+            @keyframes pipEmojiFloat{0%{opacity:1;transform:translateY(0) scale(1);}60%{opacity:.9;transform:translateY(-60px) scale(1.2);}100%{opacity:0;transform:translateY(-110px) scale(0.8);}}
           `;
           pipWin.document.head.appendChild(style);
 
@@ -1585,10 +1597,11 @@
           // Build PiP DOM
           pipWin.document.body.innerHTML = `
             <div class="pip-header">
-              <span class="pip-title">❤️ SAATH</span>
+              <span class="pip-title">❤️ Nova</span>
               <span class="pip-conn" id="pip-conn-label">Connected</span>
             </div>
             <video id="pip-video" autoplay playsinline muted></video>
+            <div id="pip-reaction-overlay"></div>
             <div id="pip-chat">
               <div class="pip-reactions">
                 <button class="pip-emj" data-e="❤️">❤️</button>
@@ -1607,6 +1620,8 @@
               </div>
             </div>
           `;
+          // Expose pipWin globally for emoji mirroring in app.js
+          window._pipWin = pipWin;
 
           // Attach video stream to PiP video
           const pipVideo = pipWin.document.getElementById('pip-video');
@@ -1650,7 +1665,7 @@
             obs.observe(connLabel, { characterData: true, childList: true });
           }
 
-          pipWin.addEventListener('pagehide', () => { pipWin = null; window._pipMsgHandler = null; });
+          pipWin.addEventListener('pagehide', () => { pipWin = null; window._pipWin = null; window._pipMsgHandler = null; });
           return;
         } catch (err) { console.warn('Document PiP failed, falling back:', err); }
       }
@@ -1695,7 +1710,7 @@
       const r = document.getElementById('roomId')?.value.trim();
       if (!r) return;
       const url = `${location.origin}${location.pathname}?room=${encodeURIComponent(r)}`;
-      if (navigator.share) { navigator.share({ title: 'Join me on Saath! ❤️', url }).catch(() => {}); }
+      if (navigator.share) { navigator.share({ title: 'Join me on Nova! ❤️', url }).catch(() => {}); }
       else { navigator.clipboard?.writeText(url).then(() => { const t = document.getElementById('toast'); t.textContent = '🔗 Link copied!'; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2500); }); }
     };
 
@@ -2171,3 +2186,5 @@
   <script type="module" src="app.js"></script>
 </body>
 </html>
+
+
