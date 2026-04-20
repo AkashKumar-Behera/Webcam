@@ -24,7 +24,7 @@ async function fetchIceServers() {
     if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
     const data = await res.json();
     if (data.iceServers) {
-      servers.iceServers = data.iceServers;
+      servers.iceServers = [...servers.iceServers, ...data.iceServers];
       logStatus("Cloudflare TURN Credentials loaded successfully.");
     }
   } catch (e) { 
@@ -35,7 +35,10 @@ async function fetchIceServers() {
 fetchIceServers();
 
 const servers = {
-  iceServers: [{ urls: "stun:stun.cloudflare.com:3478" }],
+  iceServers: [
+    { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
+    { urls: "stun:stun.cloudflare.com:3478" }
+  ],
   iceCandidatePoolSize: 10,
   bundlePolicy: "max-bundle"
 };
@@ -226,15 +229,22 @@ function applyRoleCursor() {
 
 // Show session buttons after joining
 function showSessionButtons() {
-  ['heartbeatBtn','drawToggleToolbar'].forEach(id => {
+  ['drawToggleToolbar'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'flex';
   });
+  // Change Screen only for host
+  if (isHost) {
+    const cs = document.getElementById('changeScreenBtn');
+    if (cs) cs.style.display = 'flex';
+    const qs = document.getElementById('quickResSelect');
+    if (qs) qs.style.display = 'flex';
+  }
 }
 
 // Hide session buttons when leaving
 function hideSessionButtons() {
-  ['heartbeatBtn','drawToggleToolbar'].forEach(id => {
+  ['drawToggleToolbar', 'changeScreenBtn', 'quickResSelect'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
   });
@@ -274,11 +284,20 @@ function listenHeartbeat() {
   });
 }
 
-// Listen to drifted off events
-function listenDriftedOff() {
-  onValue(ref(db, `rooms/${roomId}/signals/driftedOff`), snap => {
-    const d = snap.val(); if (!d || d.from === myName) return;
-    showToast(`🌙 ${d.from} drifted off... waiting for you 💤`);
+// Listen to stream status for pause/resume
+function listenStreamStatus() {
+  onValue(ref(db, `rooms/${roomId}/signals/streamStatus`), snap => {
+    const s = snap.val(); if (!s) return;
+    const overlay = document.getElementById('waitOverlay');
+    if (overlay) {
+      if (s.active === false && !isHost) {
+        overlay.style.display = 'flex';
+        document.getElementById('waitOverlayTitle').textContent = "Waiting for Host";
+        document.getElementById('waitOverlaySub').textContent = "Host has paused screen sharing. Stay tuned.";
+      } else if (s.active === true) {
+        overlay.style.display = 'none';
+      }
+    }
   });
 }
 
@@ -293,6 +312,17 @@ function saveTimeCapsule() {
   if (dur >= 2) showToast(`✨ ${dur} min together saved in memories!`);
 }
 
+window.handleScreenEnd = () => {
+  if (!isHost) return;
+  const overlay = document.getElementById('waitOverlay');
+  if (overlay) {
+    overlay.style.display = 'flex';
+    document.getElementById('waitOverlayTitle').textContent = "Screen Share Paused";
+    document.getElementById('waitOverlaySub').textContent = "Click 'Change Screen' below to resume sharing.";
+  }
+  if (roomId && db) set(ref(db, `rooms/${roomId}/signals/streamStatus`), { active: false, ts: Date.now() });
+};
+
 // Bootstrap draw + secret note listeners for both host and viewer
 function bootstrapCoupleFeatures() {
   const helpers = { set, ref, onValue, onChildAdded, push };
@@ -301,6 +331,7 @@ function bootstrapCoupleFeatures() {
   window._startThemeSyncListener?.(roomId, db, helpers);
   listenHeartbeat();
   listenMood();
+  listenStreamStatus();
   publishMood();
   applyRoleCursor();
   showSessionButtons();
@@ -513,7 +544,12 @@ window.replaceScreenShareBtn = async () => {
   if (localStream) { localStream.getTracks().forEach(t => t.stop()); }
   localStream = newStream;
   const video = document.getElementById("remoteVideo"); video.srcObject = localStream;
-  vt.onended = () => leaveCall();
+  vt.onended = () => window.handleScreenEnd();
+
+  // Hide wait overlay and notify viewers
+  const overlay = document.getElementById('waitOverlay');
+  if (overlay) overlay.style.display = 'none';
+  if (roomId && db) set(ref(db, `rooms/${roomId}/signals/streamStatus`), { active: true, ts: Date.now() });
 
   // Replace tracks and apply bitrate
   Object.values(screenPcMap).forEach(async pc => {
@@ -594,8 +630,15 @@ async function captureScreen() {
   }
 
   const vt = localStream.getVideoTracks()[0]; if (vt && "contentHint" in vt) vt.contentHint = "detail";
+  vt.onended = () => window.handleScreenEnd();
+
+  // Initial overlay clear
+  const overlay = document.getElementById('waitOverlay');
+  if (overlay) overlay.style.display = 'none';
+  if (roomId && db) set(ref(db, `rooms/${roomId}/signals/streamStatus`), { active: true, ts: Date.now() });
+
   const video = document.getElementById("remoteVideo"); video.srcObject = localStream; video.muted = true;
-  vt.onended = () => leaveCall(); return localStream;
+  return localStream;
 }
 
 /* OPTIMIZE SENDER */
@@ -1035,6 +1078,7 @@ window.leaveCall = async () => {
   saveTimeCapsule();
   setAmbientGlow(false);
   hideSessionButtons();
+  const wo = document.getElementById('waitOverlay'); if(wo) wo.style.display = 'none';
   document.body.classList.remove('host-cursor','viewer-cursor');
   stopStats(); stopSilenceLoop(); firebaseUnsubs.forEach(u => { try { u(); } catch (_) { } }); firebaseUnsubs = [];
   Object.values(screenPcMap).forEach(pc => { try { pc.close(); } catch (_) { } }); screenPcMap = {};
