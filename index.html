@@ -152,10 +152,10 @@
     }
     .fs-chat-msg b { color:var(--pink-soft); }
     @keyframes fsChatIn {
-      0%{opacity:0;transform:translateY(8px) scale(0.95)}
-      8%{opacity:1;transform:translateY(0) scale(1)}
-      75%{opacity:1}
-      100%{opacity:0;transform:translateY(-4px)}
+      0%{opacity:0;transform:translateY(30px) scale(0.95)}
+      10%{opacity:1;transform:translateY(0) scale(1)}
+      80%{opacity:1;transform:translateY(-25px)}
+      100%{opacity:0;transform:translateY(-50px)}
     }
 
     /* EMOJI FLOAT */
@@ -163,16 +163,25 @@
       position:absolute; bottom:60px; left:0; right:0; height:260px;
       pointer-events:none; overflow:visible; z-index:12;
     }
-    .emoji-float {
-      position:absolute; bottom:0; font-size:30px;
-      animation:emojiRise 2.8s ease-out forwards; pointer-events:none;
-      filter:drop-shadow(0 2px 4px rgba(0,0,0,0.4));
+    .emoji-bubble {
+      position:absolute; bottom:10px; font-size:36px;
+      animation: emojiFloat 4.5s ease-out forwards;
+      filter: drop-shadow(0 2px 8px rgba(0,0,0,0.4));
     }
-    @keyframes emojiRise {
-      0%{opacity:1;transform:translateY(0) scale(0.5) rotate(-5deg)}
-      15%{opacity:1;transform:translateY(-24px) scale(1.15) rotate(5deg)}
-      100%{opacity:0;transform:translateY(-240px) scale(0.7) rotate(-10deg)}
+    @keyframes emojiFloat {
+      0%{transform:translateY(0) scale(0)}
+      10%{transform:translateY(-15px) scale(1.2)}
+      50%{opacity:1;transform:translateY(-100px) scale(1) rotate(5deg)}
+      100%{opacity:0;transform:translateY(-200px) scale(0.8) rotate(-15deg)}
     }
+
+    /* FULLSCREEN POPUP MENUS */
+    .fs-popup-menu {
+      display:none; position:absolute;
+      background:rgba(13,10,20,0.85); backdrop-filter:blur(10px);
+      border:1px solid rgba(201,75,123,0.3); border-radius:16px;
+    }
+    .fs-popup-menu.active { display:flex; }
 
     /* AUTOPLAY OVERLAY */
     #autoplayOverlay {
@@ -964,8 +973,36 @@
           <button class="vbtn" id="micBtnMain" onclick="toggleVoiceChat()" title="Toggle Microphone" style="background:rgba(239,68,68,0.2);border-color:rgba(239,68,68,0.3)"><span class="material-symbols-outlined" id="micIconMain">mic_off</span></button>
         </div>
 
-        <!-- Floating Chat Overlay on Video -->
-        <div class="fs-chat-overlay" id="fullscreenChatOverlay"></div>
+        <!-- Floating Chat Overlay on Video (Incoming auto-fade) -->
+        <div class="fs-chat-overlay" id="fullscreenChatOverlay" style="bottom:150px;"></div>
+
+        <!-- FULLSCREEN INTERACTIVE CHAT & REACTION TOOLS -->
+        <div class="fs-tools" id="fsToolsOverlay" style="display:none; position:absolute; right:14px; bottom:20px; pointer-events:none; z-index:45; flex-direction:column; align-items:flex-end; gap:14px;">
+          
+          <!-- Reactions Dropdown -->
+          <div style="position:relative; pointer-events:auto; display:flex; flex-direction:column; align-items:flex-end;">
+            <div id="fsReactMenu" class="fs-popup-menu" style="bottom:100%; right:0; padding:10px; flex-wrap:wrap; width:200px; gap:8px; margin-bottom:10px;">
+              <button class="emj-btn" onclick="sendReaction('❤️')">❤️</button><button class="emj-btn" onclick="sendReaction('😂')">😂</button><button class="emj-btn" onclick="sendReaction('👍')">👍</button><button class="emj-btn" onclick="sendReaction('😮')">😮</button><button class="emj-btn" onclick="sendReaction('🔥')">🔥</button><button class="emj-btn" onclick="sendReaction('💀')">💀</button>
+            </div>
+            <button class="vbtn" id="fsReactToggle" onclick="document.getElementById('fsReactMenu').classList.toggle('active')" style="background:rgba(201,75,123,0.3); border-color:rgba(201,75,123,0.5); border-radius:12px; padding:10px;" title="Reactions">
+              <span class="material-symbols-outlined">add_reaction</span>
+            </button>
+          </div>
+
+          <!-- Chat Toggle & Box -->
+          <div style="position:relative; pointer-events:auto; display:flex; flex-direction:column; align-items:flex-end;">
+            <div id="fsChatBox" class="fs-popup-menu" style="bottom:100%; right:0; margin-bottom:10px; width:320px; max-width:90vw; flex-direction:column; background:transparent; border:none; box-shadow:none;">
+               <div id="fsChatMessages" style="flex:1; overflow-y:auto; padding:10px; display:flex; flex-direction:column; gap:6px; max-height:250px; scrollbar-width:none;"></div>
+               <div style="display:flex; background:rgba(13,10,20,0.9); border:1px solid rgba(201,75,123,0.3); border-radius:30px; padding:4px 8px; margin-top:8px;">
+                 <textarea id="fsChatInput" placeholder="Chat here..." rows="1" style="background:transparent; border:none; color:#fff; outline:none; resize:none; flex:1; font-size:13px; font-family:'Inter';" onkeypress="if(event.key==='Enter' && !event.shiftKey && window.innerWidth>768){event.preventDefault(); window.sendChatFs();}"></textarea>
+                 <button onclick="window.sendChatFs()" style="background:transparent; border:none; color:var(--accent); cursor:pointer;"><span class="material-symbols-outlined">send</span></button>
+               </div>
+            </div>
+            <button class="vbtn" id="fsChatBtn" onclick="document.getElementById('fsChatBox').classList.toggle('active'); document.getElementById('fsChatInput').focus();" style="background:rgba(201,75,123,0.3); border-color:rgba(201,75,123,0.5); border-radius:12px; padding:10px;" title="Open Chat">
+              <span class="material-symbols-outlined">chat</span>
+            </button>
+          </div>
+        </div>
 
         <!-- Emoji Float Zone -->
         <div class="emoji-overlay" id="emojiOverlay"></div>
@@ -1023,7 +1060,7 @@
             <button class="chat-attach" id="micBtnChat" onclick="toggleVoiceChat()" title="Voice Chat">
               <span class="material-symbols-outlined" id="micIconChat" style="font-size:18px;color:rgba(239,68,68,0.7);">mic_off</span>
             </button>
-            <textarea class="chat-input" id="chatInput" placeholder="Say something... 💬" rows="1" style="resize:none; padding-top:10px; border-radius:20px; overflow-y:auto;" oninput="this.style.height='';this.style.height=Math.min(this.scrollHeight, 100)+'px';" onkeypress="if(event.key==='Enter' && !event.shiftKey){event.preventDefault();sendChat();}"></textarea>
+            <textarea class="chat-input" id="chatInput" placeholder="Say something... 💬" rows="1" style="resize:none; padding-top:10px; border-radius:20px; overflow-y:auto;" oninput="this.style.height='';this.style.height=Math.min(this.scrollHeight, 100)+'px';" onkeypress="if(event.key==='Enter' && !event.shiftKey && window.innerWidth>768){event.preventDefault();window.sendChat();}"></textarea>
             <button class="chat-send" onclick="sendChat()" style="margin-right:10px;"><span class="material-symbols-outlined" style="font-size:17px;">send</span></button>
             <input type="file" id="chatFileInput" accept="image/*" style="display:none" onchange="window.handleChatImageUpload(this)">
           </div>
@@ -1096,6 +1133,12 @@
                 <input class="form-input" id="roomId" placeholder="Enter room code" maxlength="12" spellcheck="false" style="flex:1;" />
                 <button class="btn-action" onclick="generateRoom()" style="width:42px;padding:0;flex-shrink:0;"><span class="material-symbols-outlined">autorenew</span></button>
               </div>
+            </div>
+            <div class="form-group" style="margin-top:10px;">
+              <label style="display:flex; align-items:center; gap:10px; cursor:pointer;" title="Mute incoming reaction sounds">
+                <input type="checkbox" id="muteReactionsToggle" style="width:16px;height:16px;accent-color:var(--accent);">
+                <span style="font-size:13px; font-weight:400;">Mute Reaction Sounds</span>
+              </label>
             </div>
             <div class="form-group" id="lowDataGroup">
               <input type="checkbox" id="lowDataMode" style="width:16px;height:16px;cursor:pointer;" onchange="showToast(this.checked?'📉 Low Data Mode ON':'📉 Low Data Mode OFF')" />
@@ -1556,7 +1599,6 @@
     window.toggleFullscreen = () => {
       const video = document.getElementById('remoteVideo'), wrap = document.querySelector('.video-wrap'), icon = document.getElementById('fsIcon');
       if (!video || !wrap) return;
-      // Try native video fullscreen first (works best on iOS)
       if (video.webkitEnterFullscreen && (!document.fullscreenEnabled)) {
         video.webkitEnterFullscreen(); return;
       }
@@ -1565,11 +1607,26 @@
         if (wrap.requestFullscreen) wrap.requestFullscreen();
         else if (wrap.webkitRequestFullscreen) wrap.webkitRequestFullscreen();
         else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen();
-        if (icon) icon.textContent = 'fullscreen_exit';
       } else {
         if (document.exitFullscreen) document.exitFullscreen();
         else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
-        if (icon) icon.textContent = 'fullscreen';
+      }
+    };
+    document.addEventListener('fullscreenchange', () => {
+      const inFs = !!document.fullscreenElement;
+      const fsTools = document.getElementById('fsToolsOverlay');
+      if (fsTools) fsTools.style.display = inFs ? 'flex' : 'none';
+      const icon = document.getElementById('fsIcon');
+      if (icon) icon.textContent = inFs ? 'fullscreen_exit' : 'fullscreen';
+    });
+
+    window.sendChatFs = () => {
+      const inp = document.getElementById('fsChatInput');
+      const val = inp?.value.trim();
+      if (val) {
+        document.getElementById('chatInput').value = val;
+        if (window.sendChat) window.sendChat();
+        inp.value = '';
       }
     };
     document.addEventListener('fullscreenchange', () => { const i = document.getElementById('fsIcon'); if (i) i.textContent = document.fullscreenElement ? 'fullscreen_exit' : 'fullscreen'; });
@@ -1598,11 +1655,18 @@
           style.textContent = `
             *{margin:0;padding:0;box-sizing:border-box;font-family:'Inter',-apple-system,sans-serif;}
             body{background:#1a0a12;color:#F5E6EF;display:flex;flex-direction:column;height:100vh;overflow:hidden;position:relative;}
-            #pip-video{width:100%;flex:1;object-fit:contain;background:#000;min-height:0;}
-            #pip-chat{display:flex;flex-direction:column;height:200px;border-top:1px solid rgba(201,75,123,0.2);}
-            #pip-msgs{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:4px;font-size:11px;}
-            #pip-msgs::-webkit-scrollbar{width:2px;}
-            #pip-msgs::-webkit-scrollbar-thumb{background:rgba(201,75,123,0.3);border-radius:1px;}
+            #pip-tabs{display:flex;background:#1a0a12;border-bottom:1px solid rgba(201,75,123,0.2);}
+            .pip-tab{flex:1;padding:8px;text-align:center;font-size:10px;color:#F5E6EF;background:none;border:none;cursor:pointer;opacity:0.6;transition:0.2s;}
+            .pip-tab.active{opacity:1;border-bottom:2px solid #C94B7B;font-weight:600;}
+            .pip-panel{display:none;flex:1;flex-direction:column;height:200px;}
+            .pip-panel.active{display:flex;}
+            #pip-video-container{position:relative;flex:1;min-height:0;background:#000;display:flex;flex-direction:column;}
+            #pip-video{width:100%;height:100%;object-fit:contain;}
+            #pip-drawCanvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
+            #pip-chat{display:flex;flex-direction:column;height:100%;}
+            #pip-msgs,#pip-ppl,#pip-stats{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:4px;font-size:11px;}
+            #pip-msgs::-webkit-scrollbar,#pip-ppl::-webkit-scrollbar,#pip-stats::-webkit-scrollbar{width:2px;}
+            #pip-msgs::-webkit-scrollbar-thumb,#pip-ppl::-webkit-scrollbar-thumb,#pip-stats::-webkit-scrollbar-thumb{background:rgba(201,75,123,0.3);border-radius:1px;}
             .pip-msg{padding:4px 8px;border-radius:8px;line-height:1.4;max-width:90%;}
             .pip-msg.me{background:rgba(201,75,123,0.2);border:1px solid rgba(201,75,123,0.25);margin-left:auto;}
             .pip-msg.other{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);}
@@ -1612,13 +1676,14 @@
             .pip-reactions::-webkit-scrollbar{display:none;}
             .pip-emj{font-size:18px;background:none;border:none;cursor:pointer;padding:2px 4px;border-radius:4px;transition:.1s;}
             .pip-emj:hover{background:rgba(201,75,123,0.15);}
-            .pip-input{flex:1;padding:7px 12px;background:rgba(201,75,123,0.06);border:1px solid rgba(201,75,123,0.2);border-radius:20px;color:#F5E6EF;font-size:12px;outline:none;}
+            .pip-input{flex:1;padding:7px 12px;background:rgba(201,75,123,0.06);border:1px solid rgba(201,75,123,0.2);border-radius:20px;color:#F5E6EF;font-size:12px;outline:none;resize:none;}
             .pip-input::placeholder{color:rgba(245,230,239,0.4);}
             .pip-send{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#C94B7B,#7C3AED);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;}
             .pip-header{padding:6px 10px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(201,75,123,0.15);background:rgba(20,8,16,0.95);}
             .pip-title{font-size:10px;font-weight:700;background:linear-gradient(135deg,#C94B7B,#F472B6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:.5px;}
+            .pip-control-btn{background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.3);color:#fff;border-radius:8px;padding:2px 6px;font-size:10px;cursor:pointer;}
             .pip-conn{font-size:9px;color:rgba(245,230,239,0.4);}
-            #pip-reaction-overlay{position:absolute;top:0;left:0;right:0;bottom:200px;pointer-events:none;overflow:hidden;}
+            #pip-reaction-overlay{position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;overflow:hidden;}
             @keyframes pipEmojiFloat{0%{opacity:1;transform:translateY(0) scale(1);}60%{opacity:.9;transform:translateY(-60px) scale(1.2);}100%{opacity:0;transform:translateY(-110px) scale(0.8);}}
           `;
           pipWin.document.head.appendChild(style);
@@ -1632,11 +1697,22 @@
           pipWin.document.body.innerHTML = `
             <div class="pip-header">
               <span class="pip-title">❤️ Nova</span>
-              <span class="pip-conn" id="pip-conn-label">Connected</span>
+              <div style="display:flex;gap:6px;align-items:center;">
+                <button class="pip-control-btn" id="pipMicBtn">Mic Off</button>
+                <span class="pip-conn" id="pip-conn-label">Connected</span>
+              </div>
             </div>
-            <video id="pip-video" autoplay playsinline muted></video>
-            <div id="pip-reaction-overlay"></div>
-            <div id="pip-chat">
+            <div id="pip-video-container">
+              <video id="pip-video" autoplay playsinline muted></video>
+              <canvas id="pip-drawCanvas"></canvas>
+              <div id="pip-reaction-overlay"></div>
+            </div>
+            <div id="pip-tabs">
+              <button class="pip-tab active" data-tab="chat">CHAT</button>
+              <button class="pip-tab" data-tab="ppl">PEOPLE</button>
+              <button class="pip-tab" data-tab="stats">STATS</button>
+            </div>
+            <div class="pip-panel active" id="pip-panel-chat">
               <div class="pip-reactions">
                 <button class="pip-emj" data-e="❤️">❤️</button>
                 <button class="pip-emj" data-e="🎉">🎉</button>
@@ -1645,23 +1721,49 @@
                 <button class="pip-emj" data-e="👍">👍</button>
                 <button class="pip-emj" data-e="😍">😍</button>
                 <button class="pip-emj" data-e="💕">💕</button>
-                <button class="pip-emj" data-e="🍿">🍿</button>
+                <button class="pip-emj" data-e="✨">✨</button>
               </div>
               <div id="pip-msgs"><div style="text-align:center;color:rgba(245,230,239,0.3);font-size:10px;margin-top:10px;">Messages appear here 💬</div></div>
               <div class="pip-bottom">
-                <input class="pip-input" id="pip-input" placeholder="Say something..." />
+                <textarea class="pip-input" id="pip-input" placeholder="Say something..." rows="1"></textarea>
                 <button class="pip-send" id="pip-send-btn">➤</button>
               </div>
             </div>
+            <div class="pip-panel" id="pip-panel-ppl">
+              <div id="pip-ppl"><div style="text-align:center;color:rgba(245,230,239,0.3);font-size:10px;margin-top:10px;">Switch back to main window for full list</div></div>
+            </div>
+            <div class="pip-panel" id="pip-panel-stats">
+              <div id="pip-stats"><div style="text-align:center;color:rgba(245,230,239,0.3);font-size:10px;margin-top:10px;">Connections: Good</div></div>
+            </div>
           `;
-          // Expose pipWin globally for emoji mirroring in app.js
           window._pipWin = pipWin;
+          pipWin.approveViewer = window.approveViewer;
+          pipWin.denyViewer = window.denyViewer;
+          pipWin.kickViewer = window.kickViewer;
 
           // Attach video stream to PiP video
           const pipVideo = pipWin.document.getElementById('pip-video');
           pipVideo.srcObject = v.srcObject;
           pipVideo.play().catch(() => {});
+          
+          // Sync Draw Canvas Size
+          const resizeP = () => { const pc = pipWin.document.getElementById('pip-drawCanvas'); if (pc) { pc.width = pc.clientWidth; pc.height = pc.clientHeight; } };
+          new pipWin.ResizeObserver(resizeP).observe(pipWin.document.getElementById('pip-video-container'));
 
+          // Tabs Logic
+          pipWin.document.querySelectorAll('.pip-tab').forEach(t => {
+            t.addEventListener('click', () => {
+              pipWin.document.querySelectorAll('.pip-tab').forEach(x => x.classList.remove('active'));
+              pipWin.document.querySelectorAll('.pip-panel').forEach(x => x.classList.remove('active'));
+              t.classList.add('active');
+              pipWin.document.getElementById('pip-panel-' + t.dataset.tab).classList.add('active');
+            });
+          });
+
+          // Mic Trigger Sync
+          const mb = pipWin.document.getElementById('pipMicBtn');
+          mb.addEventListener('click', () => { if (window.toggleVoiceChat) window.toggleVoiceChat(); });
+          
           // Reaction buttons
           pipWin.document.querySelectorAll('.pip-emj').forEach(btn => {
             btn.addEventListener('click', () => { window.sendReaction(btn.dataset.e); });
@@ -1675,7 +1777,7 @@
             inp.value = '';
           };
           pipWin.document.getElementById('pip-send-btn').addEventListener('click', pipSend);
-          pipWin.document.getElementById('pip-input').addEventListener('keypress', e => { if (e.key === 'Enter') pipSend(); });
+          pipWin.document.getElementById('pip-input').addEventListener('keypress', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); pipSend(); } });
 
           // Mirror incoming chat messages to PiP
           window._pipMsgHandler = (sender, text, isMe) => {

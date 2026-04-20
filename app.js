@@ -338,6 +338,15 @@ function bootstrapCoupleFeatures() {
   updateOnlyUsBadge();
 }
 
+window.logStatus = msg => {
+  const c = document.getElementById("logBox");
+  if (c) c.innerHTML = `<div>${new Date().toLocaleTimeString()} - ${esc(msg)}</div>` + c.innerHTML;
+  if (window._pipWin && window._pipWin.document) {
+     const pipStats = window._pipWin.document.getElementById("pip-stats");
+     if (pipStats) pipStats.innerHTML = `<div>${new Date().toLocaleTimeString()} - ${esc(msg)}</div>` + pipStats.innerHTML;
+  }
+};
+
 function logStatus(msg) {
   console.log(`[STATUS] ${msg}`);
   const log = document.getElementById("connLog");
@@ -501,6 +510,10 @@ function renderPeopleTab() {
   if (!html) html = `<div class="ppl-empty"><span class="material-symbols-outlined">group</span><p>No one yet</p></div>`;
   c.innerHTML = html;
   const badge = document.getElementById("peopleBadge"); if (badge) { badge.textContent = pending.length; badge.style.display = pending.length > 0 ? "flex" : "none"; }
+  if (window._pipWin && window._pipWin.document) {
+    const pipPpl = window._pipWin.document.getElementById("pip-ppl");
+    if (pipPpl) pipPpl.innerHTML = html;
+  }
 }
 
 window.approveViewer = async (vid, name) => { await set(ref(db, `rooms/${roomId}/waitroom/${vid}/status`), "approved"); delete pendingViewers[vid]; renderPeopleTab(); };
@@ -1099,6 +1112,8 @@ window.leaveCall = async () => {
   const snd = document.getElementById("secretNoteDrawer"); if (snd) snd.classList.remove("open");
   updateConnStatus("disconnected"); changeActionBtns("init");
   document.getElementById("chatMessages").innerHTML = `<div style="text-align:center;color:var(--text-muted);margin-top:30px;font-size:11px;">💬 Messages visible to everyone</div>`;
+  const fsC = document.getElementById("fsChatMessages");
+  if (fsC) fsC.innerHTML = "";
   connectedViewers = {}; pendingViewers = {}; renderPeopleTab();
   roomId = ""; isHost = false; bgAudioSet = false; myName = ""; hostInfo = null; showToast("👋 Disconnected");
 };
@@ -1154,6 +1169,8 @@ function startChatListener() {
       <div class="chat-bubble ${isMe ? "me" : "other"}">${contentHtml}</div>
     `;
     const c = document.getElementById("chatMessages"); if (c) { c.appendChild(wrap); scrollChat(); }
+    const fsC = document.getElementById("fsChatMessages");
+    if (fsC) { fsC.insertAdjacentHTML('beforeend', wrap.outerHTML); fsC.scrollTop = fsC.scrollHeight; }
     if (!document.getElementById("contentChat")?.classList.contains("active")) {
       const badge = document.getElementById("chatBadge"); if (badge) { badge.style.display = "inline-flex"; }
       try { new Audio("https://actions.google.com/sounds/v1/water/water_drop.ogg").play(); } catch (e) { }
@@ -1177,15 +1194,26 @@ window.fullScreenImg = (src) => {
 /* REACTIONS */
 window.sendReaction = emoji => {
   if (!roomId) return showToast("⚠️ Connect first");
-  push(ref(db, `rooms/${roomId}/reactions`), { emoji, time: Date.now() + Math.random() });
-  triggerEmojiUI(emoji);
-  playReactionSound(emoji);
+  push(ref(db, `rooms/${roomId}/reactions`), { emoji, sender: window.myName || "Anonymous", time: Date.now() });
 };
-function startReactionListener() { if (!roomId) return; const ts = Date.now(); const u = onChildAdded(ref(db, `rooms/${roomId}/reactions`), snap => { const d = snap.val(); if (!d || d.time < ts) return; triggerEmojiUI(d.emoji); }); firebaseUnsubs.push(u); }
+function startReactionListener() { 
+  if (!roomId) return; 
+  const ts = Date.now(); 
+  const u = onChildAdded(ref(db, `rooms/${roomId}/reactions`), snap => { 
+    const d = snap.val(); 
+    if (!d || d.time < ts) return; 
+    triggerEmojiUI(d.emoji); 
+    const muteToggle = document.getElementById("muteReactionsToggle");
+    if (!muteToggle || !muteToggle.checked) {
+      playReactionSound(d.emoji);
+    }
+  }); 
+  firebaseUnsubs.push(u); 
+}
 function triggerEmojiUI(emoji) {
   const ov = document.getElementById("emojiOverlay");
   if (ov) {
-    const el = document.createElement("div"); el.className = "emoji-float";
+    const el = document.createElement("div"); el.className = "emoji-bubble";
     el.textContent = emoji; el.style.left = (15 + Math.random() * 70) + "%";
     ov.appendChild(el); el.addEventListener("animationend", () => el.remove(), { once: true });
   }
