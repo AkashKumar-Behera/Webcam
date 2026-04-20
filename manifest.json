@@ -1,6 +1,6 @@
 {
-  "name": "Live Party",
-  "short_name": "Live Party",
+  "name": "Nova-watchparty",
+  "short_name": "Nova-watchparty",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#000000",

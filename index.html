@@ -10,6 +10,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="mobile-web-app-capable" content="yes">
+  <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
   <link rel="apple-touch-icon" href="icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -68,9 +69,34 @@
 
     /* LAYOUT */
     .app-layout { display:flex; height:100vh; height:100dvh; position:relative; z-index:1; }
-    .main-col { flex:1; display:flex; flex-direction:column; min-width:0; padding:15px; padding-bottom:0; gap:10px; }
-    .video-wrap { flex:1; position:relative; background:#000; overflow:hidden; min-height:0; border-radius:14px; }
-    #remoteVideo { width:100%; height:100%; object-fit:contain; background:transparent; }
+    .main-col { flex:1; display:flex; flex-direction:column; min-width:0; padding:15px; padding-bottom:0; gap:10px; overflow:hidden; position:relative; }
+    .video-wrap { 
+      flex:1; position:relative; background:transparent; overflow:visible; min-height:0; border-radius:0; 
+      display:flex; align-items:center; justify-content:center;
+      transition: background 0.8s ease, padding 0.4s ease;
+    }
+    @media (min-width: 769px) {
+      .video-wrap { padding: 7px 10px 20px 10px; }
+      #remoteVideo { border-radius: 0; box-shadow: none; }
+    }
+    .ambient-glow-layer {
+      position:absolute; inset: -20%; width:140%; height:140%;
+      z-index:1; filter: blur(120px) saturate(var(--ambient-sat, 1.5)); 
+      opacity: var(--ambient-op, 0.6);
+      background: var(--dynamic-glow, transparent);
+      pointer-events:none; transition: opacity 0.5s ease;
+      object-fit: cover;
+    }
+    #remoteVideo { 
+      width:100%; height:100%; object-fit:contain; background:transparent; transition: all 0.3s ease; z-index:2; position:relative;
+      /* The Secret Sauce: Edge Feathering for seamless blend */
+      -webkit-mask-image: linear-gradient(to right, transparent, black 1%, black 99%, transparent),
+                          linear-gradient(to bottom, transparent, black 1%, black 99%, transparent);
+      mask-image: linear-gradient(to right, transparent, black 1%, black 99%, transparent), 
+                  linear-gradient(to bottom, transparent, black 1%, black 99%, transparent);
+      mask-composite: intersect;
+      -webkit-mask-composite: destination-in;
+    }
     #bgAudio { display:none; }
 
     /* NO SIGNAL */
@@ -121,18 +147,12 @@
       font-size:9px; font-weight:700; letter-spacing:.8px; color:var(--text-muted);
     }
 
-    /* VIDEO BUTTONS */
+    /* VIDEO BUTTONS & POPUP (HORIZONTAL) */
     .video-btns {
       position:absolute; bottom:14px; right:14px; z-index:45;
-      display:flex; flex-direction:column; gap:7px;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      display:flex; flex-direction:row-reverse; align-items:center; gap:8px;
     }
-    :fullscreen .video-btns, :-webkit-full-screen .video-btns {
-      position:absolute; inset:0; pointer-events:none;
-      background:transparent; border:none; padding:0; flex-direction:row;
-    }
-    .non-fs-btns { display:flex; flex-direction:column; gap:7px; }
-    :fullscreen .non-fs-btns, :-webkit-full-screen .non-fs-btns { display:none !important; }
+    :fullscreen .video-btns, :-webkit-full-screen .video-btns { display:none !important; }
 
     /* FULLSCREEN MOBILE REFINEMENTS */
     .fs-mob-left, .fs-mob-right { 
@@ -142,19 +162,36 @@
     :fullscreen .fs-mob-left, :-webkit-full-screen .fs-mob-left { display:flex; left:20px; align-items:flex-start; }
     :fullscreen .fs-mob-right, :-webkit-full-screen .fs-mob-right { display:flex; right:20px; align-items:flex-end; }
     
-    /* MOBILE NON-FS CONTROLS (HORIZONTAL) */
+    .non-fs-popup {
+      display:none; flex-direction:row; gap:8px;
+      background:rgba(15,12,22,0.88); backdrop-filter:blur(25px);
+      padding:8px 12px; border-radius:30px; border:1px solid rgba(201,75,123,0.3);
+      box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+      transform-origin: right center;
+      animation: popupOpenHoriz 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    .non-fs-popup.active { display:flex; }
+    
+    @keyframes popupOpenHoriz {
+      from { transform: scale(0.6) translateX(40px); opacity: 0; }
+      to { transform: scale(1) translateX(0); opacity: 1; }
+    }
+
+    /* MOBILE OVERRIDE FOR NON-FS CONTROLS */
     @media (max-width: 768px) {
       .video-btns {
         bottom: 25px;
-        right: 50%;
-        transform: translateX(50%);
-        flex-direction: row !important;
-        width: auto;
-        justify-content: center;
+        left: 20px;
+        right: auto;
+        flex-direction: row;
       }
-      .non-fs-btns {
-        flex-direction: row !important;
-        gap: 12px;
+      .non-fs-popup { 
+        transform-origin: left center; 
+        background: rgba(13,10,20,0.95);
+      }
+      @keyframes popupOpenHoriz {
+        from { transform: scale(0.8) translateX(-20px); opacity: 0; }
+        to { transform: scale(1) translateX(0); opacity: 1; }
       }
     }
     .fs-only { display:none !important; }
@@ -172,8 +209,15 @@
 
     :fullscreen #remoteVideo, :-webkit-full-screen #remoteVideo {
       object-position: top center;
-      width: 94%; height: 88%; margin: auto;
+      width: 92%; height: 86%; margin: auto;
       transform: translateY(2%);
+      /* Seamless blend for fullscreen too */
+      -webkit-mask-image: linear-gradient(to right, transparent, black 2%, black 98%, transparent),
+                          linear-gradient(to bottom, transparent, black 2%, black 98%, transparent);
+      mask-image: linear-gradient(to right, transparent, black 2%, black 98%, transparent), 
+                  linear-gradient(to bottom, transparent, black 2%, black 98%, transparent);
+      mask-composite: intersect;
+      -webkit-mask-composite: destination-in;
     }
     :fullscreen .no-signal, :-webkit-full-screen .no-signal {
       justify-content: flex-start; padding-top: 20%;
@@ -694,14 +738,7 @@
 
     /* AMBIENT GLOW — cinema feel when streaming */
     .video-wrap.streaming::before {
-      content:''; position:absolute; inset:-2px; z-index:1; pointer-events:none;
-      border-radius:0;
-      box-shadow: inset 0 0 60px rgba(201,75,123,0.18), inset 0 0 30px rgba(201,75,123,0.08);
-      animation: cinemaGlow 3s ease-in-out infinite alternate;
-    }
-    @keyframes cinemaGlow {
-      0%   { box-shadow: inset 0 0 60px rgba(201,75,123,0.18), inset 0 0 30px rgba(201,75,123,0.06); }
-      100% { box-shadow: inset 0 0 80px rgba(201,75,123,0.28), inset 0 0 40px rgba(124,58,237,0.1); }
+      display: none; /* Replaced by video-ambient-back */
     }
 
     /* ONLY US BADGE */
@@ -991,8 +1028,9 @@
         </div>
       </div>
 
-      <div class="video-wrap" id="videoWrap">
-        <video id="remoteVideo" autoplay playsinline muted></video>
+      <div class="video-wrap" id="videoWrap" style="background:transparent !important; overflow:visible;">
+        <canvas id="ambientCanvas" class="ambient-glow-layer"></canvas>
+        <video id="remoteVideo" autoplay playsinline muted style="z-index:5; position:relative;"></video>
         <audio id="bgAudio" playsinline loop></audio>
 
         <!-- Wait Overlay (When screen share paused) -->
@@ -1021,7 +1059,7 @@
         </div>
 
         <!-- No Signal State -->
-        <div class="no-signal" id="noSignal">
+        <div class="no-signal" id="noSignal" style="background:rgba(15,12,22,0.4); backdrop-filter:blur(10px); border-radius:20px;">
           <div class="ns-icon"><span class="material-symbols-outlined">movie</span></div>
           <h3>Waiting for Screen Share</h3>
           <p>Start a session to watch together ❤️</p>
@@ -1036,23 +1074,24 @@
         </div>
 
 
-              <div class="video-btns">
-          <!-- Non-FS vertical stack stays the same -->
-          <div class="non-fs-btns">
-            <button class="vbtn" onclick="toggleFullscreen()" title="Fullscreen"><span class="material-symbols-outlined" id="fsIcon">fullscreen</span></button>
-            <button class="vbtn" id="pipBtn" onclick="togglePip()" title="Picture-in-Picture" style="display:none"><span class="material-symbols-outlined">picture_in_picture</span></button>
-            <button class="vbtn" id="refreshBtn" onclick="manualResync()" title="Refresh Stream" style="display:none"><span class="material-symbols-outlined">refresh</span></button>
-            
+        <div class="video-btns">
+          <!-- Popup Menu -->
+          <div id="nonFsPopup" class="non-fs-popup">
+             <button class="vbtn" id="changeScreenBtn" onclick="window.replaceScreenShareBtn()" style="display:none;" title="Change Screen"><span class="material-symbols-outlined">screen_share</span></button>
+            <button class="vbtn" onclick="toggleFullscreen()" title="Fullscreen"><span class="material-symbols-outlined">fullscreen</span></button>
+            <button class="vbtn" onclick="togglePip()" title="Picture-in-Picture"><span class="material-symbols-outlined">picture_in_picture</span></button>
+            <button class="vbtn" id="refreshBtn" onclick="manualResync()" style="display:none;" title="Refresh Stream"><span class="material-symbols-outlined">refresh</span></button>
             <!-- Resolution Select (Main) -->
             <select id="quickResSelect" class="vbtn" style="display:none; width:42px; padding:0; font-size:9px;" onchange="document.getElementById('scrResS').value=this.value; window.replaceScreenShareBtn()">
                <option value="2160p">4K</option><option value="1440p">2K</option><option value="1080p" selected>1080</option><option value="720p">720</option>
             </select>
-            
-            <!-- Draw Tool (Main) -->
             <button class="vbtn" id="drawToggleToolbar" onclick="toggleDrawToolbar()" style="display:none;" title="Draw Tool"><span class="material-symbols-outlined">draw</span></button>
-
             <button class="vbtn" id="micBtnMain" onclick="toggleVoiceChat()" title="Toggle Microphone" style="background:rgba(239,68,68,0.2);border-color:rgba(239,68,68,0.3)"><span class="material-symbols-outlined" id="micIconMain">mic_off</span></button>
           </div>
+
+          <!-- Trigger Button -->
+          <button class="vbtn" id="nonFsTrigger" onclick="toggleNonFsPopup()" style="background:rgba(15,12,22,0.9) !important; border:1px solid rgba(255,255,255,0.1) !important; box-shadow:none !important;"><span class="material-symbols-outlined" style="opacity:0.6;">apps</span></button>
+        </div>
 
           <!-- FULLSCREEN ONLY: LEFT POPUP -->
           <div class="fs-mob-left">
@@ -1103,10 +1142,9 @@
         <!-- Emoji Float Zone -->
         <div class="emoji-overlay" id="emojiOverlay"></div>
       </div>
-    </div>
 
-    <!-- SIDE PANEL -->
-    <div class="side-panel">
+      <!-- SIDE PANEL -->
+      <div class="side-panel">
       <!-- Brand Header -->
       <div class="couple-header">
         <div class="couple-brand">
@@ -1519,13 +1557,16 @@
               </div>
             </div>
 
-            <!-- DYNAMIC / SYNC / GRADIENT MODES -->
             <div class="theme-toggle-row">
               <div style="flex:1;">
                 <label style="font-size:12px;font-weight:600;">🌈 Dynamic Mode</label>
                 <small>Video colors → UI colors (Chrome only)</small>
               </div>
               <div class="toggle-sw" id="dynamicToggle" onclick="toggleDynamic()"></div>
+            </div>
+            <div id="ambientControl" style="padding:0 15px 15px; display:none;">
+               <div style="font-size:10px; color:var(--text-muted); margin-bottom:6px;">Ambient Power</div>
+               <input type="range" class="styled-range" id="ambientSlider" min="0" max="100" value="60" oninput="liveApplyAmbient(this.value)" />
             </div>
             <div class="theme-toggle-row" id="syncToggleRow">
               <div style="flex:1;">
@@ -1672,6 +1713,23 @@
 
   <script>
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      if(!t) return;
+      t.textContent = msg;
+      t.className = 'show';
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(() => t.className = '', 3000);
+    }
+
+    window.toggleNonFsPopup = () => {
+      const p = document.getElementById("nonFsPopup");
+      const t = document.getElementById("nonFsTrigger");
+      if (!p) return;
+      const isActive = p.classList.toggle("active");
+      if (t) t.innerHTML = `<span class="material-symbols-outlined">${isActive ? 'close' : 'apps'}</span>`;
+    };
 
     window.switchTab = tab => {
 
@@ -1694,6 +1752,10 @@
 
     /* FULLSCREEN */
     window.toggleFullscreen = () => {
+      // Close open standard popups
+      const p = document.getElementById("nonFsPopup");
+      if (p && p.classList.contains("active")) window.toggleNonFsPopup();
+
       const video = document.getElementById('remoteVideo'), wrap = document.querySelector('.video-wrap'), icon = document.getElementById('fsIcon');
       if (!video || !wrap) return;
       if (video.webkitEnterFullscreen && (!document.fullscreenEnabled)) {
@@ -1786,15 +1848,17 @@
             .pip-msg.me{background:rgba(201,75,123,0.2);border:1px solid rgba(201,75,123,0.25);margin-left:auto;}
             .pip-msg.other{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);}
             .pip-sender{font-size:9px;font-weight:700;color:#C94B7B;margin-bottom:2px;}
-            .pip-bottom{padding:8px;display:flex;gap:6px;border-top:1px solid rgba(201,75,123,0.1);}
-            .pip-reactions{display:flex;gap:4px;padding:4px 8px;overflow-x:auto;border-bottom:1px solid rgba(201,75,123,0.1);}
+            .pip-bottom{padding:10px;display:flex;gap:8px;border-top:1px solid rgba(201,75,123,0.1);background:rgba(20,8,16,0.4);}
+            .pip-input{flex:1;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.15);border-radius:12px;color:#fff;font-size:11px;padding:8px 12px;outline:none;resize:none;max-height:60px;}
+            .pip-send{background:#C94B7B;border:none;color:#fff;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;}
+            .pip-reactions{display:flex;gap:6px;padding:6px 10px;overflow-x:auto;border-bottom:1px solid rgba(201,75,123,0.1);background:rgba(20,8,16,0.2);}
             .pip-reactions::-webkit-scrollbar{display:none;}
-            .pip-emj{font-size:18px;background:none;border:none;cursor:pointer;padding:2px 4px;border-radius:4px;transition:.1s;}
-            .pip-emj:hover{background:rgba(201,75,123,0.15);}
-            .pip-header{padding:6px 10px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(201,75,123,0.15);background:rgba(20,8,16,0.95);}
-            .pip-title{font-size:10px;font-weight:700;background:linear-gradient(135deg,#C94B7B,#F472B6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:.5px;}
-            .pip-control-btn{background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.3);color:#fff;border-radius:8px;padding:2px 6px;font-size:10px;cursor:pointer;}
-            .pip-conn{font-size:9px;color:rgba(245,230,239,0.4);}
+            .pip-emj{font-size:18px;background:none;border:none;cursor:pointer;padding:4px;border-radius:8px;transition:.2s;}
+            .pip-emj:hover{background:rgba(201,75,123,0.25);transform:scale(1.2);}
+            .pip-header{padding:6px 12px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(201,75,123,0.15);background:rgba(20,8,16,0.98);}
+            .pip-title{font-size:11px;font-weight:700;background:linear-gradient(135deg,#C94B7B,#F472B6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:.5px;}
+            .pip-control-btn{background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.3);color:#fff;border-radius:8px;padding:3px 8px;font-size:10px;cursor:pointer;font-weight:600;}
+            .pip-conn{font-size:9px;color:rgba(245,230,239,0.5);}
             #pip-reaction-overlay{position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;overflow:hidden;}
             @keyframes pipEmojiFloat{0%{opacity:1;transform:translateY(0) scale(1);}60%{opacity:.9;transform:translateY(-60px) scale(1.2);}100%{opacity:0;transform:translateY(-110px) scale(0.8);}}
           `;
@@ -2372,35 +2436,74 @@
     _dynamicMode = !_dynamicMode;
     var t = document.getElementById('dynamicToggle'); if(t) t.classList.toggle('on', _dynamicMode);
     if (_dynamicMode) {
-      _dynamicInterval = setInterval(_extractVideoColors, 2000);
+      _dynamicInterval = setInterval(_extractVideoColors, 100);
+      const amb = document.getElementById('ambientCanvas'); if(amb) amb.style.display = 'block';
+      const ctrl = document.getElementById('ambientControl'); if(ctrl) ctrl.style.display = 'block';
       showToast('🌈 Dynamic mode ON');
     } else {
       clearInterval(_dynamicInterval); _dynamicInterval = null;
+      const amb = document.getElementById('ambientCanvas'); if(amb) amb.style.display = 'none';
+      const ctrl = document.getElementById('ambientControl'); if(ctrl) ctrl.style.display = 'none';
       _applyAllVars(_theme);
       showToast('🌈 Dynamic mode OFF');
     }
   };
 
-  function _extractVideoColors() {
+  window.liveApplyAmbient = function(val) {
+    const op = val / 100;
+    const sat = 1 + (val / 100);
+    document.documentElement.style.setProperty('--ambient-op', op);
+    document.documentElement.style.setProperty('--ambient-sat', sat);
+  };
+
+   function _extractVideoColors() {
     var video = document.getElementById('remoteVideo');
     if (!video || !video.srcObject || video.paused || video.readyState < 2) return;
-    var canvas = document.getElementById('colorExtractCanvas'); if(!canvas) return;
-    var ctx = canvas.getContext('2d');
+    var canvas = document.getElementById('colorExtractCanvas');
+    var ambCanvas = document.getElementById('ambientCanvas');
+    if(!canvas || !ambCanvas) return;
+    
+    var ctx = canvas.getContext('2d', {alpha: false, willReadFrequently: true});
+    var ambCtx = ambCanvas.getContext('2d', {alpha: false, willReadFrequently: true});
+    
     try {
+      // 1. Draw small for color extraction
       ctx.drawImage(video, 0, 0, 16, 9);
-      var corners = [ctx.getImageData(0,0,1,1).data, ctx.getImageData(15,0,1,1).data, ctx.getImageData(0,8,1,1).data, ctx.getImageData(15,8,1,1).data, ctx.getImageData(7,4,1,1).data];
-      var r=0,g=0,b=0;
-      corners.forEach(function(c){ r+=c[0]; g+=c[1]; b+=c[2]; });
-      r=Math.round(r/5); g=Math.round(g/5); b=Math.round(b/5);
-      var dr=Math.round(r*0.25), dg=Math.round(g*0.25), db=Math.round(b*0.25);
+      var data = ctx.getImageData(0, 0, 16, 9).data;
+      
+      // 2. Draw slightly larger for the blur layer (better quality blur)
+      if (ambCanvas.width !== 32) { ambCanvas.width = 32; ambCanvas.height = 18; }
+      ambCtx.drawImage(canvas, 0, 0, 32, 18);
+
+      let rSum=0, gSum=0, bSum=0, count=0;
+      let brightest = { r:0, g:0, b:0, lum: -1 };
+
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i], g = data[i+1], b = data[i+2];
+        rSum += r; gSum += g; bSum += b; count++;
+        const lum = 0.299*r + 0.587*g + 0.114*b;
+        if (lum > brightest.lum) { brightest = { r, g, b, lum }; }
+      }
+
+      const r = brightest.r, g = brightest.g, b = brightest.b;
+      const ar = Math.round(rSum/count), ag = Math.round(gSum/count), ab = Math.round(bSum/count);
+      const dr = Math.round(ar * 0.15), dg = Math.round(ag * 0.15), db = Math.round(ab * 0.15);
+      
       function toHex(v){ return v.toString(16).padStart(2,'0'); }
-      var accentHex = '#'+toHex(r)+toHex(g)+toHex(b);
-      var bgHex = '#'+toHex(dr)+toHex(dg)+toHex(db);
+      const accentHex = '#'+toHex(r)+toHex(g)+toHex(b);
+      const bgHex = '#'+toHex(dr)+toHex(dg)+toHex(db);
+      
+      // UI colors should NOT be affected by dynamic mode to keep accessibility and prevent "glowy" buttons
+      // document.documentElement.style.setProperty('--accent', accentHex); 
+      
+      // Update background and ambient only
       document.documentElement.style.setProperty('--bg', bgHex);
-      document.documentElement.style.setProperty('--accent', accentHex);
-      document.documentElement.style.setProperty('--accent-glow', 'rgba('+r+','+g+','+b+',0.4)');
-      var blob1 = document.querySelectorAll('.aurora-blob')[0];
-      if(blob1) blob1.style.background = 'radial-gradient(circle,'+accentHex+',transparent)';
+      
+      // We use a custom variable for the ambient light so it doesn't affect buttons
+      document.documentElement.style.setProperty('--dynamic-glow', 'rgba('+r+','+g+','+b+',0.7)');
+      
+      if(video) video.style.boxShadow = `0 0 40px rgba(${r},${g},${b},0.3)`;
+
       if(window._syncModeActive && window._roomId && window._fbHelpers) {
         clearTimeout(_dynamicPushTimer);
         _dynamicPushTimer = setTimeout(function(){
