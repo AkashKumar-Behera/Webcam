@@ -12,35 +12,37 @@ const cfAppSecret = '3f671947386a7bf692d8326e509e3797be3c37c295337c98a6414d563c0
 const turnId = '86014ad259cbd5b3dbef1f0867bbe15b';
 
 async function fetchIceServers() {
-  // NOTE: Cloudflare TURN requires a valid Key ID and Secret.
-  // We've moved this to only fire when needed to avoid distracting 401 errors on load.
   if (window._turnLoaded) return;
-  try {
-    const res = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${turnId}/credentials/generate-ice-servers`, {
-      method: "POST", headers: { "Authorization": `Bearer ${cfAppSecret}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ ttl: 86400 })
-    });
-    if (res.status === 401) {
-      console.warn("Cloudflare TURN: Unauthorized (401). Falling back to Google/Apple STUN.");
-      window._turnLoaded = true; // Stop trying
-      return;
-    }
-    const data = await res.json();
-    if (data.iceServers) {
-      servers.iceServers = [...servers.iceServers, ...data.iceServers];
-      logStatus("Cloudflare optimized routes enabled.");
-      window._turnLoaded = true;
-    }
-  } catch (e) {}
+  // Try both IDs for TURN credentials
+  const ids = [turnId, cfAppId];
+  for (const id of ids) {
+    try {
+      const res = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${id}/credentials/generate-ice-servers`, {
+        method: "POST", headers: { "Authorization": `Bearer ${cfAppSecret}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ ttl: 86400 })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.iceServers) {
+          servers.iceServers = [...servers.iceServers, ...data.iceServers];
+          logStatus("Cloudflare optimized routes enabled.");
+          window._turnLoaded = true;
+          return; // Success
+        }
+      }
+    } catch (e) {}
+  }
+  console.warn("Using baseline STUN routes for connectivity.");
+  window._turnLoaded = true;
 }
-// fetchIceServers(); // Disabled auto-run to keep console clean until session starts
+fetchIceServers(); // Re-enabled with silent fallback logic
 
 const servers = {
   iceServers: [
-    { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302", "stun:stun2.l.google.com:19302"] },
-    { urls: ["stun:stun.cloudflare.com:3478", "stun:iphone-ice.apple.com:3478"] }
+    { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302", "stun:stun2.l.google.com:19302", "stun:stun3.l.google.com:19302", "stun:stun4.l.google.com:19302"] },
+    { urls: ["stun:stun.cloudflare.com:3478", "stun:iphone-ice.apple.com:3478", "stun:stun.services.mozilla.com:3478"] }
   ],
-  iceCandidatePoolSize: 10,
+  iceCandidatePoolSize: 12,
   bundlePolicy: "max-bundle"
 };
 
