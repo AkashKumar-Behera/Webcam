@@ -22,7 +22,6 @@ async function fetchIceServers() {
     });
     if (res.status === 401) {
       console.warn("Cloudflare TURN: Unauthorized (401). Falling back to Google/Apple STUN.");
-      window._turnLoaded = true; // Stop trying
       return;
     }
     const data = await res.json();
@@ -33,7 +32,7 @@ async function fetchIceServers() {
     }
   } catch (e) {}
 }
-// fetchIceServers(); // Disabled auto-run to keep console clean until session starts
+fetchIceServers(); // Start pre-fetching ICE servers immediately for Jio/Airtel compatibility
 
 const servers = {
   iceServers: [
@@ -131,6 +130,29 @@ function gestureUnlock() {
 
 function logIce(pc, label) { pc.onicegatheringstatechange = () => console.log(`[ICE ${label}] gather:${pc.iceGatheringState}`); pc.oniceconnectionstatechange = () => console.log(`[ICE ${label}] ice:${pc.iceConnectionState}`); }
 function logCandidate(c, label) { if (!c) return; const t = c.candidate?.match(/typ (\w+)/)?.[1] || '?'; console.log(`[ICE ${label}] ${t}|${c.candidate?.substring(0, 60)}`); }
+
+window.toggleNoHeat = (on) => {
+  document.body.classList.toggle('no-heat', on);
+  localStorage.setItem('no_heat_mode', on);
+  
+  // Update UI Elements
+  const mainBtn = document.getElementById('noHeatBtnMain');
+  const quickBtn = document.getElementById('noHeatBtnQuick');
+  const toggle = document.getElementById('noHeatToggle');
+  
+  if (toggle) toggle.checked = on;
+
+  if (on) {
+    if (window._dynamicActive) window.toggleDynamic();
+    if (mainBtn) mainBtn.style.background = "#339933 !important";
+    if (mainBtn) mainBtn.querySelector('.material-symbols-outlined').style.color = "#000";
+    showToast("🔋 No-Heat Mode Active: Green/Black");
+  } else {
+    if (mainBtn) mainBtn.style.background = "#000 !important";
+    if (mainBtn) mainBtn.querySelector('.material-symbols-outlined').style.color = "#339933";
+    showToast("✨ Premium Effects Restored");
+  }
+};
 
 /* HELPERS */
 function playProceduralSound(type) {
@@ -886,8 +908,12 @@ async function proceedJoin(myVid, userName) {
     startSilenceLoop();
     await set(ref(db, `rooms/${roomId}/viewers/${myVid}/ready`), { name: userName });
 
-    logStatus("Fetching host metadata...");
-    const hostSnap = await get(ref(db, `rooms/${roomId}/host`));
+    logStatus("Fetching session config in parallel...");
+    const [hostSnap, sessionTypeSnap] = await Promise.all([
+      get(ref(db, `rooms/${roomId}/host`)),
+      get(ref(db, `rooms/${roomId}/settings/type`))
+    ]);
+
     const hostData = hostSnap.val();
     if (!hostData || !hostData.cfSessionId) {
       logStatus("Host not running Cloudflare SFU. Aborting.");
@@ -896,8 +922,10 @@ async function proceedJoin(myVid, userName) {
     }
     hostInfo = hostData;
     logStatus(`Host found with CF Session: ${hostData.cfSessionId.substring(0, 6)}...`);
-    sessionType = (await get(ref(db, `rooms/${roomId}/settings/type`))).val() || "party";
+    
+    sessionType = sessionTypeSnap.val() || "party";
     logStatus(`Session Mode: ${sessionType}`);
+    
     if (sessionType === "broadcast") {
       document.getElementById("micBtnMain").style.display = "none";
       document.getElementById("micBtnChat").style.display = "none";
@@ -906,7 +934,8 @@ async function proceedJoin(myVid, userName) {
     firebaseUnsubs.push(unsubType);
 
     cfApp = new RealtimeApp(cfAppId);
-    const pc = new RTCPeerConnection(servers); viewerPc = pc;
+    // Use bundlePolicy: "max-bundle" and iceCandidatePoolSize for speed
+    const pc = new RTCPeerConnection({ ...servers, iceCandidatePoolSize: 15 }); viewerPc = pc;
     const video = document.getElementById("remoteVideo"), remoteStream = new MediaStream();
     video.srcObject = remoteStream; video.muted = true; // Use bgAudio sink
     const hostAudID = "movie-a"; // Always use stable name for audio

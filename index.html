@@ -38,6 +38,56 @@
       --panel-bg: rgba(20,8,16,0.98);
     }
 
+    body.no-heat {
+      --bg: #000000 !important;
+      --panel-bg: #080808 !important;
+      --accent: #339933 !important;
+      --accent-dim: rgba(51, 153, 51, 0.15) !important;
+      --accent-glow: rgba(51, 153, 51, 0.3) !important;
+      --accent2: #43853d !important;
+      --accent2-dim: rgba(67, 133, 61, 0.15) !important;
+      --pink-soft: #4ade80 !important;
+      --text: #e1e1e1 !important;
+      --text-muted: #888888 !important;
+      --glass-border: #222222 !important;
+      --glass-border-strong: #33993355 !important;
+      --surface: #111111 !important;
+      --surface-hover: #161616 !important;
+    }
+
+    body.no-heat * {
+      animation: none !important;
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
+      transition: none !important;
+      box-shadow: none !important;
+      text-shadow: none !important;
+    }
+
+    body.no-heat .aurora, 
+    body.no-heat .bg-pattern,
+    body.no-heat .ambient-glow-layer,
+    body.no-heat #confettiCanvas {
+      display: none !important;
+    }
+
+    body.no-heat #remoteVideo {
+      mask-image: none !important;
+      -webkit-mask-image: none !important;
+      border-radius: 4px !important;
+    }
+
+    body.no-heat .vbtn,
+    body.no-heat .badge,
+    body.no-heat .non-fs-popup,
+    body.no-heat .mob-menu-expand,
+    body.no-heat .chat-bubble,
+    body.no-heat .modal-card,
+    body.no-heat .panel-tab.active {
+       background: #111 !important;
+       border: 1px solid #333 !important;
+    }
+
     * { margin:0; padding:0; box-sizing:border-box; }
 
     body {
@@ -1098,6 +1148,10 @@
         <div class="video-btns">
           <!-- Popup Menu -->
           <div id="nonFsPopup" class="non-fs-popup">
+             <!-- QUICK NO-HEAT (IN POPUP) -->
+             <button class="vbtn" id="noHeatBtnQuick" onclick="document.getElementById('noHeatToggle').click()" title="Toggle No Heat" style="border-color:#339933; background:rgba(51,153,51,0.1) !important;">
+               <span class="material-symbols-outlined" style="color:#339933;">bolt</span>
+             </button>
              <button class="vbtn" id="changeScreenBtn" onclick="window.replaceScreenShareBtn()" style="display:none;" title="Change Screen"><span class="material-symbols-outlined">screen_share</span></button>
             <button class="vbtn" onclick="toggleFullscreen()" title="Fullscreen"><span class="material-symbols-outlined">fullscreen</span></button>
             <button class="vbtn" onclick="togglePip()" title="Picture-in-Picture"><span class="material-symbols-outlined">picture_in_picture</span></button>
@@ -1110,6 +1164,11 @@
             <button class="vbtn" id="micBtnMain" onclick="toggleVoiceChat()" title="Toggle Microphone" style="background:rgba(239,68,68,0.2);border-color:rgba(239,68,68,0.3)"><span class="material-symbols-outlined" id="micIconMain">mic_off</span></button>
           </div>
 
+          <!-- Main Screen Quick No Heat -->
+          <button class="vbtn" id="noHeatBtnMain" onclick="document.getElementById('noHeatToggle').click()" style="background:#000 !important; border:1px solid #339933 !important; animation: micPulse 2s infinite;" title="No Heat Mode">
+            <span class="material-symbols-outlined" style="color:#339933; font-size:20px;">bolt</span>
+          </button>
+          
           <!-- Trigger Button -->
           <button class="vbtn" id="nonFsTrigger" onclick="toggleNonFsPopup()" style="background:rgba(15,12,22,0.9) !important; border:1px solid rgba(255,255,255,0.1) !important; box-shadow:none !important;"><span class="material-symbols-outlined" style="opacity:0.6;">apps</span></button>
         </div>
@@ -1423,6 +1482,15 @@
             <div class="section-title" style="color:var(--accent);display:flex;align-items:center;gap:6px;">
               <span class="material-symbols-outlined" style="font-size:14px;">palette</span>
               Theme Customizer
+            </div>
+
+            <!-- QUICK NO-HEAT TOGGLE -->
+            <div style="background:rgba(51, 153, 51, 0.1); border:1px solid rgba(51, 153, 51, 0.3); padding:10px; border-radius:12px; margin-bottom:15px; display:flex; align-items:center; justify-content:space-between; cursor:pointer;" onclick="document.getElementById('noHeatToggle').click()">
+              <div style="display:flex; flex-direction:column;">
+                <span style="font-size:12px; font-weight:700; color:#339933;">🚀 No Heat Mode</span>
+                <small style="font-size:9px; color:var(--text-muted);">Save battery & boost speed</small>
+              </div>
+              <input type="checkbox" id="noHeatToggle" style="width:18px; height:18px; cursor:pointer;" onchange="toggleNoHeat(this.checked)" onclick="event.stopPropagation()" />
             </div>
 
             <!-- PRESETS -->
@@ -2082,6 +2150,14 @@
 
       // Init drawing canvas
       initDrawCanvas();
+
+      // Apply saved No-Heat preference
+      const savedHeat = localStorage.getItem('no_heat_mode') === 'true';
+      if (savedHeat) {
+        const toggle = document.getElementById('noHeatToggle');
+        if (toggle) toggle.checked = true;
+        if (window.toggleNoHeat) window.toggleNoHeat(true);
+      }
     });
 
     /* MOOD */
