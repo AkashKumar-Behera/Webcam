@@ -1402,13 +1402,7 @@
                 </select>
               </div>
             </div>
-            <div class="form-group">
-              <label style="display:flex;justify-content:space-between;">Bitrate <span id="bitrateValLabel" style="color:var(--accent);">4 Mbps</span></label>
-              <input type="range" class="styled-range" id="bitrateSliderS" min="1" max="12" value="4" step="0.5"
-                oninput="document.getElementById('bitrateValLabel').textContent=this.value+' Mbps';document.getElementById('bitrateSlider').value=this.value;"
-                onchange="applyBitrateNow();window.pushHostSettings();" />
-              <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-muted);margin-top:3px;"><span>1 Mbps</span><span>2.5</span><span>5</span><span>8</span><span>12</span></div>
-            </div>
+            <!-- Bitrate adjustment removed as requested -->
             <button class="btn-action" onclick="window.replaceScreenShareBtn();window.pushHostSettings();" style="height:34px;font-size:12px;background:rgba(201,75,123,0.12);color:var(--accent);border-color:rgba(201,75,123,0.3);margin:10px 0;">
               <span class="material-symbols-outlined" style="font-size:16px;">task_alt</span> Apply Settings
             </button>
@@ -1761,12 +1755,7 @@
                 </select>
               </div>
             </div>
-            <div>
-              <div class="modal-section-title" style="display:flex;justify-content:space-between;">Bitrate <span id="modalBitrateLabel" style="color:var(--accent);">4 Mbps</span></div>
-              <input type="range" class="styled-range" id="bitrateSlider" min="1" max="12" value="4" step="0.5"
-                oninput="document.getElementById('modalBitrateLabel').textContent=this.value+' Mbps';document.getElementById('bitrateValLabel').textContent=this.value+' Mbps';" />
-              <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-muted);margin-top:3px;"><span>1</span><span>2.5</span><span>5</span><span>8</span><span>12 Mbps</span></div>
-            </div>
+            <!-- Bitrate adjustment removed as requested -->
           </div>
         </div>
         <div class="modal-section-title" style="margin-top:14px;">Session Type</div>

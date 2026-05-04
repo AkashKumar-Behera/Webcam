@@ -554,9 +554,8 @@ window.pushHostSettings = () => {
   if (!isHost || !roomId) return;
   const sRes = document.getElementById("scrResS")?.value || "1080p";
   const sFps = document.getElementById("scrFpsS")?.value || "30";
-  const sBit = document.getElementById("bitrateSliderS")?.value || "4";
   const sDel = document.getElementById("streamDelaySlider")?.value || "0.05";
-  set(ref(db, `rooms/${roomId}/settings`), { quality: sRes, fps: sFps, bitrate: sBit, delay: sDel, type: sessionType });
+  set(ref(db, `rooms/${roomId}/settings`), { quality: sRes, fps: sFps, bitrate: "Auto", delay: sDel, type: sessionType });
 };
 
 window.setMode = (m) => {
@@ -684,7 +683,8 @@ async function captureScreen() {
 
 /* OPTIMIZE SENDER */
 async function optimizeHostSender(pc, vid = null) {
-  let mbps = parseFloat(document.getElementById("bitrateSlider")?.value || "4");
+  // Use a high cap to allow auto-bitrate to scale up, while prioritizing FPS
+  let mbps = 25; 
   const fps = parseInt(document.getElementById("scrFps")?.value || "30") || 30;
 
   for (const s of pc.getSenders()) {
@@ -693,6 +693,9 @@ async function optimizeHostSender(pc, vid = null) {
     if (s.track.kind === "video") {
       if (!p.encodings?.length || p.encodings.length < 3) continue;
 
+      // PRIORITIZE FPS (Smoothness) over resolution
+      p.degradationPreference = "maintain-framerate"; 
+
       // High Layer (Layer 2)
       p.encodings[2].maxBitrate = mbps * 1_000_000;
       p.encodings[2].maxFramerate = fps;
@@ -700,22 +703,21 @@ async function optimizeHostSender(pc, vid = null) {
       p.encodings[2].priority = "high";
 
       // Mid Layer (Layer 1)
-      p.encodings[1].maxBitrate = Math.min(1000000, mbps * 500000);
+      p.encodings[1].maxBitrate = 2_500_000;
       p.encodings[1].scaleResolutionDownBy = 2.0;
 
       // Low Layer (Layer 0) - starting from 144p
-      p.encodings[0].maxBitrate = 150_000;
+      p.encodings[0].maxBitrate = 500_000;
       p.encodings[0].scaleResolutionDownBy = 4.0;
 
-      p.degradationPreference = "maintain-resolution"; // YouTube style sharp text
     } else if (s.track.kind === "audio") {
       if (!p.encodings?.length) p.encodings = [{}];
       p.encodings[0].networkPriority = "high";
-      p.encodings[0].priority = "high"; // Audio priority over video
+      p.encodings[0].priority = "high"; 
     }
-    try { await s.setParameters(p); } catch (e) { console.warn("Failed to set bitrate parameters", e); }
+    try { await s.setParameters(p); } catch (e) { console.warn("Failed to set parameters", e); }
   }
-  logStatus(`Host Bitrate set to ${mbps} Mbps`);
+  logStatus(`FPS Priority Active: Target ${fps} FPS (Auto-Bitrate)`);
 }
 
 /* HOST */
