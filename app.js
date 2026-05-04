@@ -72,8 +72,9 @@ class RealtimeApp {
     if (!pc) return;
     logStatus("Starting Renegotiation/ICE Restart...");
     const offer = await pc.createOffer({ iceRestart: true });
-    await pc.setLocalDescription(offer);
-    const res = await this.sendRequest(`${this.prefixPath}/sessions/${this.sessionId}/renegotiate`, { sessionDescription: { type: 'offer', sdp: offer.sdp } }, 'PUT');
+    const mungedSdp = applyCodecPreferences(offer.sdp);
+    await pc.setLocalDescription({ type: 'offer', sdp: mungedSdp });
+    const res = await this.sendRequest(`${this.prefixPath}/sessions/${this.sessionId}/renegotiate`, { sessionDescription: { type: 'offer', sdp: mungedSdp } }, 'PUT');
     this.checkErrors(res);
     await pc.setRemoteDescription(new RTCSessionDescription(res.sessionDescription));
     logStatus("Renegotiation complete.");
@@ -478,6 +479,10 @@ function mungerPreferVP9(sdp) {
   return lines.join("\r\n");
 }
 
+function applyCodecPreferences(sdp) {
+  return mungerPreferH264(mungerPreferOpus(sdp));
+}
+
 /* UI */
 const scrollChat = () => { const c = document.getElementById("chatMessages"); if (c) { requestAnimationFrame(() => { c.scrollTop = c.scrollHeight; setTimeout(() => { c.scrollTop = c.scrollHeight; }, 100); }); } };
 function showToast(msg) { const t = document.getElementById("toast"); if (!t) return; t.textContent = msg; t.classList.add("show"); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove("show"), 3500); }
@@ -776,8 +781,10 @@ window.confirmHost = async () => {
     });
   }
 
-  await pc.setLocalDescription(await pc.createOffer());
-  const newSessionResult = await cfApp.newSession(pc.localDescription.sdp);
+  const offer1 = await pc.createOffer();
+  const munged1 = applyCodecPreferences(offer1.sdp);
+  await pc.setLocalDescription({ type: 'offer', sdp: munged1 });
+  const newSessionResult = await cfApp.newSession(munged1);
   await pc.setRemoteDescription(new RTCSessionDescription(newSessionResult.sessionDescription));
 
   await new Promise((resolve, reject) => {
@@ -795,8 +802,10 @@ window.confirmHost = async () => {
     return { location: 'local', mid: t.mid, trackName: isVid ? "movie-v" : "movie-a" }; 
   });
 
-  await pc.setLocalDescription(await pc.createOffer());
-  const newLocalTracksResult = await cfApp.newTracks(trackObjects, pc.localDescription.sdp);
+  const offer2 = await pc.createOffer();
+  const munged2 = applyCodecPreferences(offer2.sdp);
+  await pc.setLocalDescription({ type: 'offer', sdp: munged2 });
+  const newLocalTracksResult = await cfApp.newTracks(trackObjects, munged2);
   await pc.setRemoteDescription(new RTCSessionDescription(newLocalTracksResult.sessionDescription));
   logStatus("Tracks published to Cloudflare SFU.");
 
@@ -1069,8 +1078,10 @@ async function proceedJoin(myVid, userName) {
     pc.addTransceiver('video', { direction: 'recvonly' });
 
     logStatus("Creating cloudflare viewer session...");
-    await pc.setLocalDescription(await pc.createOffer());
-    const newSessionResult = await cfApp.newSession(pc.localDescription.sdp);
+    const offer3 = await pc.createOffer();
+    const munged3 = applyCodecPreferences(offer3.sdp);
+    await pc.setLocalDescription({ type: 'offer', sdp: munged3 });
+    const newSessionResult = await cfApp.newSession(munged3);
     logStatus("Setting Session Remote Description...");
     await pc.setRemoteDescription(new RTCSessionDescription(newSessionResult.sessionDescription));
 
@@ -1081,8 +1092,10 @@ async function proceedJoin(myVid, userName) {
         case 'offer':
           logStatus("Applying incoming Offer from CF");
           await pc.setRemoteDescription(new RTCSessionDescription(newRemoteTracksResult.sessionDescription));
-          await pc.setLocalDescription(await pc.createAnswer());
-          await cfApp.sendAnswerSDP(pc.localDescription.sdp);
+          const answer = await pc.createAnswer();
+          const mungedAns = applyCodecPreferences(answer.sdp);
+          await pc.setLocalDescription({ type: 'answer', sdp: mungedAns });
+          await cfApp.sendAnswerSDP(mungedAns);
           logStatus("Answer sent for incoming tracks.");
           break;
         default: throw new Error("Expected offer SDP from Cloudflare");
@@ -1361,8 +1374,10 @@ async function pullVoiceTracks(sessionId, trackName, pc) {
       switch (newRemoteTracksResult.sessionDescription.type) {
         case 'offer':
           await pc.setRemoteDescription(new RTCSessionDescription(newRemoteTracksResult.sessionDescription));
-          await pc.setLocalDescription(await pc.createAnswer());
-          await cfApp.sendAnswerSDP(pc.localDescription.sdp);
+          const ansVoice = await pc.createAnswer();
+          const mungedVoiceAns = applyCodecPreferences(ansVoice.sdp);
+          await pc.setLocalDescription({ type: 'answer', sdp: mungedVoiceAns });
+          await cfApp.sendAnswerSDP(mungedVoiceAns);
           break;
       }
     }
@@ -1411,8 +1426,10 @@ window.toggleVoiceChat = async () => {
     const audioTrack = myVoiceStream.getAudioTracks()[0];
     const trans = pc.addTransceiver(audioTrack, { direction: "sendonly" });
 
-    await pc.setLocalDescription(await pc.createOffer());
-    const publishRes = await cfApp.newTracks([{ location: "local", mid: trans.mid, trackName: audioTrack.id }], pc.localDescription.sdp);
+    const offerVoice = await pc.createOffer();
+    const mungedVoice = applyCodecPreferences(offerVoice.sdp);
+    await pc.setLocalDescription({ type: 'offer', sdp: mungedVoice });
+    const publishRes = await cfApp.newTracks([{ location: "local", mid: trans.mid, trackName: audioTrack.id }], mungedVoice);
     await pc.setRemoteDescription(new RTCSessionDescription(publishRes.sessionDescription));
     logStatus("Voice Track successfully published via Edge.");
 
