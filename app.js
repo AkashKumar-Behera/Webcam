@@ -479,8 +479,57 @@ function mungerPreferVP9(sdp) {
   return lines.join("\r\n");
 }
 
+function mungerPreferAV1(sdp) {
+  const lines = sdp.split("\r\n");
+  let videoIdx = -1;
+  for (let i = 0; i < lines.length; i++) { if (lines[i].startsWith("m=video ")) { videoIdx = i; break; } }
+  if (videoIdx === -1) return sdp;
+  const mLine = lines[videoIdx].split(" ");
+  const payloads = mLine.slice(3);
+  let av1Payloads = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].startsWith("a=rtpmap:") && lines[i].toLowerCase().includes("av1")) {
+      const p = lines[i].split(":")[1].split(" ")[0];
+      if (payloads.includes(p)) av1Payloads.push(p);
+    }
+  }
+  if (!av1Payloads.length) return sdp;
+  const others = payloads.filter(p => !av1Payloads.includes(p));
+  mLine.splice(3, mLine.length - 3, ...av1Payloads, ...others);
+  lines[videoIdx] = mLine.join(" ");
+  return lines.join("\r\n");
+}
+
+function mungerPreferH265(sdp) {
+  const lines = sdp.split("\r\n");
+  let videoIdx = -1;
+  for (let i = 0; i < lines.length; i++) { if (lines[i].startsWith("m=video ")) { videoIdx = i; break; } }
+  if (videoIdx === -1) return sdp;
+  const mLine = lines[videoIdx].split(" ");
+  const payloads = mLine.slice(3);
+  let h265Payloads = [];
+  for (let i = 0; i < lines.length; i++) {
+    // Chrome uses H265 or HEVC in rtpmap
+    if (lines[i].startsWith("a=rtpmap:") && (lines[i].toLowerCase().includes("h265") || lines[i].toLowerCase().includes("hevc"))) {
+      const p = lines[i].split(":")[1].split(" ")[0];
+      if (payloads.includes(p)) h265Payloads.push(p);
+    }
+  }
+  if (!h265Payloads.length) return sdp;
+  const others = payloads.filter(p => !h265Payloads.includes(p));
+  mLine.splice(3, mLine.length - 3, ...h265Payloads, ...others);
+  lines[videoIdx] = mLine.join(" ");
+  return lines.join("\r\n");
+}
+
 function applyCodecPreferences(sdp) {
-  return mungerPreferH264(mungerPreferOpus(sdp));
+  let res = mungerPreferOpus(sdp);
+  const codec = document.getElementById("preferredCodec")?.value || "h264";
+  if (codec === "av1") res = mungerPreferAV1(res);
+  else if (codec === "h265") res = mungerPreferH265(res);
+  else if (codec === "vp9") res = mungerPreferVP9(res);
+  else res = mungerPreferH264(res);
+  return res;
 }
 
 /* UI */
@@ -554,8 +603,9 @@ window.pushHostSettings = () => {
   if (!isHost || !roomId) return;
   const sRes = document.getElementById("scrResS")?.value || "1080p";
   const sFps = document.getElementById("scrFpsS")?.value || "30";
+  const sCodec = document.getElementById("preferredCodec")?.value || "h264";
   const sDel = document.getElementById("streamDelaySlider")?.value || "0.05";
-  set(ref(db, `rooms/${roomId}/settings`), { quality: sRes, fps: sFps, bitrate: "Auto", delay: sDel, type: sessionType });
+  set(ref(db, `rooms/${roomId}/settings`), { quality: sRes, fps: sFps, codec: sCodec, bitrate: "Auto", delay: sDel, type: sessionType });
 };
 
 window.setMode = (m) => {
