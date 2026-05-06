@@ -105,6 +105,11 @@ let movieGainNode = null, hostInfo = null;
 let reconnectToken = localStorage.getItem("nova_reconnect_token") || Math.random().toString(36).substring(2, 10);
 localStorage.setItem("nova_reconnect_token", reconnectToken);
 let approvedTokens = {}; // Host: stores vid -> token
+let typingUsers = {};
+let typingStopTimer = null;
+let typingWriteTimer = null;
+let typingActive = false;
+let typingLastWrite = 0;
 const MAX_ICE_RESTARTS = 3;
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
@@ -194,6 +199,101 @@ function stopSilenceLoop() {
   }
 }
 function nameToHsl(n) { let h = 0; for (const c of String(n)) h = c.charCodeAt(0) + ((h << 5) - h); return `hsl(${Math.abs(h) % 360},65%,48%)`; }
+
+function getChatName() {
+  return document.getElementById("userName")?.value.trim() || (isHost ? "Host" : "Viewer");
+}
+
+function getTypingId() {
+  return window._myVid || (isHost ? "host" : reconnectToken);
+}
+
+function getTypingRef() {
+  if (!roomId) return null;
+  return ref(db, `rooms/${roomId}/typing/${getTypingId()}`);
+}
+
+function renderTypingStatus() {
+  const now = Date.now();
+  const activeNames = Object.entries(typingUsers)
+    .filter(([id, data]) => id !== getTypingId() && data?.name && now - (data.ts || 0) < 6000)
+    .map(([, data]) => data.name);
+
+  const uniqueNames = [...new Set(activeNames)].slice(0, 3);
+  const text = uniqueNames.length === 0
+    ? ""
+    : uniqueNames.length === 1
+      ? `${uniqueNames[0]} is typing...`
+      : uniqueNames.length === 2
+        ? `${uniqueNames[0]} and ${uniqueNames[1]} are typing...`
+        : `${uniqueNames[0]}, ${uniqueNames[1]} and ${uniqueNames.length - 2} more are typing...`;
+
+  const markup = text ? `<span class="typing-label">${esc(text)}</span><span class="typing-dots" aria-hidden="true"><span></span><span></span><span></span></span>` : "";
+  ["chatTypingStatus", "fsChatTypingStatus"].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (!text) {
+      el.hidden = true;
+      el.innerHTML = "";
+      return;
+    }
+    el.hidden = false;
+    el.innerHTML = markup;
+  });
+}
+
+async function publishTypingState(active) {
+  const typingRef = getTypingRef();
+  if (!typingRef) return;
+
+  if (!active) {
+    typingActive = false;
+    typingLastWrite = 0;
+    clearTimeout(typingWriteTimer);
+    clearTimeout(typingStopTimer);
+    try { await remove(typingRef); } catch (_) { }
+    return;
+  }
+
+  const now = Date.now();
+  if (now - typingLastWrite < 700 && typingActive) return;
+  typingActive = true;
+  typingLastWrite = now;
+  try {
+    await set(typingRef, { name: getChatName(), ts: now });
+    onDisconnect(typingRef).remove();
+  } catch (_) { }
+}
+
+function stopLocalTyping() {
+  clearTimeout(typingStopTimer);
+  clearTimeout(typingWriteTimer);
+  publishTypingState(false);
+}
+
+function handleChatTyping(sourceEl) {
+  const val = sourceEl?.value?.trim?.() || "";
+  if (!val) {
+    stopLocalTyping();
+    return;
+  }
+
+  publishTypingState(true);
+  clearTimeout(typingStopTimer);
+  typingStopTimer = setTimeout(() => {
+    const chatVal = document.getElementById("chatInput")?.value.trim() || document.getElementById("fsChatInput")?.value.trim() || "";
+    if (!chatVal) stopLocalTyping();
+  }, 1500);
+}
+
+function startTypingListener() {
+  if (!roomId) return;
+  const unsub = onValue(ref(db, `rooms/${roomId}/typing`), snap => {
+    typingUsers = snap.val() || {};
+    renderTypingStatus();
+  });
+  firebaseUnsubs.push(unsub);
+}
 
 /* ===== COUPLE FEATURES ===== */
 
@@ -927,7 +1027,7 @@ window.confirmHost = async () => {
 
   }); firebaseUnsubs.push(unsubV);
 
-  startHostStats(); startChatListener(); startReactionListener();
+  startHostStats(); startChatListener(); startTypingListener(); startReactionListener();
   window.pushHostSettings();
   showToast("🎬 Live! Room: " + roomId);
 };
@@ -1172,7 +1272,7 @@ async function proceedJoin(myVid, userName) {
       pullVoiceTracks(snap.val().cfSessionId, snap.val().trackName, pc);
     }); firebaseUnsubs.push(unsubVoice);
 
-    startChatListener(); startReactionListener(); startStats(pc);
+    startChatListener(); startTypingListener(); startReactionListener(); startStats(pc);
     bootstrapCoupleFeatures();
     _reconnectAttempt = 0; _startConnPoll();
 
@@ -1191,6 +1291,9 @@ window.leaveCall = async () => {
   saveTimeCapsule();
   setAmbientGlow(false);
   hideSessionButtons();
+  stopLocalTyping();
+  typingUsers = {};
+  renderTypingStatus();
   const wo = document.getElementById('waitOverlay'); if(wo) wo.style.display = 'none';
   document.body.classList.remove('host-cursor','viewer-cursor');
   stopStats(); stopSilenceLoop(); firebaseUnsubs.forEach(u => { try { u(); } catch (_) { } }); firebaseUnsubs = [];
@@ -1221,6 +1324,7 @@ window.sendChat = () => {
   const inp = document.getElementById("chatInput"), msg = inp?.value.trim();
   if (!msg || !roomId) return;
   const name = document.getElementById("userName")?.value.trim() || (isHost ? "Host" : "Viewer");
+  stopLocalTyping();
   push(ref(db, `rooms/${roomId}/chat`), { sender: name, text: msg, time: Date.now() });
   inp.value = "";
   inp.style.height = "auto";
@@ -1256,6 +1360,8 @@ window.handleChatImageUpload = (source) => {
 ["chatInput", "fsChatInput"].forEach(id => {
   const el = document.getElementById(id);
   if (!el) return;
+  el.addEventListener("input", (e) => handleChatTyping(e.target));
+  el.addEventListener("blur", () => stopLocalTyping());
   el.addEventListener("paste", (e) => {
     const items = (e.clipboardData || e.originalEvent.clipboardData).items;
     for (let i = 0; i < items.length; i++) {
