@@ -7,7 +7,14 @@ A lightweight, purely front-end 1-to-Many WebRTC Screen-Sharing application tail
 - **Waitroom & Approvals (Google Meet Style)**: The Host has full control over who joins.
 - **Mobile-First UX**: Responsive `100dvh` CSS with Safe-Area insets and native mobile Fullscreen playback API.
 - **Sync & Chat**: Realtime chat system integrated via Firebase.
+- **Live Typing Indicator**: Shows when you or the other person is actively typing in chat.
+- **Chat Media Support**: Send text and images from the main chat or fullscreen chat panel.
 - **PWA Ready**: Works natively in the background on mobile devices.
+
+## 💬 Chat Behavior
+- Chat messages sync instantly across both users through Firebase Realtime Database.
+- Typing status appears while someone is composing a message and clears automatically when they send, blur, or stop typing.
+- Main chat and fullscreen chat stay in sync, including message history and typing presence.
 
 ---
 
