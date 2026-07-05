@@ -41,6 +41,7 @@ export default function DashboardPage() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [memories, setMemories] = useState<any[]>([]);
   const [publicRooms, setPublicRooms] = useState<any[]>([]);
+  const [roomsLoading, setRoomsLoading] = useState(true);
   const [showHostModal, setShowHostModal] = useState(false);
 
   const PROFILE_KEY = "nova_user_profile";
@@ -107,6 +108,7 @@ export default function DashboardPage() {
       } else {
         setPublicRooms([]);
       }
+      setRoomsLoading(false);
     });
 
     // Load memories
@@ -454,7 +456,29 @@ export default function DashboardPage() {
               </button>
             </div>
 
-            {publicRooms.length === 0 ? (
+            {roomsLoading ? (
+              <div className="rooms-grid">
+                {[1, 2, 3].map((n) => (
+                  <div key={n} className="shimmer-card">
+                    <div className="shimmer-row">
+                      <div className="shimmer-bar" style={{ width: "80px" }}></div>
+                      <div className="shimmer-bar" style={{ width: "60px" }}></div>
+                    </div>
+                    <div style={{ display: "flex", gap: "10px", alignItems: "center", marginTop: "14px" }}>
+                      <div className="shimmer-circle"></div>
+                      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
+                        <div className="shimmer-bar" style={{ width: "100px" }}></div>
+                        <div className="shimmer-bar" style={{ width: "60px" }}></div>
+                      </div>
+                    </div>
+                    <div className="shimmer-row" style={{ marginTop: "auto" }}>
+                      <div className="shimmer-bar" style={{ width: "70px" }}></div>
+                      <div className="shimmer-bar" style={{ width: "80px", height: "30px", borderRadius: "8px" }}></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : publicRooms.length === 0 ? (
               <div style={{ textAlign: "center", color: "#808290", padding: "80px 20px" }}>
                 <span className="material-symbols-outlined" style={{ fontSize: "64px", marginBottom: "16px", color: "rgba(167, 139, 250, 0.4)" }}>
                   live_tv
