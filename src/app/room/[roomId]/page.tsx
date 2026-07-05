@@ -6,7 +6,7 @@ import { startRoomConnection } from "./roomConnection";
 import { auth } from "../../../lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 
-export default function RoomPage({ params: paramsPromise }) {
+export default function RoomPage({ params: paramsPromise }: { params: Promise<{ roomId: string }> }) {
   const router = useRouter();
   const params = use(paramsPromise);
   const roomId = params.roomId;

@@ -3,6 +3,7 @@ import { auth, db } from "../../../lib/firebase";
 import { ref, set, get, push, onValue, onChildAdded, remove, onDisconnect } from "firebase/database";
 import { signOut } from "firebase/auth";
 
+
 export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
   if (typeof window === "undefined") return;
 

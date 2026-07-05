@@ -46,14 +46,22 @@ function LoginFormContent() {
       });
   }, []);
 
-  const saveProfile = (profile) => {
+  interface Profile {
+    uid: string;
+    name: string;
+    email: string;
+    provider: string;
+    photoURL?: string;
+  }
+
+  const saveProfile = (profile: Profile) => {
     localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
     localStorage.setItem("watchparty_name", profile.name);
     localStorage.setItem("watchparty_email", profile.email);
     localStorage.setItem("nova_auth_provider", profile.provider);
   };
 
-  const saveUserRecord = async (profile) => {
+  const saveUserRecord = async (profile: Profile) => {
     try {
       await set(ref(db, `users/${profile.uid}`), {
         name: profile.name,
@@ -67,13 +75,13 @@ function LoginFormContent() {
     }
   };
 
-  const finishLogin = async (profile) => {
+  const finishLogin = async (profile: Profile) => {
     saveProfile(profile);
     await saveUserRecord(profile);
     router.push(nextPage);
   };
 
-  const profileFromGoogle = (user) => {
+  const profileFromGoogle = (user: any): Profile => {
     return {
       uid: user.uid,
       name: user.displayName || user.email?.split("@")[0] || "Nova User",
@@ -83,7 +91,7 @@ function LoginFormContent() {
     };
   };
 
-  const profileFromManual = (nameInput, emailInput) => {
+  const profileFromManual = (nameInput: string, emailInput: string): Profile => {
     const safeEmail = emailInput.toLowerCase().trim();
     return {
       uid: `manual_${safeEmail.replace(/[^a-z0-9]/g, "_").slice(0, 48)}`,
@@ -100,7 +108,7 @@ function LoginFormContent() {
     try {
       const result = await signInWithPopup(auth, googleProvider);
       await finishLogin(profileFromGoogle(result.user));
-    } catch (err) {
+    } catch (err: any) {
       if (["auth/popup-blocked", "auth/popup-closed-by-user", "auth/cancelled-popup-request"].includes(err.code)) {
         setStatus("Popup blocked. Redirecting to Google...");
         await signInWithRedirect(auth, googleProvider);
@@ -112,7 +120,7 @@ function LoginFormContent() {
     }
   };
 
-  const handleManualSubmit = async (e) => {
+  const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (activeSignUp) {
       // Sign Up Mode
