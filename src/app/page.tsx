@@ -291,7 +291,7 @@ export default function DashboardPage() {
         const val = docItem.data();
         const uid = docItem.id;
         if (uid !== myUid && val.name?.toLowerCase().includes(searchQuery.toLowerCase())) {
-          results.push({ uid, name: val.name, email: val.email });
+          results.push({ uid, name: val.name, email: val.email, photoURL: val.photoURL || "" });
         }
       });
       setSearchResults(results);
@@ -824,7 +824,13 @@ export default function DashboardPage() {
                 {searchResults.map((user) => (
                   <div key={user.uid} className="friend-item">
                     <div className="friend-user-info">
-                      <div className="friend-avatar">{user.name.charAt(0).toUpperCase()}</div>
+                      <div className="friend-avatar">
+                        {user.photoURL ? (
+                          <img src={user.photoURL} alt={user.name} style={{ width: "100%", height: "100%", borderRadius: "50%" }} />
+                        ) : (
+                          user.name.charAt(0).toUpperCase()
+                        )}
+                      </div>
                       <div className="friend-details">
                         <span className="friend-name">{user.name}</span>
                         <span className="friend-status-text">{user.email}</span>
