@@ -360,18 +360,33 @@ export default function DashboardPage() {
             <div className="shimmer-element" style={{ height: "44px", width: "100%" }}></div>
           </div>
         </aside>
-        <main className="main-content" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div className="modal-card">
-            <div className="modal-split">
-              <div className="modal-left" style={{ pointerEvents: "none" }}>
-                <div className="shimmer-element" style={{ width: "48px", height: "48px", borderRadius: "50%" }}></div>
-                <div className="shimmer-element" style={{ width: "120px", height: "28px", marginTop: "12px" }}></div>
-                <div className="shimmer-element" style={{ width: "100%", height: "36px", marginTop: "8px" }}></div>
-              </div>
-              <div className="modal-right" style={{ pointerEvents: "none", display: "flex", flexDirection: "column", gap: "16px" }}>
-                <div className="shimmer-element" style={{ width: "100%", height: "44px" }}></div>
-                <div className="shimmer-element" style={{ width: "100%", height: "44px" }}></div>
-              </div>
+        <main className="main-content">
+          <div>
+            <div className="dashboard-header-row">
+              <h1>Active Rooms</h1>
+              <div className="shimmer-element" style={{ width: "40px", height: "40px", borderRadius: "50%" }}></div>
+            </div>
+
+            <div className="rooms-grid" style={{ marginTop: "10px" }}>
+              {[1, 2, 3].map((n) => (
+                <div key={n} className="shimmer-card">
+                  <div className="shimmer-row">
+                    <div className="shimmer-bar" style={{ width: "80px" }}></div>
+                    <div className="shimmer-bar" style={{ width: "60px" }}></div>
+                  </div>
+                  <div style={{ display: "flex", gap: "10px", alignItems: "center", marginTop: "14px" }}>
+                    <div className="shimmer-circle"></div>
+                    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
+                      <div className="shimmer-bar" style={{ width: "100px" }}></div>
+                      <div className="shimmer-bar" style={{ width: "60px" }}></div>
+                    </div>
+                  </div>
+                  <div className="shimmer-row" style={{ marginTop: "auto" }}>
+                    <div className="shimmer-bar" style={{ width: "70px" }}></div>
+                    <div className="shimmer-bar" style={{ width: "80px", height: "30px", borderRadius: "8px" }}></div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </main>
