@@ -1582,13 +1582,7 @@
 }
 
 .logo-glow {
-  position: absolute;
-  width: 100px;
-  height: 100px;
-  border-radius: 50%;
-  background: #19bea7;
-  filter: blur(25px);
-  opacity: 0.35;
+  display: none;
 }
 
 .brand-hero img {
@@ -1597,8 +1591,7 @@
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   z-index: 1;
-  background: #14151c;
-  box-shadow: 0 10px 25px rgba(16, 185, 129, 0.15);
+  background: #000000;
 }
 
 .brand-hero h2 {
