@@ -1,118 +1,36 @@
-# 🍿 Watch Party App
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
 
-A lightweight, purely front-end 1-to-Many WebRTC Screen-Sharing application tailored for hosting movie watch parties. This application uses a custom TURN server for reliable mobile carrier connectivity and Firebase Realtime Database for signaling, participants management, and chat.
+## Getting Started
 
-## ✨ Features
-- **1-to-Many Mesh Topology**: Perfect for high-quality host-driven screen sharing.
-- **Waitroom & Approvals (Google Meet Style)**: The Host has full control over who joins.
-- **Mobile-First UX**: Responsive `100dvh` CSS with Safe-Area insets and native mobile Fullscreen playback API.
-- **Sync & Chat**: Realtime chat system integrated via Firebase.
-- **Live Typing Indicator**: Shows when you or the other person is actively typing in chat.
-- **Chat Media Support**: Send text and images from the main chat or fullscreen chat panel.
-- **PWA Ready**: Works natively in the background on mobile devices.
+First, run the development server:
 
-## 💬 Chat Behavior
-- Chat messages sync instantly across both users through Firebase Realtime Database.
-- Typing status appears while someone is composing a message and clears automatically when they send, blur, or stop typing.
-- Main chat and fullscreen chat stay in sync, including message history and typing presence.
-
----
-
-## 🚀 Running Locally
-
-There is no backend required (other than your TURN server). You can serve the static files directly.
-
-1. Clone the repository.
-2. Serve the directory using Python's built-in web server:
-   ```bash
-   python -m http.server 8080
-   ```
-3. Open `http://localhost:8080` in your browser.
-
----
-
-## 🌐 Deploying to Netlify (CI/CD)
-
-Since this app operates entirely on the frontend via HTML/JS and relies on external APIs (Firebase & external TURN), it can be deployed statically.
-
-1. Push your code to a GitHub repository.
-2. Sign up on **Netlify** and click "Add new site".
-3. Select "Import an existing project" -> GitHub -> Select your Repo.
-4. Leave the Build Command & Publish directory **empty**.
-5. Click **Deploy**. Netlify will automatically update your site anytime you push code to GitHub `main`.
-
----
-
-## 🛠️ Custom TURN Server Setup (VPS/Coturn)
-
-WebRTC utilizes `STUN` & `TURN` servers to bypass carrier NATs (especially strict networks like Jio/Airtel on mobile). We highly recommend running your own Coturn server on a VPS (like Hostinger, DigitalOcean, or AWS).
-
-### Step 1: Install Coturn on Ubuntu/Debian
 ```bash
-sudo apt update
-sudo apt install coturn -y
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
 ```
 
-### Step 2: Configure Coturn
-Backup the default configuration and create a new one:
-```bash
-sudo mv /etc/turnserver.conf /etc/turnserver.conf.backup
-sudo nano /etc/turnserver.conf
-```
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-Paste the following configuration (replace `<YOUR_VPS_IP>` and `<YOUR_SECRET_PASSWORD>`):
-```ini
-# TURN server name and auth
-realm=watchparty-turn
-server-name=watchparty-turn
-listening-port=3478
-tls-listening-port=5349
+You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
 
-# Authentication details (Using Long-Term Credentials)
-user=akash:<YOUR_SECRET_PASSWORD>
-lt-cred-mech
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-# Bind to IP
-listening-ip=<YOUR_VPS_IP>
-external-ip=<YOUR_VPS_IP>
+## Learn More
 
-# Protocols (Force TCP relays to bypass mobile NAT firewalls)
-no-multicast-peers
-no-cli
-no-loopback-peers
-# IMPORTANT: Do NOT add "no-tcp-relay"! TCP Relay is REQUIRED for mobile networks like Jio/Airtel.
-```
+To learn more about Next.js, take a look at the following resources:
 
-### Step 3: Enable the Daemon
-Open `/etc/default/coturn` and uncomment or add the `TURNSERVER_ENABLED` flag:
-```bash
-sudo nano /etc/default/coturn
-# Add this line:
-TURNSERVER_ENABLED=1
-```
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
-### Step 4: Restart and Allow Firewall
-Restart the Coturn service so the changes take effect:
-```bash
-sudo systemctl restart coturn
-sudo systemctl enable coturn
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-# Ensure UDP/TCP rules are allowed
-sudo ufw allow 3478/tcp
-sudo ufw allow 3478/udp
-sudo ufw allow 5349/tcp
-sudo ufw allow 5349/udp
-```
+## Deploy on Vercel
 
-### Step 5: Link it to your App
-Update `app.js` with your VPS details in the `servers` block:
-```javascript
-const servers = {
-  iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "turn:<YOUR_VPS_IP>:3478?transport=tcp", username: "akash", credential: "<YOUR_SECRET_PASSWORD>" },
-    { urls: "turn:<YOUR_VPS_IP>:5349?transport=tcp", username: "akash", credential: "<YOUR_SECRET_PASSWORD>" }
-  ],
-  iceTransportPolicy: "all"
-};
-```
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

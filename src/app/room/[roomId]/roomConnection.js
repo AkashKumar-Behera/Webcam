@@ -1,11 +1,96 @@
 /* LIVE PARTY v5.0 */
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.5.0/firebase-app.js";
-import { getDatabase, ref, set, get, push, onValue, onChildAdded, remove, onDisconnect }
-  from "https://www.gstatic.com/firebasejs/11.5.0/firebase-database.js";
+import { auth, db } from "../../../lib/firebase";
+import { ref, set, get, push, onValue, onChildAdded, remove, onDisconnect } from "firebase/database";
+import { signOut } from "firebase/auth";
 
-const firebaseConfig = { apiKey: "AIzaSyBGnFw13ko0b4KAs7plpFmHlg0GohowElA", authDomain: "webrtc-cd5af.firebaseapp.com", databaseURL: "https://webrtc-cd5af-default-rtdb.asia-southeast1.firebasedatabase.app", projectId: "webrtc-cd5af" };
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
+export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
+  if (typeof window === "undefined") return;
+
+  const PROFILE_KEY = "nova_user_profile";
+  
+  function readUserProfile() {
+    try { return JSON.parse(localStorage.getItem(PROFILE_KEY) || "null"); }
+    catch { return null; }
+  }
+
+  function appTargetPath() {
+    return window.location.pathname + window.location.search;
+  }
+
+  function redirectToLogin() {
+    const next = encodeURIComponent(appTargetPath());
+    window.location.replace(`/login?next=${next}`);
+  }
+
+  const signedInProfile = readUserProfile();
+  if (!signedInProfile?.name || !signedInProfile?.email) {
+    redirectToLogin();
+    return;
+  }
+  window._novaUserProfile = signedInProfile;
+  
+  // Expose logoutUser
+  window.logoutUser = async () => {
+    localStorage.removeItem(PROFILE_KEY);
+    localStorage.removeItem("watchparty_name");
+    localStorage.removeItem("watchparty_email");
+    localStorage.removeItem("nova_auth_provider");
+    try { await signOut(auth); } catch (_) {}
+    redirectToLogin();
+  };
+function getProfilePayload(nameOverride = "") {
+  const profile = readUserProfile() || window._novaUserProfile || {};
+  return {
+    name: nameOverride || profile.name || "Nova User",
+    email: profile.email || localStorage.getItem("watchparty_email") || "",
+    userId: profile.uid || "",
+    provider: profile.provider || "manual",
+    photoURL: profile.photoURL || ""
+  };
+}
+
+function hydrateUserProfileUi() {
+  const profile = getProfilePayload();
+  localStorage.setItem("watchparty_name", profile.name);
+  localStorage.setItem("watchparty_email", profile.email);
+
+  ["userName", "modalName"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && profile.name) el.value = profile.name;
+  });
+
+  const emailInput = document.getElementById("userEmail");
+  if (emailInput) emailInput.value = profile.email;
+
+  const nameLabel = document.getElementById("appProfileName");
+  const emailLabel = document.getElementById("appProfileEmail");
+  const avatar = document.getElementById("appProfileAvatar");
+  const photo = document.getElementById("appProfilePhoto");
+
+  if (nameLabel) nameLabel.textContent = profile.name;
+  if (emailLabel) emailLabel.textContent = profile.email;
+  if (avatar) avatar.textContent = (profile.name || "N").charAt(0).toUpperCase();
+  if (photo && profile.photoURL) {
+    photo.src = profile.photoURL;
+    photo.hidden = false;
+    if (avatar) avatar.hidden = true;
+  }
+}
+
+window.logoutUser = async () => {
+  localStorage.removeItem(PROFILE_KEY);
+  localStorage.removeItem("watchparty_name");
+  localStorage.removeItem("watchparty_email");
+  localStorage.removeItem("nova_auth_provider");
+  try { await signOut(auth); } catch (_) {}
+  redirectToLogin();
+};
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", hydrateUserProfileUi);
+} else {
+  hydrateUserProfileUi();
+}
 
 const cfAppId = 'e6be1e8812248470630854d4277238af';
 const cfAppSecret = '3f671947386a7bf692d8326e509e3797be3c37c295337c98a6414d563c0bfeb3';
@@ -199,6 +284,11 @@ function stopSilenceLoop() {
   }
 }
 function nameToHsl(n) { let h = 0; for (const c of String(n)) h = c.charCodeAt(0) + ((h << 5) - h); return `hsl(${Math.abs(h) % 360},65%,48%)`; }
+function renderPersonInfo(person, badge = "") {
+  const name = esc(person?.name || "User");
+  const email = person?.email ? `<div class="ppl-email">${esc(person.email)}</div>` : "";
+  return `<div class="ppl-info"><div class="ppl-name">${name} ${badge}</div>${email}</div>`;
+}
 
 function getChatName() {
   return document.getElementById("userName")?.value.trim() || (isHost ? "Host" : "Viewer");
@@ -1743,3 +1833,4 @@ document.addEventListener('visibilitychange', () => {
     }
   }
 });
+}
