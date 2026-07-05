@@ -1,35 +1,34 @@
 {
   "rules": {
-    ".read": "auth != null",
-    ".write": "auth != null",
     "users": {
       "$uid": {
-        ".read": "true",
-        ".write": "true"
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid"
       }
     },
     "status": {
       "$uid": {
-        ".read": "true",
-        ".write": "true"
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid"
       }
     },
     "rooms": {
       "$roomId": {
-        ".read": "true",
-        ".write": "true"
+        ".read": "auth != null",
+        ".write": "auth != null"
       }
     },
     "friends": {
       "$uid": {
-        ".read": "true",
-        ".write": "true"
+        ".read": "auth != null",
+        // Allow writing to own list, or when sending friend requests (which writes to the other user's list)
+        ".write": "auth != null"
       }
     },
     "invites": {
       "$uid": {
-        ".read": "true",
-        ".write": "true"
+        ".read": "auth != null",
+        ".write": "auth != null"
       }
     }
   }
