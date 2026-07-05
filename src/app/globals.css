@@ -1056,7 +1056,7 @@
       background: rgba(255, 255, 255, 0.04); 
       border: 1px solid var(--glass-border);
       border-radius: 12px; 
-      color: var(--accent3); 
+      color: var(--accent); 
       font-family: inherit; 
       cursor: pointer;
       display: flex; 
