@@ -39,6 +39,7 @@ export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [friendsList, setFriendsList] = useState<any[]>([]);
+  const [friendStatuses, setFriendStatuses] = useState<Record<string, string>>({});
   const [notifications, setNotifications] = useState<any[]>([]);
   const [memories, setMemories] = useState<any[]>([]);
   const [publicRooms, setPublicRooms] = useState<any[]>([]);
@@ -125,6 +126,27 @@ export default function DashboardPage() {
       if (unsubFriends) unsubFriends();
     };
   }, [router]);
+
+  // Listen to friends status in real-time from Realtime Database
+  useEffect(() => {
+    const unsubs: (() => void)[] = [];
+
+    friendsList.forEach((friend) => {
+      const statusRef = ref(db, `status/${friend.uid}`);
+      const unsub = onValue(statusRef, (snap) => {
+        const val = snap.val();
+        setFriendStatuses((prev) => ({
+          ...prev,
+          [friend.uid]: val?.state || "offline"
+        }));
+      });
+      unsubs.push(unsub);
+    });
+
+    return () => {
+      unsubs.forEach((u) => u());
+    };
+  }, [friendsList]);
 
   const syncUserData = (uid: string) => {
     onValue(ref(db, `users/${uid}`), (snap) => {
@@ -853,21 +875,21 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 friendsList.map((friend) => (
-                  <div key={friend.uid} className="friend-item">
-                    <div className="friend-user-info">
-                      <div className="friend-avatar">
-                        {friend.photoURL ? (
-                          <img src={friend.photoURL} alt={friend.name} style={{ width: "100%", height: "100%", borderRadius: "50%" }} />
-                        ) : (
-                          friend.name.charAt(0).toUpperCase()
-                        )}
-                        <span className={`status-dot ${friend.status === "online" ? "online" : "offline"}`}></span>
-                      </div>
-                      <div className="friend-details">
-                        <span className="friend-name">{friend.name}</span>
-                        <span className="friend-status-text">{friend.status}</span>
-                      </div>
-                    </div>
+                   <div key={friend.uid} className="friend-item">
+                     <div className="friend-user-info">
+                       <div className="friend-avatar">
+                         {friend.photoURL ? (
+                           <img src={friend.photoURL} alt={friend.name} style={{ width: "100%", height: "100%", borderRadius: "50%" }} />
+                         ) : (
+                           friend.name.charAt(0).toUpperCase()
+                         )}
+                         <span className={`status-dot ${(friendStatuses[friend.uid] || friend.status) === "online" ? "online" : "offline"}`}></span>
+                       </div>
+                       <div className="friend-details">
+                         <span className="friend-name">{friend.name}</span>
+                         <span className="friend-status-text">{friendStatuses[friend.uid] || friend.status}</span>
+                       </div>
+                     </div>
                     <button className="friend-action-btn" onClick={() => inviteFriendToRoom(friend.uid)}>
                       <span className="material-symbols-outlined">send</span> Invite
                     </button>
