@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { auth, db } from "../lib/firebase";
+import { auth, db, firestore } from "../lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { ref, set, get, push, onValue, remove } from "firebase/database";
+import { collection, doc, getDoc, getDocs, setDoc, deleteDoc, query, where, onSnapshot } from "firebase/firestore";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -47,6 +48,8 @@ export default function DashboardPage() {
   const PROFILE_KEY = "nova_user_profile";
 
   useEffect(() => {
+    let unsubFriends: (() => void) | null = null;
+
     // Read local cache profile
     try {
       const profile = JSON.parse(localStorage.getItem(PROFILE_KEY) || "null");
@@ -71,8 +74,7 @@ export default function DashboardPage() {
         setLoading(false);
         if (uid) {
           syncUserData(uid);
-          listenToFriends(uid);
-          listenToNotifications(uid);
+          unsubFriends = listenToFriendsAndNotifs(uid);
           syncOnlineStatus(uid);
         }
       }
@@ -120,6 +122,7 @@ export default function DashboardPage() {
     return () => {
       unsubscribe();
       unsubscribeRooms();
+      if (unsubFriends) unsubFriends();
     };
   }, [router]);
 
@@ -145,56 +148,47 @@ export default function DashboardPage() {
     }
   };
 
-  const listenToFriends = (uid: string) => {
-    onValue(ref(db, `friends/${uid}`), async (snap) => {
-      if (snap.exists()) {
-        const friendsData = snap.val();
-        const list: any[] = [];
-        for (const [friendId, relation] of Object.entries(friendsData)) {
-          if (relation === "friend") {
-            const userSnap = await get(ref(db, `users/${friendId}`));
-            const statusSnap = await get(ref(db, `status/${friendId}`));
-            if (userSnap.exists()) {
-              list.push({
-                uid: friendId,
-                ...userSnap.val(),
-                status: statusSnap.exists() ? statusSnap.val().state : "offline"
-              });
-            }
-          }
-        }
-        setFriendsList(list);
-      } else {
-        setFriendsList([]);
-      }
-    });
-  };
+  const listenToFriendsAndNotifs = (uid: string) => {
+    const q = query(collection(firestore, "friendships"), where("uid", "==", uid));
+    return onSnapshot(q, async (snapshot) => {
+      const friendsListTemp: any[] = [];
+      const notificationsTemp: any[] = [];
 
-  const listenToNotifications = (uid: string) => {
-    onValue(ref(db, `friends/${uid}`), async (snap) => {
-      const notifs: any[] = [];
-      if (snap.exists()) {
-        const friendsData = snap.val();
-        for (const [friendId, relation] of Object.entries(friendsData)) {
-          if (relation === "incoming") {
-            const userSnap = await get(ref(db, `users/${friendId}`));
-            if (userSnap.exists()) {
-              notifs.push({
-                id: friendId,
-                type: "friend_request",
-                name: userSnap.val().name,
-                email: userSnap.val().email
-              });
-            }
+      for (const docItem of snapshot.docs) {
+        const fData = docItem.data();
+        const friendId = fData.friendId;
+        const status = fData.status;
+
+        if (status === "friend") {
+          const friendSnap = await getDoc(doc(firestore, "users", friendId));
+          const statusSnap = await get(ref(db, `status/${friendId}`));
+          if (friendSnap.exists()) {
+            friendsListTemp.push({
+              uid: friendId,
+              ...friendSnap.data(),
+              status: statusSnap.exists() ? statusSnap.val().state : "offline"
+            });
+          }
+        } else if (status === "incoming") {
+          const friendSnap = await getDoc(doc(firestore, "users", friendId));
+          if (friendSnap.exists()) {
+            const data = friendSnap.data();
+            notificationsTemp.push({
+              id: friendId,
+              type: "friend_request",
+              name: data?.name || "User",
+              email: data?.email || ""
+            });
           }
         }
       }
-      
-      // Also fetch room invites
+      setFriendsList(friendsListTemp);
+
+      // Also fetch room invites from Realtime Database
       const inviteSnap = await get(ref(db, `invites/${uid}`));
       if (inviteSnap.exists()) {
         Object.entries(inviteSnap.val()).forEach(([inviteId, val]: [string, any]) => {
-          notifs.push({
+          notificationsTemp.push({
             id: inviteId,
             type: "room_invite",
             roomId: val.roomId,
@@ -203,7 +197,7 @@ export default function DashboardPage() {
           });
         });
       }
-      setNotifications(notifs);
+      setNotifications(notificationsTemp);
     });
   };
 
@@ -289,38 +283,74 @@ export default function DashboardPage() {
 
   const searchUsers = async () => {
     if (!searchQuery.trim()) return;
-    const usersSnap = await get(ref(db, "users"));
-    if (usersSnap.exists()) {
+    try {
+      const usersRef = collection(firestore, "users");
+      const qSnap = await getDocs(usersRef);
       const results: any[] = [];
-      Object.entries(usersSnap.val()).forEach(([uid, val]: [string, any]) => {
+      qSnap.forEach((docItem) => {
+        const val = docItem.data();
+        const uid = docItem.id;
         if (uid !== myUid && val.name?.toLowerCase().includes(searchQuery.toLowerCase())) {
           results.push({ uid, name: val.name, email: val.email });
         }
       });
       setSearchResults(results);
+    } catch (err) {
+      console.error("Search failed:", err);
+      alert("Search failed due to database permissions.");
     }
   };
 
   const sendFriendRequest = async (targetUid: string) => {
-    await set(ref(db, `friends/${myUid}/${targetUid}`), "outgoing");
-    await set(ref(db, `friends/${targetUid}/${myUid}`), "incoming");
-    alert("Friend request sent!");
-    setSearchQuery("");
-    setSearchResults([]);
+    try {
+      await setDoc(doc(firestore, "friendships", `${myUid}_${targetUid}`), {
+        uid: myUid,
+        friendId: targetUid,
+        status: "outgoing",
+        updatedAt: Date.now()
+      });
+      await setDoc(doc(firestore, "friendships", `${targetUid}_${myUid}`), {
+        uid: targetUid,
+        friendId: myUid,
+        status: "incoming",
+        updatedAt: Date.now()
+      });
+      alert("Friend request sent!");
+      setSearchQuery("");
+      setSearchResults([]);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to send friend request.");
+    }
   };
 
   const acceptFriendRequest = async (targetUid: string) => {
-    await set(ref(db, `friends/${myUid}/${targetUid}`), "friend");
-    await set(ref(db, `friends/${targetUid}/${myUid}`), "friend");
-    alert("Friend request accepted!");
-    listenToFriends(myUid);
-    listenToNotifications(myUid);
+    try {
+      await setDoc(doc(firestore, "friendships", `${myUid}_${targetUid}`), {
+        uid: myUid,
+        friendId: targetUid,
+        status: "friend",
+        updatedAt: Date.now()
+      });
+      await setDoc(doc(firestore, "friendships", `${targetUid}_${myUid}`), {
+        uid: targetUid,
+        friendId: myUid,
+        status: "friend",
+        updatedAt: Date.now()
+      });
+      alert("Friend request accepted!");
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const rejectFriendRequest = async (targetUid: string) => {
-    await remove(ref(db, `friends/${myUid}/${targetUid}`));
-    await remove(ref(db, `friends/${targetUid}/${myUid}`));
-    listenToNotifications(myUid);
+    try {
+      await deleteDoc(doc(firestore, "friendships", `${myUid}_${targetUid}`));
+      await deleteDoc(doc(firestore, "friendships", `${targetUid}_${myUid}`));
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const inviteFriendToRoom = async (friendUid: string) => {
@@ -340,8 +370,15 @@ export default function DashboardPage() {
 
   const saveBio = async () => {
     if (!myUid) return;
-    await set(ref(db, `users/${myUid}/bio`), bio);
-    alert("Bio updated!");
+    try {
+      // Save to RTDB
+      await set(ref(db, `users/${myUid}/bio`), bio);
+      // Save to Firestore as well
+      await setDoc(doc(firestore, "users", myUid), { bio }, { merge: true });
+      alert("Bio updated!");
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   if (loading) {

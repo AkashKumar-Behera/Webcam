@@ -4,7 +4,8 @@ import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signInWithPopup, signInWithRedirect, getRedirectResult, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { ref, set, get } from "firebase/database";
-import { auth, db, googleProvider } from "../../lib/firebase";
+import { doc, setDoc } from "firebase/firestore";
+import { auth, db, firestore, googleProvider } from "../../lib/firebase";
 
 function LoginFormContent() {
   const router = useRouter();
@@ -64,6 +65,16 @@ function LoginFormContent() {
         provider: profile.provider,
         lastActive: Date.now()
       });
+
+      // Write to Firestore as well
+      const userDocRef = doc(firestore, "users", profile.uid);
+      await setDoc(userDocRef, {
+        name: profile.name,
+        email: profile.email,
+        photoURL: profile.photoURL || "",
+        provider: profile.provider,
+        lastActive: Date.now()
+      }, { merge: true });
     } catch (err) {
       console.error("User profile save skipped:", err);
     }
