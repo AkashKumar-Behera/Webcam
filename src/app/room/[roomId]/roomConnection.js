@@ -1841,13 +1841,39 @@ function _startConnPoll() {
 
 window.addEventListener('offline', () => { logStatus('Network offline.'); showToast('📵 Network offline...'); });
 
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && roomId) {
-    const pc = isHost ? screenPcMap['host_cf'] : viewerPc;
-    if (pc && ['disconnected','failed'].includes(pc.iceConnectionState)) {
-      logStatus('Tab visible — connection bad, reconnecting...');
-      if (_reconnectAttempt === 0) _tryReconnect();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && roomId) {
+      const pc = isHost ? screenPcMap['host_cf'] : viewerPc;
+      if (pc && ['disconnected','failed'].includes(pc.iceConnectionState)) {
+        logStatus('Tab visible — connection bad, reconnecting...');
+        if (_reconnectAttempt === 0) _tryReconnect();
+      }
     }
-  }
-});
+  });
+
+  // Switch tabs between Chat, Stats, Settings, People inside room
+  window.switchTab = (tabName) => {
+    const tabs = ["chat", "stats", "settings", "people"];
+    tabs.forEach(t => {
+      const tabBtn = document.getElementById("tab" + t.charAt(0).toUpperCase() + t.slice(1));
+      const contentPanel = document.getElementById("content" + t.charAt(0).toUpperCase() + t.slice(1));
+      if (tabBtn) {
+        if (t === tabName) tabBtn.classList.add("active");
+        else tabBtn.classList.remove("active");
+      }
+      if (contentPanel) {
+        if (t === tabName) contentPanel.classList.add("active");
+        else contentPanel.classList.remove("active");
+      }
+    });
+    // Clear notification badges
+    if (tabName === "chat") {
+      const badge = document.getElementById("chatBadge");
+      if (badge) badge.style.display = "none";
+    }
+    if (tabName === "people") {
+      const badge = document.getElementById("peopleBadge");
+      if (badge) badge.classList.remove("has-new");
+    }
+  };
 }
