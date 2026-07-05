@@ -40,6 +40,8 @@ export default function DashboardPage() {
   const [friendsList, setFriendsList] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [memories, setMemories] = useState<any[]>([]);
+  const [publicRooms, setPublicRooms] = useState<any[]>([]);
+  const [showHostModal, setShowHostModal] = useState(false);
 
   const PROFILE_KEY = "nova_user_profile";
 
@@ -75,13 +77,48 @@ export default function DashboardPage() {
       }
     });
 
+    // Listen to active rooms
+    const roomsRef = ref(db, "rooms");
+    const unsubscribeRooms = onValue(roomsRef, (snap) => {
+      if (snap.exists()) {
+        const list: any[] = [];
+        Object.entries(snap.val()).forEach(([roomId, val]: [string, any]) => {
+          if (val.visibility === "public" || val.visibility === "private") {
+            let userCount = 1;
+            if (val.participants) {
+              userCount += Object.keys(val.participants).length;
+            }
+            if (val.viewers) {
+              userCount += Object.keys(val.viewers).length;
+            }
+            list.push({
+              roomId,
+              hostName: val.host?.name || "Host",
+              hostPhoto: val.host?.photoURL || "",
+              visibility: val.visibility,
+              password: val.password || "",
+              userCount,
+              moodLabel: val.moodLabel || "Movie Night",
+              moodEmoji: val.moodEmoji || "🎬"
+            });
+          }
+        });
+        setPublicRooms(list);
+      } else {
+        setPublicRooms([]);
+      }
+    });
+
     // Load memories
     try {
       const saved = JSON.parse(localStorage.getItem("saath_memories") || "[]");
       setMemories(saved);
     } catch {}
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      unsubscribeRooms();
+    };
   }, [router]);
 
   const syncUserData = (uid: string) => {
@@ -219,6 +256,8 @@ export default function DashboardPage() {
       host: hostPayload,
       visibility: visibility,
       password: visibility === "private" ? roomPassword : "",
+      moodLabel: mood.label,
+      moodEmoji: mood.emoji,
       createdAt: Date.now()
     });
 
@@ -407,203 +446,282 @@ export default function DashboardPage() {
       {/* Main View Container */}
       <main className="main-content">
         {activeTab === "dashboard" && (
-          <div className="modal-card" style={{ display: "block", position: "relative", margin: "0 auto" }}>
-            <div className="modal-split">
-              {/* Left Column: Branding and Actions */}
-              <div className="modal-left">
-                <div className="modal-header">
-                  <div className="modal-logo">
-                    <span className="material-symbols-outlined">favorite</span>
-                  </div>
-                  <h1>Nova 🎬</h1>
-                  <p>Watch movies, shows & more — together in sync, in love.</p>
-                </div>
-                
-                {mode === "party" && (
-                  <div className={`mic-option ${enableMic ? "active" : ""}`} onClick={() => setEnableMic(!enableMic)}>
-                    <input 
-                      type="checkbox" 
-                      checked={enableMic} 
-                      onChange={() => {}}
-                      style={{ width: "18px", height: "18px", cursor: "pointer" }} 
-                    />
-                    <div>
-                      <div className="mic-option-text-title">Enable Microphone</div>
-                      <div className="mic-option-text-sub">Include live commentary while hosting</div>
-                    </div>
-                  </div>
-                )}
+          <div>
+            <div className="dashboard-header-row">
+              <h1>Active Rooms</h1>
+              <button className="host-plus-btn" onClick={() => setShowHostModal(true)}>
+                <span className="material-symbols-outlined">add</span>
+              </button>
+            </div>
 
-                <div className="modal-actions" style={{ display: "grid", gap: "12px", marginTop: "10px" }}>
-                  <button className="modal-btn host-btn" onClick={handleStartHost}>
-                    <span className="material-symbols-outlined">cast</span>
-                    Start Hosting
-                  </button>
-                  <button className="modal-btn join-btn" onClick={handleJoin}>
-                    <span className="material-symbols-outlined">login</span>
-                    Join Session
-                  </button>
-                </div>
+            {publicRooms.length === 0 ? (
+              <div style={{ textAlign: "center", color: "#808290", padding: "80px 20px" }}>
+                <span className="material-symbols-outlined" style={{ fontSize: "64px", marginBottom: "16px", color: "rgba(167, 139, 250, 0.4)" }}>
+                  live_tv
+                </span>
+                <h2>No active watch rooms right now</h2>
+                <p style={{ marginTop: "8px", fontSize: "14px" }}>Click the "+" button in the top right to host a watch party!</p>
               </div>
+            ) : (
+              <div className="rooms-grid">
+                {publicRooms.map((r) => (
+                  <div key={r.roomId} className="room-card">
+                    <div className="room-card-header">
+                      <span className="room-mood-badge">
+                        {r.moodEmoji} {r.moodLabel}
+                      </span>
+                      <span className={`room-visibility-badge ${r.visibility}`}>
+                        {r.visibility}
+                      </span>
+                    </div>
 
-              {/* Right Column: Settings & Details */}
-              <div className="modal-right">
-                <div>
-                  <div className="modal-section-title">Your Name</div>
-                  <input 
-                    className="modal-input" 
-                    value={name} 
-                    onChange={(e) => setName(e.target.value)} 
-                    placeholder="e.g. Akash" 
-                    autoComplete="off" 
-                    spellCheck="false" 
-                  />
-                </div>
-                
-                <div>
-                  <div className="modal-section-title">Your Special Room Code</div>
-                  <div className="modal-room-row">
-                    <input 
-                      className="modal-input" 
-                      value={room} 
-                      onChange={(e) => setRoom(e.target.value)} 
-                      placeholder="Enter or generate a code" 
-                      maxLength={12} 
-                      autoComplete="off" 
-                      spellCheck="false" 
-                    />
-                    <button className="modal-gen-btn" onClick={generateRoomCode}>
-                      <span className="material-symbols-outlined">autorenew</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Room Visibility Selection */}
-                <div>
-                  <div className="modal-section-title">Room Visibility</div>
-                  <div className="visibility-selector">
-                    <button 
-                      className={`visibility-btn ${visibility === "public" ? "active" : ""}`}
-                      onClick={() => setVisibility("public")}
-                    >
-                      <span className="material-symbols-outlined">public</span>
-                      Public
-                    </button>
-                    <button 
-                      className={`visibility-btn ${visibility === "private" ? "active" : ""}`}
-                      onClick={() => setVisibility("private")}
-                    >
-                      <span className="material-symbols-outlined">lock</span>
-                      Private
-                    </button>
-                    <button 
-                      className={`visibility-btn ${visibility === "unlisted" ? "active" : ""}`}
-                      onClick={() => setVisibility("unlisted")}
-                    >
-                      <span className="material-symbols-outlined">visibility_off</span>
-                      Unlisted
-                    </button>
-                  </div>
-                  {visibility === "private" && (
-                    <input 
-                      type="password"
-                      className="modal-input"
-                      placeholder="Set room password"
-                      value={roomPassword}
-                      onChange={(e) => setRoomPassword(e.target.value)}
-                      style={{ marginTop: "8px" }}
-                    />
-                  )}
-                </div>
-
-                <div className="modal-host-settings">
-                  <button className="modal-host-toggle" onClick={() => setShowHostSettings(!showHostSettings)}>
-                    <span>⚙️ Host Settings (optional)</span>
-                    <span className="material-symbols-outlined" style={{ transform: showHostSettings ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
-                      expand_more
-                    </span>
-                  </button>
-                  
-                  {showHostSettings && (
-                    <div className="modal-host-body" style={{ display: "block" }}>
-                      <div>
-                        <div className="modal-section-title">Quality & FPS</div>
-                        <div className="form-row">
-                          <select className="form-select" value={quality} onChange={(e) => setQuality(e.target.value)}>
-                            <option value="2160p">4K (2160p)</option>
-                            <option value="1440p">2K (1440p)</option>
-                            <option value="1080p">1080p</option>
-                            <option value="720p">720p</option>
-                          </select>
-                          <select className="form-select" value={fps} onChange={(e) => setFps(e.target.value)}>
-                            <option value="60">60 fps</option>
-                            <option value="30">30 fps</option>
-                          </select>
-                        </div>
-                        <div className="modal-section-title" style={{ marginTop: "10px" }}>Preferred Codec</div>
-                        <select className="form-select" value={codec} onChange={(e) => setCodec(e.target.value)}>
-                          <option value="av1">AV1 (Next-Gen Quality)</option>
-                          <option value="h265">H.265 (HEVC)</option>
-                          <option value="vp9">VP9 (High Quality)</option>
-                          <option value="h264">H.264 (Universal Compatibility)</option>
-                        </select>
+                    <div className="room-host-info">
+                      <div className="room-host-avatar">
+                        {r.hostPhoto ? (
+                          <img src={r.hostPhoto} alt={r.hostName} style={{ width: "100%", height: "100%", borderRadius: "50%" }} />
+                        ) : (
+                          r.hostName.charAt(0).toUpperCase()
+                        )}
+                      </div>
+                      <div className="room-host-details">
+                        <span className="room-host-name">{r.hostName}</span>
+                        <span className="room-participant-count">
+                          <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>groups</span>
+                          {r.userCount} watching
+                        </span>
                       </div>
                     </div>
-                  )}
-                </div>
 
-                <div>
-                  <div className="modal-section-title">Session Type</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                    <div 
-                      className={`mode-btn ${mode === "party" ? "active-mode" : ""}`} 
-                      onClick={() => setMode("party")}
-                    >
-                      <span className="material-symbols-outlined">groups</span>
-                      Watch Party
-                    </div>
-                    <div 
-                      className={`mode-btn ${mode === "broadcast" ? "active-mode" : ""}`} 
-                      onClick={() => setMode("broadcast")}
-                    >
-                      <span className="material-symbols-outlined">radio</span>
-                      Broadcast
+                    <div className="room-card-footer">
+                      <span className="room-code-display">Code: {r.roomId}</span>
+                      <button 
+                        className="room-join-btn" 
+                        onClick={() => {
+                          if (r.visibility === "private") {
+                            const pwd = prompt("This room is private. Enter room password to join:");
+                            if (pwd !== r.password) {
+                              alert("Incorrect password.");
+                              return;
+                            }
+                          }
+                          // Save to local storage for the room session
+                          localStorage.setItem("watchparty_name", name.trim() || "Viewer");
+                          localStorage.setItem("watchparty_email", email || `${(name || "viewer").trim().toLowerCase()}@manual.local`);
+                          localStorage.setItem("watchparty_room", r.roomId);
+                          router.push(`/room/${r.roomId}?role=viewer`);
+                        }}
+                      >
+                        Join Room
+                      </button>
                     </div>
                   </div>
-                </div>
-
-                <div>
-                  <div className="modal-section-title">Your Mood Tonight 🌙</div>
-                  <div className="mood-bar">
-                    <button 
-                      className={`mood-btn ${mood.id === "movie" ? "active-mood" : ""}`} 
-                      onClick={() => setMood({ id: "movie", emoji: "🎬", label: "Movie Night" })}
-                    >
-                      🎬 Movie
-                    </button>
-                    <button 
-                      className={`mood-btn ${mood.id === "chill" ? "active-mood" : ""}`} 
-                      onClick={() => setMood({ id: "chill", emoji: "🎵", label: "Chill Vibes" })}
-                    >
-                      🎵 Chill
-                    </button>
-                    <button 
-                      className={`mood-btn ${mood.id === "study" ? "active-mood" : ""}`} 
-                      onClick={() => setMood({ id: "study", emoji: "💻", label: "Study Mode" })}
-                    >
-                      💻 Study
-                    </button>
-                    <button 
-                      className={`mood-btn ${mood.id === "game" ? "active-mood" : ""}`} 
-                      onClick={() => setMood({ id: "game", emoji: "🎮", label: "Gaming" })}
-                    >
-                      🎮 Gaming
-                    </button>
-                  </div>
-                </div>
-
+                ))}
               </div>
-            </div>
+            )}
+
+            {/* Host Creation Modal */}
+            {showHostModal && (
+              <div className="modal-overlay-blur">
+                <div className="modal-card" style={{ position: "relative", width: "90%", maxWidth: "760px", margin: "0 auto" }}>
+                  <button className="modal-close-corner" onClick={() => setShowHostModal(false)}>
+                    <span className="material-symbols-outlined">close</span>
+                  </button>
+
+                  <div className="modal-split">
+                    {/* Left Column: Branding and Actions */}
+                    <div className="modal-left">
+                      <div className="modal-header">
+                        <div className="modal-logo">
+                          <span className="material-symbols-outlined">favorite</span>
+                        </div>
+                        <h1>Nova 🎬</h1>
+                        <p>Watch movies, shows & more — together in sync, in love.</p>
+                      </div>
+                      
+                      {mode === "party" && (
+                        <div className={`mic-option ${enableMic ? "active" : ""}`} onClick={() => setEnableMic(!enableMic)}>
+                          <input 
+                            type="checkbox" 
+                            checked={enableMic} 
+                            onChange={() => {}}
+                            style={{ width: "18px", height: "18px", cursor: "pointer" }} 
+                          />
+                          <div>
+                            <div className="mic-option-text-title">Enable Microphone</div>
+                            <div className="mic-option-text-sub">Include live commentary while hosting</div>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="modal-actions" style={{ display: "grid", gap: "12px", marginTop: "20px" }}>
+                        <button className="modal-btn host-btn" onClick={handleStartHost}>
+                          <span className="material-symbols-outlined">cast</span>
+                          Start Hosting
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Right Column: Settings & Details */}
+                    <div className="modal-right">
+                      <div>
+                        <div className="modal-section-title">Your Name</div>
+                        <input 
+                          className="modal-input" 
+                          value={name} 
+                          onChange={(e) => setName(e.target.value)} 
+                          placeholder="e.g. Akash" 
+                          autoComplete="off" 
+                          spellCheck="false" 
+                        />
+                      </div>
+                      
+                      <div>
+                        <div className="modal-section-title">Your Special Room Code</div>
+                        <div className="modal-room-row">
+                          <input 
+                            className="modal-input" 
+                            value={room} 
+                            onChange={(e) => setRoom(e.target.value)} 
+                            placeholder="Enter or generate a code" 
+                            maxLength={12} 
+                            autoComplete="off" 
+                            spellCheck="false" 
+                          />
+                          <button className="modal-gen-btn" onClick={generateRoomCode}>
+                            <span className="material-symbols-outlined">autorenew</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Room Visibility Selection */}
+                      <div>
+                        <div className="modal-section-title">Room Visibility</div>
+                        <div className="visibility-selector">
+                          <button 
+                            className={`visibility-btn ${visibility === "public" ? "active" : ""}`}
+                            onClick={() => setVisibility("public")}
+                          >
+                            <span className="material-symbols-outlined">public</span>
+                            Public
+                          </button>
+                          <button 
+                            className={`visibility-btn ${visibility === "private" ? "active" : ""}`}
+                            onClick={() => setVisibility("private")}
+                          >
+                            <span className="material-symbols-outlined">lock</span>
+                            Private
+                          </button>
+                          <button 
+                            className={`visibility-btn ${visibility === "unlisted" ? "active" : ""}`}
+                            onClick={() => setVisibility("unlisted")}
+                          >
+                            <span className="material-symbols-outlined">visibility_off</span>
+                            Unlisted
+                          </button>
+                        </div>
+                        {visibility === "private" && (
+                          <input 
+                            type="password"
+                            className="modal-input"
+                            placeholder="Set room password"
+                            value={roomPassword}
+                            onChange={(e) => setRoomPassword(e.target.value)}
+                            style={{ marginTop: "8px" }}
+                          />
+                        )}
+                      </div>
+
+                      <div className="modal-host-settings">
+                        <button className="modal-host-toggle" onClick={() => setShowHostSettings(!showHostSettings)}>
+                          <span>⚙️ Host Settings (optional)</span>
+                          <span className="material-symbols-outlined" style={{ transform: showHostSettings ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
+                            expand_more
+                          </span>
+                        </button>
+                        
+                        {showHostSettings && (
+                          <div className="modal-host-body" style={{ display: "block" }}>
+                            <div>
+                              <div className="modal-section-title">Quality & FPS</div>
+                              <div className="form-row">
+                                <select className="form-select" value={quality} onChange={(e) => setQuality(e.target.value)}>
+                                  <option value="2160p">4K (2160p)</option>
+                                  <option value="1440p">2K (1440p)</option>
+                                  <option value="1080p">1080p</option>
+                                  <option value="720p">720p</option>
+                                </select>
+                                <select className="form-select" value={fps} onChange={(e) => setFps(e.target.value)}>
+                                  <option value="60">60 fps</option>
+                                  <option value="30">30 fps</option>
+                                </select>
+                              </div>
+                              <div className="modal-section-title" style={{ marginTop: "10px" }}>Preferred Codec</div>
+                              <select className="form-select" value={codec} onChange={(e) => setCodec(e.target.value)}>
+                                <option value="av1">AV1 (Next-Gen Quality)</option>
+                                <option value="h265">H.265 (HEVC)</option>
+                                <option value="vp9">VP9 (High Quality)</option>
+                                <option value="h264">H.264 (Universal Compatibility)</option>
+                              </select>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="modal-section-title">Session Type</div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                          <div 
+                            className={`mode-btn ${mode === "party" ? "active-mode" : ""}`} 
+                            onClick={() => setMode("party")}
+                          >
+                            <span className="material-symbols-outlined">groups</span>
+                            Watch Party
+                          </div>
+                          <div 
+                            className={`mode-btn ${mode === "broadcast" ? "active-mode" : ""}`} 
+                            onClick={() => setMode("broadcast")}
+                          >
+                            <span className="material-symbols-outlined">radio</span>
+                            Broadcast
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="modal-section-title">Your Mood Tonight 🌙</div>
+                        <div className="mood-bar">
+                          <button 
+                            className={`mood-btn ${mood.id === "movie" ? "active-mood" : ""}`} 
+                            onClick={() => setMood({ id: "movie", emoji: "🎬", label: "Movie Night" })}
+                          >
+                            🎬 Movie
+                          </button>
+                          <button 
+                            className={`mood-btn ${mood.id === "chill" ? "active-mood" : ""}`} 
+                            onClick={() => setMood({ id: "chill", emoji: "🎵", label: "Chill Vibes" })}
+                          >
+                            🎵 Chill
+                          </button>
+                          <button 
+                            className={`mood-btn ${mood.id === "study" ? "active-mood" : ""}`} 
+                            onClick={() => setMood({ id: "study", emoji: "💻", label: "Study Mode" })}
+                          >
+                            💻 Study
+                          </button>
+                          <button 
+                            className={`mood-btn ${mood.id === "game" ? "active-mood" : ""}`} 
+                            onClick={() => setMood({ id: "game", emoji: "🎮", label: "Gaming" })}
+                          >
+                            🎮 Gaming
+                          </button>
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
