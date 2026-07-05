@@ -1586,9 +1586,9 @@
   width: 100px;
   height: 100px;
   border-radius: 50%;
-  background: #10b981;
+  background: #19bea7;
   filter: blur(25px);
-  opacity: 0.25;
+  opacity: 0.35;
 }
 
 .brand-hero img {
