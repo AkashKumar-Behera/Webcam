@@ -29,6 +29,22 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
     return;
   }
   window._novaUserProfile = signedInProfile;
+
+  // Private room password check
+  get(ref(db, `rooms/${roomIdFromUrl}`)).then((snap) => {
+    if (snap.exists()) {
+      const roomData = snap.val();
+      if (roomData.visibility === "private" && roleFromUrl !== "host") {
+        const enteredPassword = prompt("This watch room is password protected. Enter room password to join:");
+        if (enteredPassword !== roomData.password) {
+          alert("Incorrect room password. Access denied.");
+          window.location.replace("/");
+          return;
+        }
+      }
+    }
+  });
+
   
   // Expose logoutUser
   window.logoutUser = async () => {
