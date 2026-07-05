@@ -1954,3 +1954,28 @@
   .login-shell.active-signup .signin-container { display: none; }
   .login-shell.active-signup .signup-container { display: flex; }
 }
+
+/* ==========================================================================
+   SHIMMER SKELETON LOADING EFFECTS
+   ========================================================================== */
+@keyframes shimmerAnim {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.shimmer-element {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03) 25%,
+    rgba(255, 255, 255, 0.08) 37%,
+    rgba(255, 255, 255, 0.03) 63%
+  );
+  background-size: 200% 100%;
+  animation: shimmerAnim 1.6s infinite linear;
+  border-radius: 8px;
+}
+

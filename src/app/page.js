@@ -109,12 +109,58 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#05070f] text-white">
-        <div className="text-center">
-          <span className="material-symbols-outlined text-4xl animate-spin text-[#ec4899]">autorenew</span>
-          <p className="mt-2 text-sm text-[#94a3b8]">Loading Nova Dashboard...</p>
+      <main className="page" style={{ background: "linear-gradient(135deg, #0e0a1a 0%, #05050a 100%)" }}>
+        <div className="modal-card" style={{ display: "block", position: "relative" }}>
+          <div className="modal-split">
+            {/* Left Column Shimmer */}
+            <div className="modal-left" style={{ pointerEvents: "none" }}>
+              <div className="modal-header">
+                <div className="shimmer-element" style={{ width: "48px", height: "48px", borderRadius: "50%" }}></div>
+                <div className="shimmer-element" style={{ width: "120px", height: "28px", marginTop: "12px" }}></div>
+                <div className="shimmer-element" style={{ width: "100%", height: "36px", marginTop: "8px" }}></div>
+              </div>
+              
+              <div className="shimmer-element" style={{ width: "100%", height: "54px", marginTop: "24px" }}></div>
+
+              <div className="modal-actions" style={{ display: "grid", gap: "12px", marginTop: "20px", width: "100%" }}>
+                <div className="shimmer-element" style={{ width: "100%", height: "44px" }}></div>
+                <div className="shimmer-element" style={{ width: "100%", height: "44px" }}></div>
+              </div>
+            </div>
+
+            {/* Right Column Shimmer */}
+            <div className="modal-right" style={{ pointerEvents: "none", display: "flex", flexDirection: "column", gap: "16px" }}>
+              <div>
+                <div className="shimmer-element" style={{ width: "80px", height: "14px", marginBottom: "8px" }}></div>
+                <div className="shimmer-element" style={{ width: "100%", height: "44px" }}></div>
+              </div>
+              
+              <div>
+                <div className="shimmer-element" style={{ width: "150px", height: "14px", marginBottom: "8px" }}></div>
+                <div className="shimmer-element" style={{ width: "100%", height: "44px" }}></div>
+              </div>
+
+              <div>
+                <div className="shimmer-element" style={{ width: "90px", height: "14px", marginBottom: "8px" }}></div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                  <div className="shimmer-element" style={{ height: "40px" }}></div>
+                  <div className="shimmer-element" style={{ height: "40px" }}></div>
+                </div>
+              </div>
+
+              <div>
+                <div className="shimmer-element" style={{ width: "120px", height: "14px", marginBottom: "8px" }}></div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "8px" }}>
+                  <div className="shimmer-element" style={{ height: "36px" }}></div>
+                  <div className="shimmer-element" style={{ height: "36px" }}></div>
+                  <div className="shimmer-element" style={{ height: "36px" }}></div>
+                  <div className="shimmer-element" style={{ height: "36px" }}></div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      </main>
     );
   }
 
