@@ -44,9 +44,9 @@ export default function RoomPage({ params: paramsPromise }: { params: Promise<{ 
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#05070f] text-white">
+      <div className="flex h-screen items-center justify-center bg-[#030408] text-white">
         <div className="text-center">
-          <span className="material-symbols-outlined text-4xl animate-spin text-[#ec4899]">autorenew</span>
+          <span className="material-symbols-outlined text-4xl animate-spin text-[#10b981]">autorenew</span>
           <p className="mt-2 text-sm text-[#94a3b8]">Loading Room Session...</p>
         </div>
       </div>
