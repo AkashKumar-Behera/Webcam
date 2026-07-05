@@ -191,7 +191,7 @@ function LoginFormContent() {
         <div className="brand-hero">
           <div className="logo-container">
             <div className="logo-glow"></div>
-            <img src="/icon.png" alt="Nova" />
+            <img src="/iconRm.png" alt="Nova" />
           </div>
           <h2>Nova</h2>
           <p>Sign in to coordinate media rooms and sync streams.</p>

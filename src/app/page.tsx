@@ -631,7 +631,7 @@ export default function DashboardPage() {
                       <div className="modal-header" style={{ textAlign: "center", marginBottom: "12px" }}>
                         <div className="logo-container" style={{ margin: "0 auto 12px auto", width: "64px", height: "64px" }}>
                           <div className="logo-glow"></div>
-                          <img src="/icon.png" alt="Nova" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                          <img src="/iconRm.png" alt="Nova" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
                         </div>
                         <h1 style={{ fontSize: "24px", fontWeight: "800", background: "linear-gradient(135deg, #ffffff 0%, #10b981 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", marginTop: "8px" }}>Nova</h1>
                         <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>Watch movies, shows & more — together in sync.</p>
