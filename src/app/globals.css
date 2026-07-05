@@ -1,26 +1,26 @@
 /* Custom styles - no framework */
 
 :root {
-      --bg: #05070f;
-      --surface: rgba(255, 255, 255, 0.04);
-      --surface-hover: rgba(255, 255, 255, 0.08);
-      --glass-border: rgba(255, 255, 255, 0.06);
-      --glass-border-strong: rgba(236, 72, 153, 0.25);
+      --bg: #030408;
+      --surface: rgba(255, 255, 255, 0.03);
+      --surface-hover: rgba(255, 255, 255, 0.07);
+      --glass-border: rgba(255, 255, 255, 0.05);
+      --glass-border-strong: rgba(16, 185, 129, 0.2);
       --text: #f8fafc;
       --text-muted: #94a3b8;
-      --accent: #ec4899; /* Vibrant Neon Pink */
-      --accent-dim: rgba(236, 72, 153, 0.1);
-      --accent-glow: rgba(236, 72, 153, 0.25);
-      --accent2: #a855f7; /* Cyber Purple */
-      --accent2-dim: rgba(168, 85, 247, 0.15);
+      --accent: #10b981; /* Vibrant Metallic Green */
+      --accent-dim: rgba(16, 185, 129, 0.1);
+      --accent-glow: rgba(16, 185, 129, 0.2);
+      --accent2: #059669; /* Darker Emerald Green */
+      --accent2-dim: rgba(5, 150, 105, 0.15);
       --accent3: #06b6d4; /* Cyber Cyan */
-      --pink-soft: #f472b6;
+      --pink-soft: #34d399; /* Soft Mint Green */
       --red: #f43f5e;
       --gold: #f59e0b;
       --radius: 16px;
       --radius-sm: 10px;
-      --panel-bg: rgba(10, 11, 20, 0.85);
-      --font-display: 'Playfair Display', serif;
+      --panel-bg: rgba(8, 9, 15, 0.9);
+      --font-display: 'Inter', sans-serif;
     }
 
     body.no-heat {
@@ -77,7 +77,7 @@
 
     body {
       font-family: 'Inter', -apple-system, sans-serif;
-      background: linear-gradient(135deg, #0e0a1a 0%, #05050a 100%);
+      background: linear-gradient(135deg, #05070a 0%, #000000 100%);
       color: var(--text);
       height: 100vh;
       height: 100dvh;
@@ -2529,13 +2529,13 @@
 .dashboard-header-row h1 {
   font-size: 24px;
   font-weight: 800;
-  background: linear-gradient(135deg, #ffffff 0%, #a78bfa 100%);
+  background: linear-gradient(135deg, #ffffff 0%, #10b981 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
 .host-plus-btn {
-  background: #a78bfa;
+  background: #10b981;
   color: #0b071e;
   border: none;
   border-radius: 50%;
@@ -2545,13 +2545,13 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(167, 139, 250, 0.4);
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
   transition: all 0.2s ease;
 }
 
 .host-plus-btn:hover {
   transform: scale(1.08);
-  box-shadow: 0 6px 20px rgba(167, 139, 250, 0.6);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.6);
 }
 
 .rooms-grid {
@@ -2576,7 +2576,7 @@
 }
 
 .room-card:hover {
-  border-color: rgba(167, 139, 250, 0.3);
+  border-color: rgba(16, 185, 129, 0.3);
   transform: translateY(-4px);
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
 }
@@ -2588,8 +2588,8 @@
 }
 
 .room-mood-badge {
-  background: rgba(167, 139, 250, 0.1);
-  color: #a78bfa;
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
   padding: 4px 10px;
   border-radius: 20px;
   font-size: 11px;
@@ -2625,7 +2625,7 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: #a78bfa;
+  background: #10b981;
   color: #0b071e;
   display: flex;
   align-items: center;

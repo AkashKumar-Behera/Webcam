@@ -554,7 +554,7 @@ export default function DashboardPage() {
               </div>
             ) : publicRooms.length === 0 ? (
               <div style={{ textAlign: "center", color: "#808290", padding: "80px 20px" }}>
-                <span className="material-symbols-outlined" style={{ fontSize: "64px", marginBottom: "16px", color: "rgba(167, 139, 250, 0.4)" }}>
+                <span className="material-symbols-outlined" style={{ fontSize: "64px", marginBottom: "16px", color: "rgba(16, 185, 129, 0.4)" }}>
                   live_tv
                 </span>
                 <h2>No active watch rooms right now</h2>
