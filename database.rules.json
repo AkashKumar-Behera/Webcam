@@ -1,0 +1,36 @@
+{
+  "rules": {
+    ".read": "auth != null",
+    ".write": "auth != null",
+    "users": {
+      "$uid": {
+        ".read": "true",
+        ".write": "true"
+      }
+    },
+    "status": {
+      "$uid": {
+        ".read": "true",
+        ".write": "true"
+      }
+    },
+    "rooms": {
+      "$roomId": {
+        ".read": "true",
+        ".write": "true"
+      }
+    },
+    "friends": {
+      "$uid": {
+        ".read": "true",
+        ".write": "true"
+      }
+    },
+    "invites": {
+      "$uid": {
+        ".read": "true",
+        ".write": "true"
+      }
+    }
+  }
+}
