@@ -1449,13 +1449,15 @@
       grid-template-columns: 1fr 1.2fr;
     }
     .modal-left {
-      background: linear-gradient(135deg, rgba(16, 185, 129, 0.05), rgba(168, 85, 247, 0.05));
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.05), rgba(5, 150, 105, 0.02));
       padding: 36px;
       display: flex;
       flex-direction: column;
-      justify-content: center;
-      gap: 24px;
+      justify-content: flex-start;
+      gap: 20px;
       border-right: 1px solid var(--glass-border);
+      max-height: 90vh;
+      overflow-y: auto;
     }
     .modal-right {
       padding: 36px;

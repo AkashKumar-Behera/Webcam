@@ -628,33 +628,69 @@ export default function DashboardPage() {
                   <div className="modal-split">
                     {/* Left Column: Branding and Actions */}
                     <div className="modal-left">
-                      <div className="modal-header">
-                        <div className="modal-logo">
-                          <span className="material-symbols-outlined">favorite</span>
+                      <div className="modal-header" style={{ textAlign: "center", marginBottom: "12px" }}>
+                        <div className="logo-container" style={{ margin: "0 auto 12px auto", width: "64px", height: "64px" }}>
+                          <div className="logo-glow"></div>
+                          <img src="/icon.png" alt="Nova" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
                         </div>
-                        <h1>Nova 🎬</h1>
-                        <p>Watch movies, shows & more — together in sync, in love.</p>
+                        <h1 style={{ fontSize: "24px", fontWeight: "800", background: "linear-gradient(135deg, #ffffff 0%, #10b981 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", marginTop: "8px" }}>Nova</h1>
+                        <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>Watch movies, shows & more — together in sync.</p>
                       </div>
-                      
-                      {mode === "party" && (
-                        <div className={`mic-option ${enableMic ? "active" : ""}`} onClick={() => setEnableMic(!enableMic)}>
-                          <input 
-                            type="checkbox" 
-                            checked={enableMic} 
-                            onChange={() => {}}
-                            style={{ width: "18px", height: "18px", cursor: "pointer" }} 
-                          />
-                          <div>
-                            <div className="mic-option-text-title">Enable Microphone</div>
-                            <div className="mic-option-text-sub">Include live commentary while hosting</div>
+
+                      <div style={{ marginTop: "10px" }}>
+                        <div className="modal-section-title">Session Type</div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                          <div 
+                            className={`mode-btn ${mode === "party" ? "active-mode" : ""}`} 
+                            onClick={() => setMode("party")}
+                          >
+                            <span className="material-symbols-outlined">groups</span>
+                            Watch Party
+                          </div>
+                          <div 
+                            className={`mode-btn ${mode === "broadcast" ? "active-mode" : ""}`} 
+                            onClick={() => setMode("broadcast")}
+                          >
+                            <span className="material-symbols-outlined">radio</span>
+                            Broadcast
                           </div>
                         </div>
-                      )}
+                      </div>
 
-                      <div className="modal-actions" style={{ display: "grid", gap: "12px", marginTop: "20px" }}>
+                      <div>
+                        <div className="modal-section-title">Your Mood Tonight 🌙</div>
+                        <div className="mood-bar">
+                          <button 
+                            className={`mood-btn ${mood.id === "movie" ? "active-mood" : ""}`} 
+                            onClick={() => setMood({ id: "movie", emoji: "🎬", label: "Movie Night" })}
+                          >
+                            🎬 Movie
+                          </button>
+                          <button 
+                            className={`mood-btn ${mood.id === "chill" ? "active-mood" : ""}`} 
+                            onClick={() => setMood({ id: "chill", emoji: "🎵", label: "Chill Vibes" })}
+                          >
+                            🎵 Chill
+                          </button>
+                          <button 
+                            className={`mood-btn ${mood.id === "study" ? "active-mood" : ""}`} 
+                            onClick={() => setMood({ id: "study", emoji: "💻", label: "Study Mode" })}
+                          >
+                            💻 Study
+                          </button>
+                          <button 
+                            className={`mood-btn ${mood.id === "game" ? "active-mood" : ""}`} 
+                            onClick={() => setMood({ id: "game", emoji: "🎮", label: "Gaming" })}
+                          >
+                            🎮 Gaming
+                          </button>
+                        </div>
+                      </div>
+                      
+                      <div className="modal-actions" style={{ display: "grid", gap: "12px", marginTop: "16px" }}>
                         <button className="modal-btn host-btn" onClick={handleStartHost}>
-                          <span className="material-symbols-outlined">cast</span>
-                          Start Hosting
+                           <span className="material-symbols-outlined">cast</span>
+                           Start Hosting
                         </button>
                       </div>
                     </div>
@@ -764,57 +800,6 @@ export default function DashboardPage() {
                           </div>
                         )}
                       </div>
-
-                      <div>
-                        <div className="modal-section-title">Session Type</div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                          <div 
-                            className={`mode-btn ${mode === "party" ? "active-mode" : ""}`} 
-                            onClick={() => setMode("party")}
-                          >
-                            <span className="material-symbols-outlined">groups</span>
-                            Watch Party
-                          </div>
-                          <div 
-                            className={`mode-btn ${mode === "broadcast" ? "active-mode" : ""}`} 
-                            onClick={() => setMode("broadcast")}
-                          >
-                            <span className="material-symbols-outlined">radio</span>
-                            Broadcast
-                          </div>
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="modal-section-title">Your Mood Tonight 🌙</div>
-                        <div className="mood-bar">
-                          <button 
-                            className={`mood-btn ${mood.id === "movie" ? "active-mood" : ""}`} 
-                            onClick={() => setMood({ id: "movie", emoji: "🎬", label: "Movie Night" })}
-                          >
-                            🎬 Movie
-                          </button>
-                          <button 
-                            className={`mood-btn ${mood.id === "chill" ? "active-mood" : ""}`} 
-                            onClick={() => setMood({ id: "chill", emoji: "🎵", label: "Chill Vibes" })}
-                          >
-                            🎵 Chill
-                          </button>
-                          <button 
-                            className={`mood-btn ${mood.id === "study" ? "active-mood" : ""}`} 
-                            onClick={() => setMood({ id: "study", emoji: "💻", label: "Study Mode" })}
-                          >
-                            💻 Study
-                          </button>
-                          <button 
-                            className={`mood-btn ${mood.id === "game" ? "active-mood" : ""}`} 
-                            onClick={() => setMood({ id: "game", emoji: "🎮", label: "Gaming" })}
-                          >
-                            🎮 Gaming
-                          </button>
-                        </div>
-                      </div>
-
                     </div>
                   </div>
                 </div>
