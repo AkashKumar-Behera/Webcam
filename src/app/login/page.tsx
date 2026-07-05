@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { signInWithPopup, signInWithRedirect, getRedirectResult } from "firebase/auth";
+import { signInWithPopup, signInWithRedirect, getRedirectResult, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { ref, set, get } from "firebase/database";
 import { auth, db, googleProvider } from "../../lib/firebase";
 
@@ -54,29 +54,26 @@ function LoginFormContent() {
     photoURL?: string;
   }
 
-  const saveProfile = (profile: Profile) => {
-    localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
-    localStorage.setItem("watchparty_name", profile.name);
-    localStorage.setItem("watchparty_email", profile.email);
-    localStorage.setItem("nova_auth_provider", profile.provider);
-  };
-
   const saveUserRecord = async (profile: Profile) => {
     try {
-      await set(ref(db, `users/${profile.uid}`), {
+      const userRef = ref(db, `users/${profile.uid}`);
+      await set(userRef, {
         name: profile.name,
         email: profile.email,
-        provider: profile.provider,
         photoURL: profile.photoURL || "",
-        lastLogin: Date.now()
+        provider: profile.provider,
+        lastActive: Date.now()
       });
     } catch (err) {
-      console.warn("User profile save skipped:", err);
+      console.error("User profile save skipped:", err);
     }
   };
 
   const finishLogin = async (profile: Profile) => {
-    saveProfile(profile);
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+    localStorage.setItem("watchparty_name", profile.name);
+    localStorage.setItem("watchparty_email", profile.email);
+    localStorage.setItem("nova_auth_provider", profile.provider);
     await saveUserRecord(profile);
     router.push(nextPage);
   };
@@ -88,17 +85,6 @@ function LoginFormContent() {
       email: user.email || "",
       provider: "google",
       photoURL: user.photoURL || ""
-    };
-  };
-
-  const profileFromManual = (nameInput: string, emailInput: string): Profile => {
-    const safeEmail = emailInput.toLowerCase().trim();
-    return {
-      uid: `manual_${safeEmail.replace(/[^a-z0-9]/g, "_").slice(0, 48)}`,
-      name: nameInput.trim(),
-      email: safeEmail,
-      provider: "manual",
-      photoURL: ""
     };
   };
 
@@ -122,40 +108,53 @@ function LoginFormContent() {
 
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoading(true);
     if (activeSignUp) {
       // Sign Up Mode
-      if (!name || !email) return setStatus("Name and email are required.");
+      if (!name || !email || !password) {
+        setStatus("Name, email, and password are required.");
+        setLoading(false);
+        return;
+      }
       setStatus("Creating profile...");
-      await finishLogin(profileFromManual(name, email));
+      try {
+        const credential = await createUserWithEmailAndPassword(auth, email, password);
+        if (credential.user) {
+          await updateProfile(credential.user, { displayName: name });
+        }
+        await finishLogin({
+          uid: credential.user.uid,
+          name: name.trim(),
+          email: email.toLowerCase().trim(),
+          provider: "manual",
+          photoURL: ""
+        });
+      } catch (err: any) {
+        console.error(err);
+        setStatus(err.message || "Sign up failed.");
+        setLoading(false);
+      }
     } else {
       // Sign In Mode
-      if (!email) return setStatus("Email is required.");
+      if (!email || !password) {
+        setStatus("Email and password are required.");
+        setLoading(false);
+        return;
+      }
       setStatus("Verifying profile...");
-      const tempUid = `manual_${email.toLowerCase().trim().replace(/[^a-z0-9]/g, "_").slice(0, 48)}`;
       try {
-        const snapshot = await get(ref(db, `users/${tempUid}`));
-        if (snapshot.exists()) {
-          const userData = snapshot.val();
-          await finishLogin({
-            uid: tempUid,
-            name: userData.name || "Nova User",
-            email: email.toLowerCase().trim(),
-            provider: "manual",
-            photoURL: ""
-          });
-        } else {
-          // Check local cache fallback
-          const cached = readProfileFallback();
-          if (cached && cached.email.toLowerCase().trim() === email.toLowerCase().trim() && cached.name) {
-            await finishLogin(cached);
-          } else {
-            setStatus("Profile not found. Please Register first (New to Nova?).");
-          }
-        }
-      } catch (err) {
-        console.warn("DB lookup failed, logging in with fallback name...", err);
-        const fallbackName = email.split("@")[0];
-        await finishLogin(profileFromManual(fallbackName, email));
+        const credential = await signInWithEmailAndPassword(auth, email, password);
+        await finishLogin({
+          uid: credential.user.uid,
+          name: credential.user.displayName || email.split("@")[0],
+          email: email.toLowerCase().trim(),
+          provider: "manual",
+          photoURL: ""
+        });
+      } catch (err: any) {
+        console.error(err);
+        setStatus(err.message || "Sign in failed.");
+        setLoading(false);
       }
     }
   };
