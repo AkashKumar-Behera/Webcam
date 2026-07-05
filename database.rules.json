@@ -13,6 +13,7 @@
       }
     },
     "rooms": {
+      ".read": "auth != null",
       "$roomId": {
         ".read": "auth != null",
         ".write": "auth != null"
