@@ -21,7 +21,6 @@
     "friends": {
       "$uid": {
         ".read": "auth != null",
-        // Allow writing to own list, or when sending friend requests (which writes to the other user's list)
         ".write": "auth != null"
       }
     },
