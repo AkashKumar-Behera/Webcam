@@ -989,10 +989,10 @@
     .modal-overlay.hidden { display: none; }
     
     .modal-card {
-      background: rgba(15, 17, 28, 0.95); 
+      background: #05060a; 
       backdrop-filter: blur(30px);
       -webkit-backdrop-filter: blur(30px);
-      border: 1px solid rgba(255, 255, 255, 0.08); 
+      border: 1px solid rgba(16, 185, 129, 0.2); 
       border-radius: 28px;
       width: 100%; 
       max-width: 440px; 
@@ -1449,17 +1449,18 @@
       grid-template-columns: 1fr 1.2fr;
     }
     .modal-left {
-      background: linear-gradient(135deg, rgba(16, 185, 129, 0.05), rgba(5, 150, 105, 0.02));
+      background: #090b11;
       padding: 36px;
       display: flex;
       flex-direction: column;
       justify-content: flex-start;
       gap: 20px;
-      border-right: 1px solid var(--glass-border);
+      border-right: 1px solid rgba(16, 185, 129, 0.12);
       max-height: 90vh;
       overflow-y: auto;
     }
     .modal-right {
+      background: #040508;
       padding: 36px;
       display: flex;
       flex-direction: column;
