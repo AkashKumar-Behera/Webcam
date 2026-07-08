@@ -55,8 +55,8 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
       videoId: videoId,
       playerVars: {
         playsinline: 1,
-        controls: 0, // No native controls for anyone to block timeline seeking
-        disablekb: 1,
+        controls: roleFromUrl === "host" ? 1 : 0,
+        disablekb: roleFromUrl === "host" ? 0 : 1,
         rel: 0
       },
       events: {
@@ -85,6 +85,28 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
             if (startTime > 0) {
               ytPlayer.seekTo(startTime, true);
             }
+
+            // Sync host playhead periodically to align seeking
+            let lastSavedTime = startTime;
+            setInterval(() => {
+              if (ytPlayer && typeof ytPlayer.getPlayerState === "function") {
+                const state = ytPlayer.getPlayerState();
+                const curTime = ytPlayer.getCurrentTime();
+                const stateStr = (state === YT.PlayerState.PLAYING) ? "playing" : "paused";
+                const diff = Math.abs(curTime - lastSavedTime);
+                
+                if (state === YT.PlayerState.PLAYING || (state === YT.PlayerState.PAUSED && diff > 1.5)) {
+                  lastSavedTime = curTime;
+                  set(ref(db, `rooms/${roomIdFromUrl}/youtube`), {
+                    state: stateStr,
+                    time: curTime,
+                    videoId: currentVideoId,
+                    sender: signedInProfile.uid,
+                    timestamp: Date.now()
+                  });
+                }
+              }
+            }, 2000);
           }
           startYoutubSyncListener();
         },
