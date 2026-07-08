@@ -196,6 +196,18 @@ export default function RoomPage({ params: paramsPromise }: { params: Promise<{ 
         <!-- YouTube Player Container -->
         <div id="ytPlayerContainer" style="display:none; width:100%; height:100%; position:relative; z-index:6; min-height:360px; border-radius:20px; overflow:hidden; background:#000;">
           <div id="ytPlayer" style="width:100%; height:100%;"></div>
+          
+          <!-- Lockdown Overlay -->
+          <div id="ytLockdownOverlay" style="display:none; position:absolute; inset:0; background:rgba(15,10,20,0.92); backdrop-filter:blur(8px); z-index:9999; flex-direction:column; align-items:center; justify-content:center; color:#fff; text-align:center; font-family:'Inter',sans-serif; padding:20px; transition:all 0.3s ease;">
+            <span class="material-symbols-outlined" style="font-size:56px; color:#ef4444; margin-bottom:16px;">warning</span>
+            <h3 style="font-size:18px; font-weight:700; color:#ff4e4e; margin-bottom:8px;">⚠️ Warning: Controls Locked</h3>
+            <p id="ytLockdownMsg" style="font-size:13px; color:#94a3b8; max-width:340px; line-height:1.5; margin-bottom:16px;">
+              Please avoid frequent seeking! It may cause heavy load on your devices.
+            </p>
+            <span id="ytLockdownTimer" style="font-size:12px; font-weight:600; background:rgba(255,255,255,0.06); padding:6px 16px; border-radius:100px; border:1px solid rgba(255,255,255,0.1); color:#ff4e4e;">
+              Unlocking in 5s
+            </span>
+          </div>
         </div>
 
         <!-- Wait Overlay (When screen share paused) -->

@@ -43,10 +43,100 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
   let ytPlayer = null;
   let isSyncing = false;
   let serverTimeOffset = 0;
+  let lastSavedTime = 0;
+  let localLockdownTimer = null;
+  let countdownInterval = null;
 
   onValue(ref(db, ".info/serverTimeOffset"), (snap) => {
     serverTimeOffset = snap.val() || 0;
     console.log(">>> [roomConnection] Firebase Server Time Offset (ms):", serverTimeOffset);
+  });
+
+  function showLockdownOverlay(initiator) {
+    const overlay = document.getElementById("ytLockdownOverlay");
+    if (!overlay) return;
+    overlay.style.display = "flex";
+    
+    const msgEl = document.getElementById("ytLockdownMsg");
+    if (msgEl) {
+      msgEl.innerHTML = `<strong>${initiator}</strong> changed the timeline. Please avoid frequent seeking! It may cause heavy load on your devices.`;
+    }
+    
+    let secondsLeft = 5;
+    const timerEl = document.getElementById("ytLockdownTimer");
+    if (timerEl) timerEl.textContent = `Unlocking in ${secondsLeft}s`;
+    
+    if (countdownInterval) clearInterval(countdownInterval);
+    countdownInterval = setInterval(() => {
+      secondsLeft--;
+      if (timerEl) timerEl.textContent = `Unlocking in ${secondsLeft}s`;
+      if (secondsLeft <= 0) {
+        clearInterval(countdownInterval);
+      }
+    }, 1000);
+  }
+
+  function hideLockdownOverlay() {
+    const overlay = document.getElementById("ytLockdownOverlay");
+    if (overlay) overlay.style.display = "none";
+    if (countdownInterval) clearInterval(countdownInterval);
+  }
+
+  function triggerLockdown(seekTime) {
+    console.log(">>> [roomConnection] Manual seek detected, writing lockdown state to Firebase...");
+    set(ref(db, `rooms/${roomIdFromUrl}/youtube/lockdown`), {
+      active: true,
+      initiator: signedInProfile.name || "A user",
+      timestamp: Date.now() + serverTimeOffset
+    });
+    // Write paused state to database at seekTime
+    set(ref(db, `rooms/${roomIdFromUrl}/youtube`), {
+      state: "paused",
+      time: seekTime,
+      videoId: currentVideoId,
+      sender: signedInProfile.uid,
+      timestamp: Date.now() + serverTimeOffset
+    });
+  }
+
+  // Subscribe to lockdown state changes
+  onValue(ref(db, `rooms/${roomIdFromUrl}/youtube/lockdown`), (snap) => {
+    if (!snap.exists()) {
+      hideLockdownOverlay();
+      return;
+    }
+    const lockdownData = snap.val();
+    if (lockdownData.active) {
+      showLockdownOverlay(lockdownData.initiator);
+      if (ytPlayer && typeof ytPlayer.pauseVideo === "function") {
+        ytPlayer.pauseVideo();
+      }
+      
+      if (localLockdownTimer) clearTimeout(localLockdownTimer);
+      localLockdownTimer = setTimeout(() => {
+        hideLockdownOverlay();
+        
+        // Host cleans up lockdown and restores last saved time
+        if (roleFromUrl === "host") {
+          get(ref(db, `rooms/${roomIdFromUrl}/youtube/hostLastTime`)).then((timeSnap) => {
+            const restoreTime = timeSnap.exists() ? timeSnap.val() : 0;
+            console.log(">>> [roomConnection] Lockdown finished. Host restoring time:", restoreTime);
+            
+            set(ref(db, `rooms/${roomIdFromUrl}/youtube`), {
+              state: "paused",
+              time: restoreTime,
+              videoId: currentVideoId,
+              sender: signedInProfile.uid,
+              timestamp: Date.now() + serverTimeOffset,
+              lockdown: null
+            });
+            remove(ref(db, `rooms/${roomIdFromUrl}/youtube/lockdown`));
+            
+            if (ytPlayer) ytPlayer.seekTo(restoreTime, true);
+          });
+        }
+      }, 5000);
+    }
   });
 
   function extractVideoId(url) {
@@ -61,8 +151,8 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
       videoId: videoId,
       playerVars: {
         playsinline: 1,
-        controls: roleFromUrl === "host" ? 1 : 0,
-        disablekb: roleFromUrl === "host" ? 0 : 1,
+        controls: 1, // Enable timeline seek controls for everyone
+        disablekb: 0,
         rel: 0
       },
       events: {
@@ -88,29 +178,35 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
               sender: signedInProfile.uid,
               timestamp: Date.now() + serverTimeOffset
             });
+            set(ref(db, `rooms/${roomIdFromUrl}/youtube/hostLastTime`), startTime);
             if (startTime > 0) {
               ytPlayer.seekTo(startTime, true);
             }
 
-            // Sync host playhead periodically to align seeking
-            let lastSavedTime = startTime;
+            // Sync host playhead periodically (only if not in lockdown)
+            lastSavedTime = startTime;
             setInterval(() => {
               if (ytPlayer && typeof ytPlayer.getPlayerState === "function") {
-                const state = ytPlayer.getPlayerState();
-                const curTime = ytPlayer.getCurrentTime();
-                const stateStr = (state === YT.PlayerState.PLAYING) ? "playing" : "paused";
-                const diff = Math.abs(curTime - lastSavedTime);
-                
-                if (state === YT.PlayerState.PLAYING || (state === YT.PlayerState.PAUSED && diff > 1.5)) {
-                  lastSavedTime = curTime;
-                  set(ref(db, `rooms/${roomIdFromUrl}/youtube`), {
-                    state: stateStr,
-                    time: curTime,
-                    videoId: currentVideoId,
-                    sender: signedInProfile.uid,
-                    timestamp: Date.now() + serverTimeOffset
-                  });
-                }
+                get(ref(db, `rooms/${roomIdFromUrl}/youtube/lockdown`)).then((lockSnap) => {
+                  if (lockSnap.exists() && lockSnap.val().active) return;
+                  
+                  const state = ytPlayer.getPlayerState();
+                  const curTime = ytPlayer.getCurrentTime();
+                  const stateStr = (state === YT.PlayerState.PLAYING) ? "playing" : "paused";
+                  
+                  if (state === YT.PlayerState.PLAYING) {
+                    lastSavedTime = curTime;
+                    set(ref(db, `rooms/${roomIdFromUrl}/youtube/hostLastTime`), curTime);
+                    
+                    set(ref(db, `rooms/${roomIdFromUrl}/youtube`), {
+                      state: stateStr,
+                      time: curTime,
+                      videoId: currentVideoId,
+                      sender: signedInProfile.uid,
+                      timestamp: Date.now() + serverTimeOffset
+                    });
+                  }
+                });
               }
             }, 2000);
           }
@@ -124,24 +220,41 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
   function onPlayerStateChange(event) {
     if (!ytPlayer) return;
     if (isSyncing) return;
-    
-    const state = event.data;
-    let dbState = "";
-    if (state === YT.PlayerState.PLAYING) {
-      dbState = "playing";
-    } else if (state === YT.PlayerState.PAUSED) {
-      dbState = "paused";
-    } else {
-      return;
-    }
-    
-    console.log(">>> [roomConnection] User state change:", dbState, "at time:", ytPlayer.getCurrentTime());
-    set(ref(db, `rooms/${roomIdFromUrl}/youtube`), {
-      state: dbState,
-      time: ytPlayer.getCurrentTime(),
-      videoId: currentVideoId,
-      sender: signedInProfile.uid,
-      timestamp: Date.now() + serverTimeOffset
+
+    get(ref(db, `rooms/${roomIdFromUrl}/youtube/lockdown`)).then((lockSnap) => {
+      if (lockSnap.exists() && lockSnap.val().active) {
+        ytPlayer.pauseVideo();
+        return;
+      }
+
+      const state = event.data;
+      let dbState = "";
+      if (state === YT.PlayerState.PLAYING) {
+        dbState = "playing";
+      } else if (state === YT.PlayerState.PAUSED) {
+        dbState = "paused";
+      } else {
+        return;
+      }
+
+      const curTime = ytPlayer.getCurrentTime();
+      const diff = Math.abs(curTime - lastSavedTime);
+
+      if (diff > 3.0) {
+        console.log(">>> [roomConnection] Manual seek detected! Triggering lockdown. Diff:", diff);
+        triggerLockdown(curTime);
+        return;
+      }
+
+      console.log(">>> [roomConnection] User state change:", dbState, "at time:", curTime);
+      lastSavedTime = curTime;
+      set(ref(db, `rooms/${roomIdFromUrl}/youtube`), {
+        state: dbState,
+        time: curTime,
+        videoId: currentVideoId,
+        sender: signedInProfile.uid,
+        timestamp: Date.now() + serverTimeOffset
+      });
     });
   }
 
