@@ -923,7 +923,7 @@ export default function DashboardPage() {
                             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style={{ color: mode === "youtube" ? "#ff4e4e" : "var(--text-muted)" }}>
                               <path d="M23.498 6.163a3.003 3.003 0 0 0-2.11-2.107C19.522 3.5 12 3.5 12 3.5s-7.522 0-9.388.556a3.002 3.002 0 0 0-2.11 2.107C0 8.029 0 12 0 12s0 3.971.502 5.837a3.002 3.002 0 0 0 2.11 2.107C4.478 20.5 12 20.5 12 20.5s7.522 0 9.388-.556a3.002 3.002 0 0 0 2.11-2.107C24 15.971 24 12 24 12s0-3.971-.502-5.837zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
                             </svg>
-                            YouTube Sync
+                            YouTube
                           </button>
                         </div>
                       </div>
