@@ -160,7 +160,7 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
       }
       
       const latency = ((Date.now() + serverTimeOffset) - data.timestamp) / 1000;
-      const targetTime = data.state === "playing" ? data.time + latency + 0.5 : data.time;
+      const targetTime = data.state === "playing" ? data.time + latency : data.time;
       
       const currentTime = ytPlayer.getCurrentTime();
       const diff = Math.abs(currentTime - targetTime);
