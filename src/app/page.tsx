@@ -192,7 +192,9 @@ export default function DashboardPage() {
               password: val.password || "",
               userCount,
               moodLabel: val.moodLabel || "Movie Night",
-              moodEmoji: val.moodEmoji || "🎬"
+              moodEmoji: val.moodEmoji || "🎬",
+              mode: val.mode || "party",
+              youtubeUrl: val.youtubeUrl || ""
             });
           }
         });
@@ -707,13 +709,40 @@ export default function DashboardPage() {
                 {publicRooms.map((r) => (
                   <div key={r.roomId} className="room-card">
                     <div className="room-card-header">
-                      <span className="room-mood-badge">
-                        {r.moodEmoji} {r.moodLabel}
-                      </span>
+                      {r.mode === "youtube" ? (
+                        <span className="room-mood-badge youtube" style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(239, 68, 68, 0.12)", color: "#ff4e4e", border: "1px solid rgba(239, 68, 68, 0.3)", padding: "4px 8px", borderRadius: "100px", fontSize: "11px", fontWeight: "600" }}>
+                          <span style={{ color: "#ff4e4e", fontStyle: "normal", display: "flex", alignItems: "center" }}>
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style={{ marginRight: "4px" }}>
+                              <path d="M23.498 6.163a3.003 3.003 0 0 0-2.11-2.107C19.522 3.5 12 3.5 12 3.5s-7.522 0-9.388.556a3.002 3.002 0 0 0-2.11 2.107C0 8.029 0 12 0 12s0 3.971.502 5.837a3.002 3.002 0 0 0 2.11 2.107C4.478 20.5 12 20.5 12 20.5s7.522 0 9.388-.556a3.002 3.002 0 0 0 2.11-2.107C24 15.971 24 12 24 12s0-3.971-.502-5.837zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                            </svg>
+                            YouTube
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="room-mood-badge">
+                          {r.moodEmoji} {r.moodLabel}
+                        </span>
+                      )}
                       <span className={`room-visibility-badge ${r.visibility}`}>
                         {r.visibility}
                       </span>
                     </div>
+
+                    {r.mode === "youtube" && r.youtubeUrl && (() => {
+                      const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+                      const match = r.youtubeUrl.match(regExp);
+                      const vId = (match && match[2].length === 11) ? match[2] : r.youtubeUrl;
+                      const thumbUrl = `https://img.youtube.com/vi/${vId}/mqdefault.jpg`;
+                      return (
+                        <div className="room-card-thumbnail" style={{ width: "100%", height: "130px", borderRadius: "10px", overflow: "hidden", marginTop: "8px", position: "relative", border: "1px solid rgba(255,255,255,0.06)" }}>
+                          <img src={thumbUrl} alt="YouTube Stream" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0) 60%)" }}></div>
+                          <span className="material-symbols-outlined" style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", fontSize: "38px", color: "#fff", filter: "drop-shadow(0 2px 8px rgba(0,0,0,0.5))", opacity: 0.9 }}>
+                            play_circle
+                          </span>
+                        </div>
+                      );
+                    })()}
 
                     <div className="room-host-info">
                       <div className="room-host-avatar">
