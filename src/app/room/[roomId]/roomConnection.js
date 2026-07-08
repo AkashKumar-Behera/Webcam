@@ -1,7 +1,7 @@
 /* LIVE PARTY v5.0 */
 import { auth, db, firestore } from "../../../lib/firebase";
 import { ref, set, get, push, onValue, onChildAdded, onChildRemoved, remove, onDisconnect, query, limitToLast } from "firebase/database";
-import { collection, query as fsQuery, where, getDocs } from "firebase/firestore";
+import { collection, query as fsQuery, where, getDocs, doc, getDoc } from "firebase/firestore";
 import { signOut } from "firebase/auth";
 
 
@@ -49,23 +49,36 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
   let currentPeopleSubTab = "friends";
 
   async function fetchFriends() {
-    if (!signedInProfile || !signedInProfile.uid) return;
+    console.log(">>> [roomConnection] fetchFriends starting for UID:", signedInProfile?.uid);
+    if (!signedInProfile || !signedInProfile.uid) {
+      console.warn(">>> [roomConnection] fetchFriends aborted: No signedInProfile or UID found!");
+      return;
+    }
     try {
-      const q = fsQuery(collection(firestore, "friendships"), where("uid", "==", signedInProfile.uid));
+      const q = fsQuery(collection(firestore, "friendships"), where("uid", "==", signedInProfile.uid), where("status", "==", "friend"));
       const snap = await getDocs(q);
+      console.log(">>> [roomConnection] fetchFriends snap size:", snap.size);
       const list = [];
-      snap.forEach(doc => {
-        const val = doc.data();
-        list.push({
-          uid: val.friendUid,
-          name: val.friendName,
-          photoURL: val.friendPhotoURL
-        });
-      });
+      for (const docItem of snap.docs) {
+        const val = docItem.data();
+        const friendId = val.friendId;
+        if (!friendId) continue;
+        
+        // Fetch friend profile from users collection
+        const friendSnap = await getDoc(doc(firestore, "users", friendId));
+        if (friendSnap.exists()) {
+          const friendData = friendSnap.data();
+          list.push({
+            uid: friendId,
+            name: friendData.name || friendData.displayName || "Friend",
+            photoURL: friendData.photoURL || ""
+          });
+        }
+      }
       userFriends = list;
       renderPeopleTab();
     } catch (e) {
-      console.warn("Failed to fetch friends for invites:", e);
+      console.error(">>> [roomConnection] Failed to fetch friends for invites:", e);
     }
   }
 
