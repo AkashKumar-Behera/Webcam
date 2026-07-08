@@ -519,19 +519,35 @@ export default function RoomPage({ params: paramsPromise }: { params: Promise<{ 
               </select>
             </div>
 
-            <!-- YOUTUBE HOST CONTROLS -->
+            <!-- YOUTUBE CONTROLS (SHARED) -->
             <div id="youtubeHostSettings" style="display:none; border-top:1px solid rgba(255,255,255,0.08); padding-top:14px; margin-top:14px;">
               <div class="section-title">📺 YouTube Sync Controls</div>
-              <div class="form-group">
+              
+              <!-- Host Only URL Input -->
+              <div id="ytUrlInputGroup" style="display:none; margin-bottom:12px;">
                 <label>YouTube Link or Video ID</label>
-                <div style="display:flex;gap:6px;">
+                <div style="display:flex;gap:6px;margin-top:4px;">
                   <input class="form-input" id="ytUrlInput" placeholder="Paste YouTube link or ID" style="flex:1;" />
                   <button class="btn-action" onclick="window.changeYoutubeVideo && window.changeYoutubeVideo(document.getElementById('ytUrlInput').value)" style="width:70px;padding:0;font-size:12px;flex-shrink:0;">Load</button>
                 </div>
               </div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
-                <button class="btn-action" onclick="window.playYoutubeForEveryone && window.playYoutubeForEveryone()" style="background:rgba(16,185,129,0.1);color:#10b981;border-color:rgba(16,185,129,0.3);"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px;">play_arrow</span> Play All</button>
-                <button class="btn-action" onclick="window.pauseYoutubeForEveryone && window.pauseYoutubeForEveryone()" style="background:rgba(239,68,68,0.1);color:#ef4444;border-color:rgba(239,68,68,0.3);"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px;">pause</span> Pause All</button>
+
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;margin-bottom:12px;">
+                <button class="btn-action" onclick="window.playYoutubeForEveryone && window.playYoutubeForEveryone()" style="background:rgba(16,185,129,0.1);color:#10b981;border-color:rgba(16,185,129,0.3);"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px;">play_arrow</span> Play</button>
+                <button class="btn-action" onclick="window.pauseYoutubeForEveryone && window.pauseYoutubeForEveryone()" style="background:rgba(239,68,68,0.1);color:#ef4444;border-color:rgba(239,68,68,0.3);"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px;">pause</span> Pause</button>
+              </div>
+
+              <div class="form-group">
+                <label>Playback Quality</label>
+                <select class="form-select" id="ytQualitySelect" onchange="window.setYoutubeQuality && window.setYoutubeQuality(this.value)">
+                  <option value="default" selected>Auto</option>
+                  <option value="hd1080">1080p (HD)</option>
+                  <option value="hd720">720p (HD)</option>
+                  <option value="large">480p</option>
+                  <option value="medium">360p</option>
+                  <option value="small">240p</option>
+                  <option value="tiny">144p</option>
+                </select>
               </div>
             </div>
           </div>

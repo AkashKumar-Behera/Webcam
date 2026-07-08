@@ -55,24 +55,38 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
       videoId: videoId,
       playerVars: {
         playsinline: 1,
-        controls: roleFromUrl === "host" ? 1 : 0,
-        disablekb: roleFromUrl === "host" ? 0 : 1,
+        controls: 0, // No native controls for anyone to block timeline seeking
+        disablekb: 1,
         rel: 0
       },
       events: {
         onReady: () => {
           console.log(">>> [roomConnection] YouTube Player Ready");
+          let startTime = 0;
+          try {
+            const savedStartTime = localStorage.getItem(`leftover_time_${roomIdFromUrl}`);
+            if (savedStartTime) {
+              startTime = parseFloat(savedStartTime);
+              localStorage.removeItem(`leftover_time_${roomIdFromUrl}`);
+              console.log(">>> [roomConnection] Resuming leftover session from time:", startTime);
+            }
+          } catch (e) {
+            console.warn(e);
+          }
+
           if (roleFromUrl === "host") {
             set(ref(db, `rooms/${roomIdFromUrl}/youtube`), {
               state: "paused",
-              time: 0,
+              time: startTime,
               videoId: videoId,
               sender: signedInProfile.uid,
               timestamp: Date.now()
             });
-          } else {
-            startYoutubeViewerSync();
+            if (startTime > 0) {
+              ytPlayer.seekTo(startTime, true);
+            }
           }
+          startYoutubSyncListener();
         },
         onStateChange: onPlayerStateChange
       }
@@ -80,7 +94,7 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
   }
 
   function onPlayerStateChange(event) {
-    if (roleFromUrl !== "host" || !ytPlayer) return;
+    if (!ytPlayer) return;
     if (isSyncing) return;
     
     const state = event.data;
@@ -93,7 +107,7 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
       return;
     }
     
-    console.log(">>> [roomConnection] Host state change:", dbState, "at time:", ytPlayer.getCurrentTime());
+    console.log(">>> [roomConnection] User state change:", dbState, "at time:", ytPlayer.getCurrentTime());
     set(ref(db, `rooms/${roomIdFromUrl}/youtube`), {
       state: dbState,
       time: ytPlayer.getCurrentTime(),
@@ -103,11 +117,14 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
     });
   }
 
-  function startYoutubeViewerSync() {
-    console.log(">>> [roomConnection] Starting YouTube Viewer Sync listener...");
+  function startYoutubSyncListener() {
+    console.log(">>> [roomConnection] Starting YouTube Sync listener...");
     onValue(ref(db, `rooms/${roomIdFromUrl}/youtube`), (snap) => {
       if (!snap.exists() || !ytPlayer || typeof ytPlayer.getPlayerState !== "function") return;
       const data = snap.val();
+      
+      // Prevent syncing back our own updates to avoid loops/stutters
+      if (data.sender === signedInProfile.uid) return;
       
       if (data.videoId && data.videoId !== currentVideoId) {
         currentVideoId = data.videoId;
@@ -121,7 +138,7 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
       const diff = Math.abs(currentTime - targetTime);
       
       isSyncing = true;
-      if (diff > 2) {
+      if (diff > 2.5) {
         ytPlayer.seekTo(targetTime, true);
       }
       
@@ -159,13 +176,36 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
   };
 
   window.playYoutubeForEveryone = () => {
-    if (roleFromUrl !== "host" || !ytPlayer) return;
+    if (!ytPlayer) return;
     ytPlayer.playVideo();
+    
+    set(ref(db, `rooms/${roomIdFromUrl}/youtube`), {
+      state: "playing",
+      time: ytPlayer.getCurrentTime(),
+      videoId: currentVideoId,
+      sender: signedInProfile.uid,
+      timestamp: Date.now()
+    });
   };
 
   window.pauseYoutubeForEveryone = () => {
-    if (roleFromUrl !== "host" || !ytPlayer) return;
+    if (!ytPlayer) return;
     ytPlayer.pauseVideo();
+    
+    set(ref(db, `rooms/${roomIdFromUrl}/youtube`), {
+      state: "paused",
+      time: ytPlayer.getCurrentTime(),
+      videoId: currentVideoId,
+      sender: signedInProfile.uid,
+      timestamp: Date.now()
+    });
+  };
+
+  window.setYoutubeQuality = (level) => {
+    if (ytPlayer && typeof ytPlayer.setPlaybackQuality === "function") {
+      ytPlayer.setPlaybackQuality(level);
+      console.log(">>> [roomConnection] Set playback quality to:", level);
+    }
   };
 
   function setupYoutubeMode(youtubeUrl) {
@@ -185,18 +225,24 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
     const shareScreenBtn = document.getElementById("shareScreenBtn");
     if (shareScreenBtn) shareScreenBtn.style.display = "none";
     
+    const youtubeHostSettings = document.getElementById("youtubeHostSettings");
+    if (youtubeHostSettings) {
+      youtubeHostSettings.style.display = "block";
+    }
+
     if (roleFromUrl === "host") {
-      const youtubeHostSettings = document.getElementById("youtubeHostSettings");
-      if (youtubeHostSettings) {
-        youtubeHostSettings.style.display = "block";
-        const ytUrlInput = document.getElementById("ytUrlInput");
-        if (ytUrlInput) ytUrlInput.value = youtubeUrl;
-      }
+      const ytUrlInputGroup = document.getElementById("ytUrlInputGroup");
+      if (ytUrlInputGroup) ytUrlInputGroup.style.display = "block";
+      const ytUrlInput = document.getElementById("ytUrlInput");
+      if (ytUrlInput) ytUrlInput.value = youtubeUrl;
       const hostOnlySettings = document.getElementById("hostOnlySettings");
       if (hostOnlySettings) hostOnlySettings.style.display = "none";
     } else {
       const viewerHostSettings = document.getElementById("viewerHostSettings");
       if (viewerHostSettings) viewerHostSettings.style.display = "none";
+      // Hide WebRTC controls on mobile / viewers
+      const hostOnlySettings = document.getElementById("hostOnlySettings");
+      if (hostOnlySettings) hostOnlySettings.style.display = "none";
     }
     
     currentVideoId = extractVideoId(youtubeUrl) || "8NDApwV46aM";
@@ -1790,6 +1836,32 @@ window.confirmJoin = async () => {
 /* LEAVE */
 /* LEAVE */
 window.leaveCall = async () => {
+  // Save leftover session if in YouTube mode
+  if (roomMode === "youtube" && ytPlayer) {
+    try {
+      const curTime = typeof ytPlayer.getCurrentTime === "function" ? ytPlayer.getCurrentTime() : 0;
+      const duration = typeof ytPlayer.getDuration === "function" ? ytPlayer.getDuration() : 0;
+      const videoTitle = (typeof ytPlayer.getVideoData === "function" && ytPlayer.getVideoData().title) || "YouTube Video";
+      
+      if (duration > 0 && curTime < duration - 5) {
+        const leftoverList = JSON.parse(localStorage.getItem("nova_leftover_sessions") || "[]");
+        const filtered = leftoverList.filter(item => item.videoId !== currentVideoId);
+        filtered.unshift({
+          roomId: roomIdFromUrl,
+          videoId: currentVideoId,
+          title: videoTitle,
+          currentTime: curTime,
+          duration: duration,
+          timestamp: Date.now()
+        });
+        localStorage.setItem("nova_leftover_sessions", JSON.stringify(filtered.slice(0, 5)));
+        console.log(">>> [roomConnection] Saved leftover session:", videoTitle, "at time:", curTime);
+      }
+    } catch (e) {
+      console.warn("Failed to save leftover session:", e);
+    }
+  }
+
   saveTimeCapsule();
   setAmbientGlow(false);
   hideSessionButtons();

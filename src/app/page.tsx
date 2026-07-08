@@ -94,6 +94,7 @@ export default function DashboardPage() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [memories, setMemories] = useState<any[]>([]);
   const [publicRooms, setPublicRooms] = useState<any[]>([]);
+  const [leftoverSessions, setLeftoverSessions] = useState<any[]>([]);
   const [roomsLoading, setRoomsLoading] = useState(true);
   const [showHostModal, setShowHostModal] = useState(false);
 
@@ -209,6 +210,12 @@ export default function DashboardPage() {
     try {
       const saved = JSON.parse(localStorage.getItem("saath_memories") || "[]");
       setMemories(saved);
+    } catch {}
+
+    // Load leftover sessions
+    try {
+      const leftover = JSON.parse(localStorage.getItem("nova_leftover_sessions") || "[]");
+      setLeftoverSessions(leftover);
     } catch {}
 
     return () => {
@@ -792,6 +799,73 @@ export default function DashboardPage() {
               </div>
             )}
 
+            {/* Leftover Sessions Section */}
+            {leftoverSessions.length > 0 && (
+              <div style={{ marginTop: "40px", borderTop: "1px solid rgba(255, 255, 255, 0.05)", paddingTop: "30px" }}>
+                <h2 style={{ fontSize: "18px", fontWeight: "700", marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px", color: "#e2e8f0" }}>
+                  <span className="material-symbols-outlined" style={{ color: "var(--accent)" }}>history</span>
+                  Resume Leftover Sessions
+                </h2>
+                <div className="rooms-grid">
+                  {leftoverSessions.map((session) => {
+                    const remainingMin = Math.ceil((session.duration - session.currentTime) / 60);
+                    const thumbUrl = `https://img.youtube.com/vi/${session.videoId}/mqdefault.jpg`;
+                    return (
+                      <div key={session.videoId} className="room-card" style={{ background: "rgba(255, 255, 255, 0.015)", border: "1px solid rgba(255,255,255,0.04)" }}>
+                        <div style={{ position: "relative", height: "130px", borderRadius: "10px", overflow: "hidden", border: "1px solid rgba(255,255,255,0.06)" }}>
+                          <img src={thumbUrl} alt="Thumbnail" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "4px", background: "rgba(255,255,255,0.15)" }}>
+                            <div style={{ width: `${(session.currentTime / session.duration) * 100}%`, height: "100%", background: "var(--accent)" }}></div>
+                          </div>
+                          <span style={{ position: "absolute", bottom: "8px", right: "8px", background: "rgba(0,0,0,0.85)", padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: "600", color: "#fff" }}>
+                            {remainingMin} min left
+                          </span>
+                        </div>
+                        <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                          <h3 style={{ fontSize: "13.5px", fontWeight: "600", color: "#f1f5f9", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={session.title}>
+                            {session.title}
+                          </h3>
+                          <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                            Leftover Room Code: <strong style={{ color: "var(--accent)" }}>{session.roomId}</strong>
+                          </span>
+                        </div>
+                        <div style={{ marginTop: "14px", display: "flex", gap: "10px" }}>
+                          <button 
+                            className="room-join-btn" 
+                            style={{ flex: 1, padding: "8px" }}
+                            onClick={() => {
+                              setRoom(session.roomId);
+                              setMode("youtube");
+                              setYoutubeUrl(session.videoId);
+                              try {
+                                localStorage.setItem(`leftover_time_${session.roomId}`, session.currentTime.toString());
+                              } catch (e) {}
+                              setShowHostModal(true);
+                            }}
+                          >
+                            Resume Session
+                          </button>
+                          <button
+                            className="room-join-btn"
+                            style={{ background: "rgba(239, 68, 68, 0.08)", color: "#f87171", border: "1px solid rgba(239, 68, 68, 0.15)", width: "38px", padding: 0 }}
+                            onClick={() => {
+                              const filtered = leftoverSessions.filter(item => item.videoId !== session.videoId);
+                              setLeftoverSessions(filtered);
+                              try {
+                                localStorage.setItem("nova_leftover_sessions", JSON.stringify(filtered));
+                              } catch (e) {}
+                            }}
+                          >
+                            <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>delete</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Host Creation Modal */}
             {showHostModal && (
               <div className="modal-overlay-blur">
@@ -830,8 +904,25 @@ export default function DashboardPage() {
                             className={`mode-btn ${mode === "youtube" ? "active-mode" : ""}`} 
                             onClick={() => setMode("youtube")}
                             type="button"
+                            style={mode === "youtube" ? {
+                              background: "rgba(239, 68, 68, 0.08)",
+                              color: "#ff4e4e",
+                              borderColor: "rgba(239, 68, 68, 0.35)",
+                              boxShadow: "0 0 10px rgba(239, 68, 68, 0.12)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: "6px"
+                            } : {
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: "6px"
+                            }}
                           >
-                            <span className="material-symbols-outlined">smart_display</span>
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style={{ color: mode === "youtube" ? "#ff4e4e" : "var(--text-muted)" }}>
+                              <path d="M23.498 6.163a3.003 3.003 0 0 0-2.11-2.107C19.522 3.5 12 3.5 12 3.5s-7.522 0-9.388.556a3.002 3.002 0 0 0-2.11 2.107C0 8.029 0 12 0 12s0 3.971.502 5.837a3.002 3.002 0 0 0 2.11 2.107C4.478 20.5 12 20.5 12 20.5s7.522 0 9.388-.556a3.002 3.002 0 0 0 2.11-2.107C24 15.971 24 12 24 12s0-3.971-.502-5.837zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                            </svg>
                             YouTube Sync
                           </button>
                         </div>
