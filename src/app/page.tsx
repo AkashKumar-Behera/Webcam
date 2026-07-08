@@ -682,6 +682,49 @@ export default function DashboardPage() {
               </button>
             </div>
 
+            {(() => {
+              const roomInvites = notifications.filter(n => n.type === "room_invite");
+              if (roomInvites.length === 0) return null;
+              return (
+                <div style={{ marginBottom: "32px", background: "rgba(255, 255, 255, 0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "20px", padding: "20px" }}>
+                  <h2 style={{ fontSize: "16px", color: "var(--accent)", marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px", fontWeight: "600" }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>mail</span> Invited by Friends
+                  </h2>
+                  <div className="rooms-grid">
+                    {roomInvites.map((invite) => (
+                      <div key={invite.id} className="room-card" style={{ border: "1px dashed var(--accent)", background: "rgba(201, 75, 123, 0.03)" }}>
+                        <div className="room-card-header">
+                          <span className="room-mood-badge" style={{ background: "rgba(201, 75, 123, 0.12)", color: "var(--accent)" }}>
+                            From {invite.hostName}
+                          </span>
+                        </div>
+                        <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                          <div style={{ fontSize: "14px", fontWeight: "600" }}>Room ID: {invite.roomId}</div>
+                          <div style={{ fontSize: "11px", color: "var(--text-muted-2)" }}>Received {new Date(invite.timestamp || Date.now()).toLocaleTimeString()}</div>
+                        </div>
+                        <div className="room-card-footer" style={{ display: "flex", gap: "10px", marginTop: "auto" }}>
+                          <button 
+                            className="room-join-btn" 
+                            style={{ flex: 1 }}
+                            onClick={() => router.push(`/room/${invite.roomId}?role=viewer`)}
+                          >
+                            Join Room
+                          </button>
+                          <button 
+                            className="room-join-btn" 
+                            style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "var(--text)", width: "auto" }}
+                            onClick={() => remove(ref(db, `invites/${myUid}/${invite.id}`))}
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
             {roomsLoading ? (
               <div className="rooms-grid">
                 {[1, 2, 3].map((n) => (

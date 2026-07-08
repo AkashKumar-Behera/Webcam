@@ -1,6 +1,7 @@
 /* LIVE PARTY v5.0 */
-import { auth, db } from "../../../lib/firebase";
+import { auth, db, firestore } from "../../../lib/firebase";
 import { ref, set, get, push, onValue, onChildAdded, onChildRemoved, remove, onDisconnect, query, limitToLast } from "firebase/database";
+import { collection, query as fsQuery, where, getDocs } from "firebase/firestore";
 import { signOut } from "firebase/auth";
 
 
@@ -44,6 +45,28 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
   let ytPlayerReady = false;
   let isSyncing = false;
   let serverTimeOffset = 0;
+  let userFriends = [];
+
+  async function fetchFriends() {
+    if (!signedInProfile || !signedInProfile.uid) return;
+    try {
+      const q = fsQuery(collection(firestore, "friendships"), where("uid", "==", signedInProfile.uid));
+      const snap = await getDocs(q);
+      const list = [];
+      snap.forEach(doc => {
+        const val = doc.data();
+        list.push({
+          uid: val.friendUid,
+          name: val.friendName,
+          photoURL: val.friendPhotoURL
+        });
+      });
+      userFriends = list;
+      renderPeopleTab();
+    } catch (e) {
+      console.warn("Failed to fetch friends for invites:", e);
+    }
+  }
 
   onValue(ref(db, ".info/serverTimeOffset"), (snap) => {
     serverTimeOffset = snap.val() || 0;
@@ -1058,6 +1081,15 @@ function renderPeopleTab() {
     html += `<div class="ppl-item"><div class="ppl-av" style="background:${col}">${p.name[0].toUpperCase()}</div><div class="ppl-name">${esc(p.name)}</div>${isHost ? `<button class="pa-btn kick" onclick="kickViewer('${vid}','${esc(p.name)}')"><span class="material-symbols-outlined">person_remove</span></button>` : ""}</div>`;
   }
 
+  // Invite Friends list inside room
+  if (userFriends && userFriends.length > 0) {
+    html += `<div class="ppl-section" style="margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px;">📩 Invite Friends</div>`;
+    for (const friend of userFriends) {
+      const col = nameToHsl(friend.name);
+      html += `<div class="ppl-item" style="justify-content:space-between; display:flex; align-items:center;"><div style="display:flex; align-items:center; gap:8px;"><div class="ppl-av" style="background:${col}">${friend.name[0].toUpperCase()}</div><div class="ppl-name">${esc(friend.name)}</div></div><button class="pa-btn invite" style="background:rgba(201,75,123,0.12); color:var(--accent); border:1px solid rgba(201,75,123,0.3); border-radius:8px; padding:2px 8px; font-size:10px; cursor:pointer;" onclick="window.inviteFriendFromRoom('${friend.uid}','${esc(friend.name)}')">Invite</button></div>`;
+    }
+  }
+
   if (!html) html = `<div class="ppl-empty"><span class="material-symbols-outlined">group</span><p>No one yet</p></div>`;
   c.innerHTML = html;
   const badge = document.getElementById("peopleBadge"); if (badge) { badge.textContent = pending.length; badge.style.display = pending.length > 0 ? "flex" : "none"; }
@@ -1077,6 +1109,20 @@ window.approveViewer = async (vid, name) => {
 window.denyViewer = async (vid, name) => { await set(ref(db, `rooms/${roomId}/waitroom/${vid}/status`), "denied"); setTimeout(() => remove(ref(db, `rooms/${roomId}/waitroom/${vid}`)), 3000); delete pendingViewers[vid]; renderPeopleTab(); showToast(`✗ ${name} declined`); };
 window.kickViewer = async (vid, name) => { await set(ref(db, `rooms/${roomId}/viewers/${vid}/kicked`), true); setTimeout(() => remove(ref(db, `rooms/${roomId}/viewers/${vid}`)), 2000); try { screenPcMap[vid]?.close(); } catch (_) { } delete screenPcMap[vid]; delete connectedViewers[vid]; renderPeopleTab(); showToast(`👢 ${name} removed`); };
 window.muteAllViewers = async () => { if (!isHost || !roomId) return; await set(ref(db, `rooms/${roomId}/muteAll`), Date.now()); showToast("🤫 Muted all viewers"); };
+window.inviteFriendFromRoom = async (friendUid, friendName) => {
+  try {
+    const inviteRef = push(ref(db, `invites/${friendUid}`));
+    await set(inviteRef, {
+      roomId: roomIdFromUrl,
+      hostName: myName || "Your Friend",
+      timestamp: Date.now() + serverTimeOffset
+    });
+    showToast(`✉ Invite sent to ${friendName}`);
+  } catch (e) {
+    showToast("❌ Failed to send invite");
+    console.error(e);
+  }
+};
 window.applyBitrateNow = () => { logStatus("Bitrate dynamically managed by Cloudflare SFU."); };
 window.setMovieVolume = (val) => {
   const video = document.getElementById("remoteVideo");
@@ -1285,6 +1331,7 @@ window.confirmHost = async () => {
     document.getElementById("micBtnChat").style.display = "none";
   }
   window.switchTab("chat"); renderPeopleTab();
+  fetchFriends();
   setAmbientGlow(true);
   bootstrapCoupleFeatures();
   _reconnectAttempt = 0; _startConnPoll();
@@ -1365,23 +1412,15 @@ window.confirmHost = async () => {
   }).catch(e => logStatus(`Firebase Error: ${e.message}`));
   onDisconnect(roomRef).remove();
 
-  // Waitroom UI
   const unsubW = onChildAdded(ref(db, `rooms/${roomId}/waitroom`), snap => {
     const vid = snap.key, data = snap.val(); if (!data || !vid || data.status) return;
     
-    // Auto-Accept logic for network reconnections
-    if (data.token && Object.values(approvedTokens).includes(data.token)) {
-      logStatus(`Auto-approving reconnection for ${data.name}`);
-      set(ref(db, `rooms/${roomId}/waitroom/${vid}/status`), "approved");
-      // Update approvedTokens with new vid
-      Object.keys(approvedTokens).forEach(k => { if (approvedTokens[k] === data.token) delete approvedTokens[k]; });
+    // Auto-approve join requests instantly
+    logStatus(`Auto-approving join request from: ${data.name}`);
+    set(ref(db, `rooms/${roomId}/waitroom/${vid}/status`), "approved");
+    if (data.token) {
       approvedTokens[vid] = data.token;
-      return;
     }
-
-    logStatus(`Approval request from: ${data.name || "Viewer"}`);
-    pendingViewers[vid] = { name: data.name || "Viewer", token: data.token }; 
-    renderPeopleTab(); showToast(`🔔 ${data.name} wants to join`); window.switchTab("people");
   });
 
   // Voice Pull Listener
@@ -1434,6 +1473,7 @@ window.confirmJoin = async () => {
   logStatus(`Joining room: ${roomId}`);
   if (myName) localStorage.setItem("watchparty_name", myName);
   isHost = false; bgAudioSet = false; updateConnStatus("connecting");
+  fetchFriends();
 
   // Mobile Gesture Unlock
   const v = document.getElementById("remoteVideo"); if (v) { v.play().catch(() => { }); }
