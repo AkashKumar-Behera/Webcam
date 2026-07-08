@@ -625,7 +625,7 @@ export default function RoomPage({ params: paramsPromise }: { params: Promise<{ 
       </div>
 
       <!-- PEOPLE TAB -->
-      <div class="panel-content" id="contentPeople" style="display:flex; flex-direction:column; height:100%;">
+      <div class="panel-content" id="contentPeople" style="flex-direction:column; height:100%;">
         <div style="display:flex; border-bottom:1px solid rgba(255,255,255,0.06); padding:10px 16px; gap:12px; background:rgba(255,255,255,0.01);">
           <button id="subTabFriends" onclick="window.switchPeopleSubTab('friends')" style="flex:1; background:rgba(201,75,123,0.1); border:1px solid rgba(201,75,123,0.3); color:var(--accent); border-radius:100px; padding:6px 12px; font-size:11px; font-weight:700; cursor:pointer; text-align:center; outline:none; transition:0.2s;">Friends</button>
           <button id="subTabSession" onclick="window.switchPeopleSubTab('session')" style="flex:1; background:transparent; border:1px solid rgba(255,255,255,0.08); color:var(--text-muted); border-radius:100px; padding:6px 12px; font-size:11px; font-weight:600; cursor:pointer; text-align:center; outline:none; transition:0.2s;">In Session</button>
