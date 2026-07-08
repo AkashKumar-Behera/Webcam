@@ -42,6 +42,12 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
   let currentVideoId = "";
   let ytPlayer = null;
   let isSyncing = false;
+  let serverTimeOffset = 0;
+
+  onValue(ref(db, ".info/serverTimeOffset"), (snap) => {
+    serverTimeOffset = snap.val() || 0;
+    console.log(">>> [roomConnection] Firebase Server Time Offset (ms):", serverTimeOffset);
+  });
 
   function extractVideoId(url) {
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
@@ -80,7 +86,7 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
               time: startTime,
               videoId: videoId,
               sender: signedInProfile.uid,
-              timestamp: Date.now()
+              timestamp: Date.now() + serverTimeOffset
             });
             if (startTime > 0) {
               ytPlayer.seekTo(startTime, true);
@@ -102,7 +108,7 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
                     time: curTime,
                     videoId: currentVideoId,
                     sender: signedInProfile.uid,
-                    timestamp: Date.now()
+                    timestamp: Date.now() + serverTimeOffset
                   });
                 }
               }
@@ -135,7 +141,7 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
       time: ytPlayer.getCurrentTime(),
       videoId: currentVideoId,
       sender: signedInProfile.uid,
-      timestamp: Date.now()
+      timestamp: Date.now() + serverTimeOffset
     });
   }
 
@@ -153,8 +159,8 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
         ytPlayer.cueVideoById(data.videoId);
       }
       
-      const latency = (Date.now() - data.timestamp) / 1000;
-      const targetTime = data.state === "playing" ? data.time + latency : data.time;
+      const latency = ((Date.now() + serverTimeOffset) - data.timestamp) / 1000;
+      const targetTime = data.state === "playing" ? data.time + latency + 0.5 : data.time;
       
       const currentTime = ytPlayer.getCurrentTime();
       const diff = Math.abs(currentTime - targetTime);
@@ -193,7 +199,7 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
       time: 0,
       videoId: videoId,
       sender: signedInProfile.uid,
-      timestamp: Date.now()
+      timestamp: Date.now() + serverTimeOffset
     });
   };
 
@@ -206,7 +212,7 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
       time: ytPlayer.getCurrentTime(),
       videoId: currentVideoId,
       sender: signedInProfile.uid,
-      timestamp: Date.now()
+      timestamp: Date.now() + serverTimeOffset
     });
   };
 
@@ -219,7 +225,7 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
       time: ytPlayer.getCurrentTime(),
       videoId: currentVideoId,
       sender: signedInProfile.uid,
-      timestamp: Date.now()
+      timestamp: Date.now() + serverTimeOffset
     });
   };
 
