@@ -285,7 +285,29 @@ export default function DashboardPage() {
 
   const listenToFriendsAndNotifs = (uid: string) => {
     const q = query(collection(firestore, "friendships"), where("uid", "==", uid));
-    return onSnapshot(q, async (snapshot) => {
+    
+    // Set up real-time listener for invites
+    const unsubInvites = onValue(ref(db, `invites/${uid}`), (inviteSnap) => {
+      const invitesList: any[] = [];
+      if (inviteSnap.exists()) {
+        Object.entries(inviteSnap.val()).forEach(([inviteId, val]: [string, any]) => {
+          invitesList.push({
+            id: inviteId,
+            type: "room_invite",
+            roomId: val.roomId,
+            hostName: val.hostName,
+            mood: val.mood,
+            timestamp: val.timestamp
+          });
+        });
+      }
+      setNotifications(prev => {
+        const filtered = prev.filter(n => n.type !== "room_invite");
+        return [...filtered, ...invitesList];
+      });
+    });
+
+    const unsubFirestore = onSnapshot(q, async (snapshot) => {
       const friendsListTemp: any[] = [];
       const notificationsTemp: any[] = [];
 
@@ -318,22 +340,16 @@ export default function DashboardPage() {
         }
       }
       setFriendsList(friendsListTemp);
-
-      // Also fetch room invites from Realtime Database
-      const inviteSnap = await get(ref(db, `invites/${uid}`));
-      if (inviteSnap.exists()) {
-        Object.entries(inviteSnap.val()).forEach(([inviteId, val]: [string, any]) => {
-          notificationsTemp.push({
-            id: inviteId,
-            type: "room_invite",
-            roomId: val.roomId,
-            hostName: val.hostName,
-            mood: val.mood
-          });
-        });
-      }
-      setNotifications(notificationsTemp);
+      setNotifications(prev => {
+        const roomInvites = prev.filter(n => n.type === "room_invite");
+        return [...roomInvites, ...notificationsTemp];
+      });
     });
+
+    return () => {
+      unsubInvites();
+      unsubFirestore();
+    };
   };
 
   const handleLogout = async () => {
@@ -495,7 +511,7 @@ export default function DashboardPage() {
       alert("Please generate or enter a Room Code first.");
       return;
     }
-    const inviteRef = push(ref(db, `invites/${friendUid}`));
+    const inviteRef = ref(db, `invites/${friendUid}/${room.trim()}`);
     await set(inviteRef, {
       roomId: room.trim(),
       hostName: name,

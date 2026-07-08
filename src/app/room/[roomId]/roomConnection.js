@@ -47,6 +47,8 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
   let serverTimeOffset = 0;
   let userFriends = [];
   let currentPeopleSubTab = "friends";
+  let friendStatuses = {};
+  let friendStatusUnsubs = [];
 
   async function fetchFriends() {
     console.log(">>> [roomConnection] fetchFriends starting for UID:", signedInProfile?.uid);
@@ -58,6 +60,11 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
       const q = fsQuery(collection(firestore, "friendships"), where("uid", "==", signedInProfile.uid), where("status", "==", "friend"));
       const snap = await getDocs(q);
       console.log(">>> [roomConnection] fetchFriends snap size:", snap.size);
+      
+      // Clear previous status listeners if any
+      friendStatusUnsubs.forEach(unsub => { try { unsub(); } catch(_) {} });
+      friendStatusUnsubs = [];
+
       const list = [];
       for (const docItem of snap.docs) {
         const val = docItem.data();
@@ -68,11 +75,20 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
         const friendSnap = await getDoc(doc(firestore, "users", friendId));
         if (friendSnap.exists()) {
           const friendData = friendSnap.data();
-          list.push({
+          const friendObj = {
             uid: friendId,
             name: friendData.name || friendData.displayName || "Friend",
             photoURL: friendData.photoURL || ""
+          };
+          list.push(friendObj);
+
+          // Subscribe to real-time status changes in RTDB
+          const unsub = onValue(ref(db, `status/${friendId}`), statusSnap => {
+            const statusVal = statusSnap.val();
+            friendStatuses[friendId] = (statusVal && statusVal.state === "online") ? "online" : "offline";
+            renderPeopleTab();
           });
+          friendStatusUnsubs.push(unsub);
         }
       }
       userFriends = list;
@@ -1105,7 +1121,30 @@ function renderPeopleTab() {
     if (userFriends && userFriends.length > 0) {
       for (const friend of userFriends) {
         const col = nameToHsl(friend.name);
-        html += `<div class="ppl-item" style="justify-content:space-between; display:flex; align-items:center; margin-bottom:8px;"><div style="display:flex; align-items:center; gap:8px;"><div class="ppl-av" style="background:${col}">${friend.name[0].toUpperCase()}</div><div class="ppl-name">${esc(friend.name)}</div></div><button class="pa-btn invite" style="background:rgba(201,75,123,0.12); color:var(--accent); border:1px solid rgba(201,75,123,0.3); border-radius:8px; padding:4px 10px; font-size:11px; cursor:pointer;" onclick="window.inviteFriendFromRoom('${friend.uid}','${esc(friend.name)}')">Invite</button></div>`;
+        const status = friendStatuses[friend.uid] || "offline";
+        const dotColor = status === "online" ? "#22c55e" : "rgba(255,255,255,0.2)";
+        const statusText = status === "online" ? "online" : "offline";
+        
+        // Check if this friend is already in session (as host, or as viewer)
+        const isJoined = Object.values(connectedViewers).some(v => v.uid === friend.uid) || 
+                         (hostInfo && hostInfo.uid === friend.uid);
+        
+        html += `<div class="ppl-item" style="justify-content:space-between; display:flex; align-items:center; margin-bottom:8px;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <div style="position:relative;">
+              <div class="ppl-av" style="background:${col}">${friend.name[0].toUpperCase()}</div>
+              <span style="position:absolute; bottom:0; right:0; width:10px; height:10px; border-radius:50%; background:${dotColor}; border:2px solid var(--panel-bg); display:block;"></span>
+            </div>
+            <div>
+              <div class="ppl-name">${esc(friend.name)}</div>
+              <div style="font-size:9px; color:var(--text-muted); text-transform:capitalize; margin-top:2px;">${statusText}</div>
+            </div>
+          </div>
+          ${isJoined 
+            ? `<span style="color:var(--text-muted); font-size:11px; padding:4px 10px; font-weight:600;">Joined</span>` 
+            : `<button class="pa-btn invite" style="background:rgba(201,75,123,0.12); color:var(--accent); border:1px solid rgba(201,75,123,0.3); border-radius:8px; padding:4px 10px; font-size:11px; cursor:pointer;" onclick="window.inviteFriendFromRoom('${friend.uid}','${esc(friend.name)}')">Invite</button>`
+          }
+        </div>`;
       }
     } else {
       html = `<div class="ppl-empty"><span class="material-symbols-outlined">group</span><p>No friends added yet</p></div>`;
@@ -1162,7 +1201,7 @@ window.kickViewer = async (vid, name) => { await set(ref(db, `rooms/${roomId}/vi
 window.muteAllViewers = async () => { if (!isHost || !roomId) return; await set(ref(db, `rooms/${roomId}/muteAll`), Date.now()); showToast("🤫 Muted all viewers"); };
 window.inviteFriendFromRoom = async (friendUid, friendName) => {
   try {
-    const inviteRef = push(ref(db, `invites/${friendUid}`));
+    const inviteRef = ref(db, `invites/${friendUid}/${roomIdFromUrl}`);
     await set(inviteRef, {
       roomId: roomIdFromUrl,
       hostName: myName || "Your Friend",
@@ -1454,6 +1493,7 @@ window.confirmHost = async () => {
   logStatus(`Registering host in room: ${roomId}`);
   await set(ref(db, `rooms/${roomId}/host`), {
     name: myName,
+    uid: signedInProfile.uid,
     created: Date.now(),
     cfSessionId: myCfSessionId,
     cfTrackVideo: "movie-v",
@@ -1489,7 +1529,8 @@ window.confirmHost = async () => {
       get(ref(db, `rooms/${roomId}/viewers/${vid}/ready`)).then(s => { 
         if (!s.exists()) return;
         const n = s.val()?.name || "Viewer"; 
-        connectedViewers[vid] = { name: n }; 
+        const uid = s.val()?.uid || null;
+        connectedViewers[vid] = { name: n, uid: uid }; 
         renderPeopleTab(); 
         addSystemMsg(`👋 ${n} joined`); 
         playProceduralSound("join"); 
@@ -1708,7 +1749,7 @@ window.confirmJoin = async () => {
       logStatus("Starting connection sequence...");
       onDisconnect(ref(db, `rooms/${roomId}/viewers/${myVid}`)).remove();
       startSilenceLoop();
-      await set(ref(db, `rooms/${roomId}/viewers/${myVid}/ready`), { name: userName });
+      await set(ref(db, `rooms/${roomId}/viewers/${myVid}/ready`), { name: userName, uid: signedInProfile.uid });
 
       // Listen to host/presenter updates in real-time
       const hostRef = ref(db, `rooms/${roomId}/host`);
@@ -1765,7 +1806,16 @@ window.confirmJoin = async () => {
 
       const unsubPV = onChildAdded(ref(db, `rooms/${roomId}/viewers`), s => {
         const vid = s.key; if (!vid) return;
-        get(ref(db, `rooms/${roomId}/viewers/${vid}/ready`)).then(sn => { const n = sn.val()?.name || "Viewer"; if (!connectedViewers[vid]) { connectedViewers[vid] = { name: n }; renderPeopleTab(); playProceduralSound("join"); } });
+        get(ref(db, `rooms/${roomId}/viewers/${vid}/ready`)).then(sn => { 
+          const val = sn.val();
+          const n = val?.name || "Viewer"; 
+          const uid = val?.uid || null;
+          if (!connectedViewers[vid]) { 
+            connectedViewers[vid] = { name: n, uid: uid }; 
+            renderPeopleTab(); 
+            playProceduralSound("join"); 
+          } 
+        });
       });
       const unsubPR = onChildAdded(ref(db, `rooms/${roomId}/viewers`), () => renderPeopleTab());
       const unsubPD = onChildRemoved(ref(db, `rooms/${roomId}/viewers`), snap => {
@@ -2016,7 +2066,9 @@ window.leaveCall = async () => {
   renderTypingStatus();
   const wo = document.getElementById('waitOverlay'); if(wo) wo.style.display = 'none';
   document.body.classList.remove('host-cursor','viewer-cursor');
-  stopStats(); stopSilenceLoop(); firebaseUnsubs.forEach(u => { try { u(); } catch (_) { } }); firebaseUnsubs = [];
+  stopStats(); stopSilenceLoop(); 
+  firebaseUnsubs.forEach(u => { try { u(); } catch (_) { } }); firebaseUnsubs = [];
+  friendStatusUnsubs.forEach(u => { try { u(); } catch (_) { } }); friendStatusUnsubs = [];
   Object.values(screenPcMap).forEach(pc => { try { pc.close(); } catch (_) { } }); screenPcMap = {};
   if (viewerPc) { try { viewerPc.close(); } catch (_) { } viewerPc = null; }
   if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
