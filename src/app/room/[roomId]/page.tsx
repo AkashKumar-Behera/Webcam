@@ -564,7 +564,6 @@ export default function RoomPage({ params: paramsPromise }: { params: Promise<{ 
                 onchange="window.pushHostSettings();" />
               <div style="font-size:9px;color:var(--text-muted);margin-top:4px;">Increase if others experience stuttering</div>
             </div>
-          </div>
 
           <!-- Microphone -->
           <div>
