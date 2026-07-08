@@ -41,6 +41,7 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
   let initialYoutubeUrl = "";
   let currentVideoId = "";
   let ytPlayer = null;
+  let ytPlayerReady = false;
   let isSyncing = false;
   let serverTimeOffset = 0;
 
@@ -68,6 +69,7 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
       events: {
         onReady: () => {
           console.log(">>> [roomConnection] YouTube Player Ready");
+          ytPlayerReady = true;
           let startTime = 0;
           try {
             const savedStartTime = localStorage.getItem(`leftover_time_${roomIdFromUrl}`);
@@ -95,7 +97,7 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
             // Sync host playhead periodically to align seeking
             let lastSavedTime = startTime;
             setInterval(() => {
-              if (ytPlayer && typeof ytPlayer.getPlayerState === "function") {
+              if (ytPlayer && ytPlayerReady && typeof ytPlayer.getPlayerState === "function") {
                 const state = ytPlayer.getPlayerState();
                 const curTime = ytPlayer.getCurrentTime();
                 const stateStr = (state === YT.PlayerState.PLAYING) ? "playing" : "paused";
@@ -122,7 +124,7 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
   }
 
   function onPlayerStateChange(event) {
-    if (!ytPlayer) return;
+    if (!ytPlayer || !ytPlayerReady) return;
     if (isSyncing) return;
     
     const state = event.data;
@@ -148,7 +150,7 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
   function startYoutubSyncListener() {
     console.log(">>> [roomConnection] Starting YouTube Sync listener...");
     onValue(ref(db, `rooms/${roomIdFromUrl}/youtube`), (snap) => {
-      if (!snap.exists() || !ytPlayer || typeof ytPlayer.getPlayerState !== "function") return;
+      if (!snap.exists() || !ytPlayer || !ytPlayerReady || typeof ytPlayer.getPlayerState !== "function") return;
       const data = snap.val();
       
       // Prevent syncing back our own updates to avoid loops/stutters
@@ -184,7 +186,7 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
   }
 
   window.changeYoutubeVideo = (urlOrId) => {
-    if (roleFromUrl !== "host" || !ytPlayer) return;
+    if (roleFromUrl !== "host" || !ytPlayer || !ytPlayerReady) return;
     const videoId = extractVideoId(urlOrId);
     if (!videoId) {
       alert("Invalid YouTube URL or ID");
@@ -204,7 +206,7 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
   };
 
   window.playYoutubeForEveryone = () => {
-    if (!ytPlayer) return;
+    if (!ytPlayer || !ytPlayerReady) return;
     ytPlayer.playVideo();
     
     set(ref(db, `rooms/${roomIdFromUrl}/youtube`), {
@@ -217,7 +219,7 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
   };
 
   window.pauseYoutubeForEveryone = () => {
-    if (!ytPlayer) return;
+    if (!ytPlayer || !ytPlayerReady) return;
     ytPlayer.pauseVideo();
     
     set(ref(db, `rooms/${roomIdFromUrl}/youtube`), {
@@ -230,7 +232,7 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
   };
 
   window.setYoutubeQuality = (level) => {
-    if (ytPlayer && typeof ytPlayer.setPlaybackQuality === "function") {
+    if (ytPlayer && ytPlayerReady && typeof ytPlayer.setPlaybackQuality === "function") {
       ytPlayer.setPlaybackQuality(level);
       console.log(">>> [roomConnection] Set playback quality to:", level);
     }
@@ -1895,7 +1897,17 @@ window.leaveCall = async () => {
     } catch (e) {
       console.warn("Failed to save leftover session:", e);
     }
+  // Destroy YouTube Player instance to prevent detached DOM memory leaks
+  if (ytPlayer && typeof ytPlayer.destroy === "function") {
+    try {
+      ytPlayer.destroy();
+      console.log(">>> [roomConnection] Destroyed YouTube Player instance");
+    } catch (e) {
+      console.warn("Failed to destroy YouTube player:", e);
+    }
   }
+  ytPlayer = null;
+  ytPlayerReady = false;
 
   saveTimeCapsule();
   setAmbientGlow(false);
