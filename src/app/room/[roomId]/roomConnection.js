@@ -1,6 +1,6 @@
 /* LIVE PARTY v5.0 */
 import { auth, db } from "../../../lib/firebase";
-import { ref, set, get, push, onValue, onChildAdded, remove, onDisconnect } from "firebase/database";
+import { ref, set, get, push, onValue, onChildAdded, onChildRemoved, remove, onDisconnect, query, limitToLast } from "firebase/database";
 import { signOut } from "firebase/auth";
 
 
@@ -1392,31 +1392,32 @@ window.confirmHost = async () => {
 
   firebaseUnsubs.push(unsubW, unsubVoice);
 
-  const unsubV = onValue(ref(db, `rooms/${roomId}/viewers`), snap => {
-    const current = snap.val() || {};
-    // Check for newcomers
-    Object.keys(current).forEach(vid => {
-       if (!connectedViewers[vid]) {
-         get(ref(db, `rooms/${roomId}/viewers/${vid}/ready`)).then(s => { 
-           const n = s.val()?.name || "Viewer"; 
-           connectedViewers[vid] = { name: n }; 
-           renderPeopleTab(); 
-           addSystemMsg(`👋 ${n} joined`); 
-           playProceduralSound("join"); 
-         });
-       }
-    });
-    // Check for departures
-    Object.keys(connectedViewers).forEach(vid => {
-       if (!current[vid]) {
-         const n = connectedViewers[vid].name;
-         delete connectedViewers[vid];
-         renderPeopleTab();
-         addSystemMsg(`🚪 ${n} left`);
-       }
-    });
+  const viewersRef = ref(db, `rooms/${roomId}/viewers`);
+  const unsubAdded = onChildAdded(viewersRef, (snap) => {
+    const vid = snap.key;
+    if (!connectedViewers[vid]) {
+      get(ref(db, `rooms/${roomId}/viewers/${vid}/ready`)).then(s => { 
+        if (!s.exists()) return;
+        const n = s.val()?.name || "Viewer"; 
+        connectedViewers[vid] = { name: n }; 
+        renderPeopleTab(); 
+        addSystemMsg(`👋 ${n} joined`); 
+        playProceduralSound("join"); 
+      });
+    }
+  });
 
-  }); firebaseUnsubs.push(unsubV);
+  const unsubRemoved = onChildRemoved(viewersRef, (snap) => {
+    const vid = snap.key;
+    if (connectedViewers[vid]) {
+      const n = connectedViewers[vid].name;
+      delete connectedViewers[vid];
+      renderPeopleTab();
+      addSystemMsg(`🚪 ${n} left`);
+    }
+  });
+
+  firebaseUnsubs.push(unsubAdded, unsubRemoved);
 
   startHostStats(); startChatListener(); startTypingListener(); startReactionListener();
   window.pushHostSettings();
@@ -1676,9 +1677,15 @@ window.confirmJoin = async () => {
         get(ref(db, `rooms/${roomId}/viewers/${vid}/ready`)).then(sn => { const n = sn.val()?.name || "Viewer"; if (!connectedViewers[vid]) { connectedViewers[vid] = { name: n }; renderPeopleTab(); playProceduralSound("join"); } });
       });
       const unsubPR = onChildAdded(ref(db, `rooms/${roomId}/viewers`), () => renderPeopleTab());
-      const unsubPD = onValue(ref(db, `rooms/${roomId}/viewers`), snap => {
-        const current = snap.val() || {};
-        Object.keys(connectedViewers).forEach(vid => { if (!current[vid] && vid !== myVid) { const name = connectedViewers[vid].name; delete connectedViewers[vid]; renderPeopleTab(); addSystemMsg(`🚪 ${name} left`); playProceduralSound("leave"); } });
+      const unsubPD = onChildRemoved(ref(db, `rooms/${roomId}/viewers`), snap => {
+        const vid = snap.key;
+        if (connectedViewers[vid] && vid !== myVid) {
+          const name = connectedViewers[vid].name;
+          delete connectedViewers[vid];
+          renderPeopleTab();
+          addSystemMsg(`🚪 ${name} left`);
+          playProceduralSound("leave");
+        }
       });
       firebaseUnsubs.push(unsubPV, unsubPR, unsubPD);
 
@@ -1998,7 +2005,8 @@ window.handleChatImageUpload = (source) => {
 
 function startChatListener() {
   if (!roomId) return; const ts = Date.now(); const myN = document.getElementById("userName")?.value.trim() || (isHost ? "Host" : "Viewer");
-  const unsub = onChildAdded(ref(db, `rooms/${roomId}/chat`), snap => {
+  const chatQuery = query(ref(db, `rooms/${roomId}/chat`), limitToLast(30));
+  const unsub = onChildAdded(chatQuery, snap => {
     const d = snap.val(); if (!d || d.time < ts - 1000) return;
     const msgId = `chat_${snap.key}`; if (document.getElementById(msgId)) return;
     const wrap = document.createElement("div"); wrap.className = "chat-msg"; wrap.id = msgId;

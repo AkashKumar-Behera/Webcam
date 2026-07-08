@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { auth, db, firestore } from "../lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { ref, set, get, push, onValue, remove, onDisconnect } from "firebase/database";
+import { ref, set, get, push, onValue, remove, onDisconnect, query as rtdbQuery, limitToLast } from "firebase/database";
 import { collection, doc, getDoc, getDocs, setDoc, deleteDoc, query, where, onSnapshot } from "firebase/firestore";
 import CloudStickers from "../components/CloudStickers";
 
@@ -171,9 +171,10 @@ export default function DashboardPage() {
       }
     });
 
-    // Listen to active rooms
+    // Listen to active rooms limited to last 30 to conserve bandwidth
     const roomsRef = ref(db, "rooms");
-    const unsubscribeRooms = onValue(roomsRef, (snap) => {
+    const roomsQuery = rtdbQuery(roomsRef, limitToLast(30));
+    const unsubscribeRooms = onValue(roomsQuery, (snap) => {
       if (snap.exists()) {
         const list: any[] = [];
         Object.entries(snap.val()).forEach(([roomId, val]: [string, any]) => {
