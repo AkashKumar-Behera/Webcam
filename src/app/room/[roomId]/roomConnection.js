@@ -1897,6 +1897,7 @@ window.leaveCall = async () => {
     } catch (e) {
       console.warn("Failed to save leftover session:", e);
     }
+  }
   // Destroy YouTube Player instance to prevent detached DOM memory leaks
   if (ytPlayer && typeof ytPlayer.destroy === "function") {
     try {
