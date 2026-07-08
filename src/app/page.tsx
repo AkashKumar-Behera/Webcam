@@ -4,14 +4,59 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { auth, db, firestore } from "../lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { ref, set, get, push, onValue, remove } from "firebase/database";
+import { ref, set, get, push, onValue, remove, onDisconnect } from "firebase/database";
 import { collection, doc, getDoc, getDocs, setDoc, deleteDoc, query, where, onSnapshot } from "firebase/firestore";
+import CloudStickers from "../components/CloudStickers";
 
 export default function DashboardPage() {
   const router = useRouter();
 
   // Navigation state
-  const [activeTab, setActiveTab] = useState<"dashboard" | "friends" | "notifications" | "profile">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "friends" | "notifications" | "stickers" | "settings" | "profile">("dashboard");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Appearance settings (global theme + font)
+  const [appTheme, setAppTheme] = useState("gunmetal");
+  const [appFont, setAppFont] = useState("inter");
+
+  const THEMES = [
+    { id: "gunmetal", name: "Gunmetal Emerald", sub: "Brushed steel, green glow", swatches: ["#16191e", "#10b981", "#e6ebf1"] },
+    { id: "obsidian", name: "Obsidian Gold", sub: "Cinema luxury", swatches: ["#17140f", "#d4a944", "#f0e8d8"] },
+    { id: "titanium", name: "Titanium Ice", sub: "Cold futuristic", swatches: ["#131820", "#2bb8d9", "#e3edf5"] },
+    { id: "classic", name: "Nova Classic", sub: "The original look", swatches: ["#05070f", "#10b981", "#ffffff"] },
+    { id: "rose", name: "Evening Rose", sub: "Warm and cozy", swatches: ["#1d0d15", "#e05586", "#f5e6ef"] }
+  ];
+
+  const FONTS = [
+    { id: "inter", name: "Inter (Default)" },
+    { id: "outfit", name: "Outfit" },
+    { id: "poppins", name: "Poppins" },
+    { id: "grotesk", name: "Space Grotesk" },
+    { id: "manrope", name: "Manrope" },
+    { id: "sora", name: "Sora" }
+  ];
+
+  useEffect(() => {
+    try {
+      setAppTheme(localStorage.getItem("nova_theme") || "gunmetal");
+      setAppFont(localStorage.getItem("nova_font") || "inter");
+      setSidebarCollapsed(localStorage.getItem("nova_sidebar_collapsed") === "true");
+    } catch {}
+  }, []);
+
+  const applyTheme = (id: string) => {
+    setAppTheme(id);
+    localStorage.setItem("nova_theme", id);
+    if (id === "gunmetal") document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme", id);
+  };
+
+  const applyFont = (id: string) => {
+    setAppFont(id);
+    localStorage.setItem("nova_font", id);
+    if (id === "inter") document.documentElement.removeAttribute("data-font");
+    else document.documentElement.setAttribute("data-font", id);
+  };
 
   // User details
   const [myUid, setMyUid] = useState("");
@@ -161,8 +206,22 @@ export default function DashboardPage() {
 
   const syncOnlineStatus = (uid: string) => {
     const statusRef = ref(db, `status/${uid}`);
-    set(statusRef, { state: "online", lastChanged: Date.now() });
-    // Cleanup status on window close or tab change
+    const connectedRef = ref(db, ".info/connected");
+
+    // Listen to Firebase connection state
+    onValue(connectedRef, (snap) => {
+      if (snap.val() === true) {
+        // Automatically set status to offline when client disconnects (tab close, crash, internet drop)
+        onDisconnect(statusRef)
+          .set({ state: "offline", lastChanged: Date.now() })
+          .then(() => {
+            // Once onDisconnect is registered, set status to online
+            set(statusRef, { state: "online", lastChanged: Date.now() });
+          });
+      }
+    });
+
+    // Fallback for clean tab close / navigation
     if (typeof window !== "undefined") {
       window.addEventListener("beforeunload", () => {
         set(statusRef, { state: "offline", lastChanged: Date.now() });
@@ -406,12 +465,14 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="dashboard-layout">
-        <aside className="sidebar-nav">
+        <aside className={`sidebar-nav ${sidebarCollapsed ? "collapsed" : ""}`}>
           <div className="sidebar-brand">
-            <div className="sidebar-brand-icon">
-              <span className="material-symbols-outlined">favorite</span>
+            <div className="sidebar-brand-content">
+              <div className="sidebar-brand-icon">
+                <span className="material-symbols-outlined">favorite</span>
+              </div>
+              <h2>Nova</h2>
             </div>
-            <h2>Nova</h2>
           </div>
           <div className="sidebar-menu">
             <div className="shimmer-element" style={{ height: "44px", width: "100%", marginBottom: "8px" }}></div>
@@ -456,47 +517,82 @@ export default function DashboardPage() {
   return (
     <div className="dashboard-layout">
       {/* Left Sidebar Navigation */}
-      <aside className="sidebar-nav">
+      <aside className={`sidebar-nav ${sidebarCollapsed ? "collapsed" : ""}`}>
         <div className="sidebar-brand">
-          <div className="sidebar-brand-icon">
-            <span className="material-symbols-outlined">favorite</span>
+          <div className="sidebar-brand-content">
+            <div className="sidebar-brand-icon">
+              <span className="material-symbols-outlined">favorite</span>
+            </div>
+            <h2>Nova</h2>
           </div>
-          <h2>Nova</h2>
+          <button 
+            className="sidebar-collapse-btn" 
+            onClick={() => {
+              const newVal = !sidebarCollapsed;
+              setSidebarCollapsed(newVal);
+              localStorage.setItem("nova_sidebar_collapsed", String(newVal));
+            }}
+            title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+          >
+            <span className="material-symbols-outlined">
+              {sidebarCollapsed ? "menu" : "menu_open"}
+            </span>
+          </button>
         </div>
 
         <nav className="sidebar-menu">
           <button 
             className={`sidebar-item ${activeTab === "dashboard" ? "active" : ""}`}
             onClick={() => setActiveTab("dashboard")}
+            title={sidebarCollapsed ? "Dashboard" : undefined}
           >
             <span className="material-symbols-outlined">dashboard</span>
-            Dashboard
+            <span className="sidebar-label">Dashboard</span>
           </button>
           <button 
             className={`sidebar-item ${activeTab === "friends" ? "active" : ""}`}
             onClick={() => setActiveTab("friends")}
+            title={sidebarCollapsed ? "Friends" : undefined}
           >
             <span className="material-symbols-outlined">groups</span>
-            Friends
+            <span className="sidebar-label">Friends</span>
           </button>
           <button 
             className={`sidebar-item ${activeTab === "notifications" ? "active" : ""}`}
             onClick={() => setActiveTab("notifications")}
+            title={sidebarCollapsed ? "Invites & Notifications" : undefined}
           >
             <span className="material-symbols-outlined">notifications</span>
-            Invites & Notifs
+            <span className="sidebar-label">Invites & Notifs</span>
             {notifications.length > 0 && (
               <span style={{ marginLeft: "auto", background: "#ef4444", color: "#fff", borderRadius: "50%", padding: "2px 6px", fontSize: "10px", fontWeight: "bold" }}>
                 {notifications.length}
               </span>
             )}
           </button>
-          <button 
+          <button
+            className={`sidebar-item ${activeTab === "stickers" ? "active" : ""}`}
+            onClick={() => setActiveTab("stickers")}
+            title={sidebarCollapsed ? "Stickers" : undefined}
+          >
+            <span className="material-symbols-outlined">emoji_emotions</span>
+            <span className="sidebar-label">Stickers</span>
+          </button>
+          <button
+            className={`sidebar-item ${activeTab === "settings" ? "active" : ""}`}
+            onClick={() => setActiveTab("settings")}
+            title={sidebarCollapsed ? "Settings" : undefined}
+          >
+            <span className="material-symbols-outlined">tune</span>
+            <span className="sidebar-label">Settings</span>
+          </button>
+          <button
             className={`sidebar-item ${activeTab === "profile" ? "active" : ""}`}
             onClick={() => setActiveTab("profile")}
+            title={sidebarCollapsed ? "Profile" : undefined}
           >
             <span className="material-symbols-outlined">person</span>
-            Profile
+            <span className="sidebar-label">Profile</span>
           </button>
         </nav>
 
@@ -504,7 +600,7 @@ export default function DashboardPage() {
           <div className="sidebar-user-info">
             <div className="sidebar-user-avatar">
               {photoURL ? (
-                <img src={photoURL} alt={name} style={{ width: "100%", height: "100%", borderRadius: "50%" }} />
+                <img src={photoURL} alt={name} referrerPolicy="no-referrer" style={{ width: "100%", height: "100%", borderRadius: "50%" }} />
               ) : (
                 name.charAt(0).toUpperCase()
               )}
@@ -513,7 +609,7 @@ export default function DashboardPage() {
               <span className="sidebar-user-name">{name}</span>
             </div>
           </div>
-          <button className="sidebar-user-logout" onClick={handleLogout}>
+          <button className="sidebar-user-logout" onClick={handleLogout} title={sidebarCollapsed ? "Logout" : undefined}>
             <span className="material-symbols-outlined">logout</span>
           </button>
         </div>
@@ -553,8 +649,8 @@ export default function DashboardPage() {
                 ))}
               </div>
             ) : publicRooms.length === 0 ? (
-              <div style={{ textAlign: "center", color: "#808290", padding: "80px 20px" }}>
-                <span className="material-symbols-outlined" style={{ fontSize: "64px", marginBottom: "16px", color: "rgba(16, 185, 129, 0.4)" }}>
+              <div style={{ textAlign: "center", color: "var(--text-muted-2)", padding: "80px 20px" }}>
+                <span className="material-symbols-outlined" style={{ fontSize: "64px", marginBottom: "16px", color: "rgba(var(--accent-rgb), 0.4)" }}>
                   live_tv
                 </span>
                 <h2>No active watch rooms right now</h2>
@@ -576,7 +672,7 @@ export default function DashboardPage() {
                     <div className="room-host-info">
                       <div className="room-host-avatar">
                         {r.hostPhoto ? (
-                          <img src={r.hostPhoto} alt={r.hostName} style={{ width: "100%", height: "100%", borderRadius: "50%" }} />
+                          <img src={r.hostPhoto} alt={r.hostName} referrerPolicy="no-referrer" style={{ width: "100%", height: "100%", borderRadius: "50%" }} />
                         ) : (
                           r.hostName.charAt(0).toUpperCase()
                         )}
@@ -633,7 +729,7 @@ export default function DashboardPage() {
                           <div className="logo-glow"></div>
                           <img src="/iconRm.png" alt="Nova" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
                         </div>
-                        <h1 style={{ fontSize: "24px", fontWeight: "800", background: "linear-gradient(135deg, #ffffff 0%, #10b981 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", marginTop: "8px" }}>Nova</h1>
+                        <h1 style={{ fontSize: "24px", fontWeight: "800", background: "linear-gradient(135deg, #ffffff 0%, var(--accent) 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", marginTop: "8px" }}>Nova</h1>
                         <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>Watch movies, shows & more — together in sync.</p>
                       </div>
 
@@ -833,7 +929,7 @@ export default function DashboardPage() {
                     <div className="friend-user-info">
                       <div className="friend-avatar">
                         {user.photoURL ? (
-                          <img src={user.photoURL} alt={user.name} style={{ width: "100%", height: "100%", borderRadius: "50%" }} />
+                          <img src={user.photoURL} alt={user.name} referrerPolicy="no-referrer" style={{ width: "100%", height: "100%", borderRadius: "50%" }} />
                         ) : (
                           user.name.charAt(0).toUpperCase()
                         )}
@@ -854,7 +950,7 @@ export default function DashboardPage() {
             {/* Active friends */}
             <div>
               {friendsList.length === 0 ? (
-                <div style={{ textAlign: "center", color: "#808290", padding: "40px" }}>
+                <div style={{ textAlign: "center", color: "var(--text-muted-2)", padding: "40px" }}>
                   <span className="material-symbols-outlined" style={{ fontSize: "48px", marginBottom: "8px" }}>group_off</span>
                   <p>No friends added yet.</p>
                 </div>
@@ -864,7 +960,7 @@ export default function DashboardPage() {
                      <div className="friend-user-info">
                        <div className="friend-avatar">
                          {friend.photoURL ? (
-                           <img src={friend.photoURL} alt={friend.name} style={{ width: "100%", height: "100%", borderRadius: "50%" }} />
+                           <img src={friend.photoURL} alt={friend.name} referrerPolicy="no-referrer" style={{ width: "100%", height: "100%", borderRadius: "50%" }} />
                          ) : (
                            friend.name.charAt(0).toUpperCase()
                          )}
@@ -891,7 +987,7 @@ export default function DashboardPage() {
               <h1>Incoming Invitations</h1>
             </div>
             {notifications.length === 0 ? (
-              <div style={{ textAlign: "center", color: "#808290", padding: "40px" }}>
+              <div style={{ textAlign: "center", color: "var(--text-muted-2)", padding: "40px" }}>
                 <span className="material-symbols-outlined" style={{ fontSize: "48px", marginBottom: "8px" }}>mail_outline</span>
                 <p>All caught up! No notifications.</p>
               </div>
@@ -930,12 +1026,80 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {activeTab === "stickers" && (
+          <div className="stickers-container">
+            <div className="dashboard-header-row">
+              <h1>Cloud Stickers</h1>
+            </div>
+            <p className="stickers-hint">
+              Save your favourite stickers in folders — they sync to the cloud and are ready to use in any room chat.
+            </p>
+            {myUid ? (
+              <CloudStickers uid={myUid} mode="manage" />
+            ) : (
+              <div style={{ color: "var(--text-muted-2)", padding: "40px", textAlign: "center" }}>Sign in to manage stickers.</div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "settings" && (
+          <div className="settings-container">
+            <div className="dashboard-header-row">
+              <h1>Appearance</h1>
+            </div>
+
+            <div className="settings-card">
+              <div className="settings-card-title">
+                <span className="material-symbols-outlined">palette</span>
+                Theme
+              </div>
+              <div className="theme-cards-grid">
+                {THEMES.map((t) => (
+                  <button
+                    key={t.id}
+                    className={`theme-card ${appTheme === t.id ? "active" : ""}`}
+                    onClick={() => applyTheme(t.id)}
+                  >
+                    <div className="theme-card-swatches">
+                      {t.swatches.map((c) => (
+                        <span key={c} className="theme-swatch" style={{ background: c }} />
+                      ))}
+                    </div>
+                    <div className="theme-card-name">
+                      {t.name}
+                      {appTheme === t.id && <span className="material-symbols-outlined">check_circle</span>}
+                    </div>
+                    <div className="theme-card-sub">{t.sub}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="settings-card">
+              <div className="settings-card-title">
+                <span className="material-symbols-outlined">text_fields</span>
+                Font
+              </div>
+              <div className="font-select-row">
+                <select className="font-select" value={appFont} onChange={(e) => applyFont(e.target.value)}>
+                  {FONTS.map((f) => (
+                    <option key={f.id} value={f.id}>{f.name}</option>
+                  ))}
+                </select>
+                <span className="font-preview">The quick brown fox watches movies at night 🍿</span>
+              </div>
+            </div>
+
+            <p className="stickers-hint">Theme and font apply everywhere — dashboard and inside rooms — and are saved on this device.</p>
+          </div>
+        )}
+
         {activeTab === "profile" && (
           <div className="profile-container">
             <div className="profile-card">
               <div className="profile-avatar-large">
                 {photoURL ? (
-                  <img src={photoURL} alt={name} style={{ width: "100%", height: "100%", borderRadius: "50%" }} />
+                  <img src={photoURL} alt={name} referrerPolicy="no-referrer" style={{ width: "100%", height: "100%", borderRadius: "50%" }} />
                 ) : (
                   name.charAt(0).toUpperCase()
                 )}
@@ -959,7 +1123,7 @@ export default function DashboardPage() {
             <div>
               <h2 className="memories-title">Watch Memories</h2>
               {memories.length === 0 ? (
-                <div style={{ textAlign: "center", color: "#808290", padding: "20px" }}>
+                <div style={{ textAlign: "center", color: "var(--text-muted-2)", padding: "20px" }}>
                   <p>Memories of watch sessions will appear here.</p>
                 </div>
               ) : (
@@ -969,7 +1133,7 @@ export default function DashboardPage() {
                       <span className="memory-room">Room {m.roomId} ({m.role})</span>
                       <span className="memory-meta">Played {m.mood} on {m.date}</span>
                     </div>
-                    <span className="memory-meta" style={{ fontWeight: 600, color: "#10b981" }}>{m.duration}</span>
+                    <span className="memory-meta" style={{ fontWeight: 600, color: "var(--accent)" }}>{m.duration}</span>
                   </div>
                 ))
               )}

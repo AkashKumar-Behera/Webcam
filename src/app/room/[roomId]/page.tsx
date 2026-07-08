@@ -3,8 +3,48 @@
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { startRoomConnection } from "./roomConnection";
-import { auth } from "../../../lib/firebase";
+import { auth, db } from "../../../lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
+import { ref, push } from "firebase/database";
+import CloudStickers from "../../../components/CloudStickers";
+
+function StickerPickerOverlay({ roomId }: { roomId: string }) {
+  const [open, setOpen] = useState(false);
+  const [uid, setUid] = useState("");
+
+  useEffect(() => {
+    try {
+      const profile = JSON.parse(localStorage.getItem("nova_user_profile") || "null");
+      if (profile?.uid) setUid(profile.uid);
+    } catch {}
+    (window as any).toggleStickerPicker = () => setOpen((o) => !o);
+    return () => { delete (window as any).toggleStickerPicker; };
+  }, []);
+
+  const sendSticker = (url: string) => {
+    const sender =
+      (document.getElementById("userName") as HTMLInputElement)?.value.trim() ||
+      localStorage.getItem("watchparty_name") ||
+      "Viewer";
+    push(ref(db, `rooms/${roomId}/chat`), { sender, sticker: url, time: Date.now() });
+    setOpen(false);
+  };
+
+  if (!open) return null;
+  return (
+    <div className="stk-overlay">
+      <div className="stk-overlay-header">
+        <span><span className="material-symbols-outlined" style={{ fontSize: "18px", verticalAlign: "-4px" }}>emoji_emotions</span> Stickers</span>
+        <button onClick={() => setOpen(false)}><span className="material-symbols-outlined">close</span></button>
+      </div>
+      {uid ? (
+        <CloudStickers uid={uid} mode="picker" onSelect={sendSticker} />
+      ) : (
+        <div className="stk-empty"><p>Sign in to use cloud stickers.</p></div>
+      )}
+    </div>
+  );
+}
 
 export default function RoomPage({ params: paramsPromise }: { params: Promise<{ roomId: string }> }) {
   const router = useRouter();
@@ -38,9 +78,19 @@ export default function RoomPage({ params: paramsPromise }: { params: Promise<{ 
       const timer = setTimeout(() => {
         startRoomConnection(roomId, role);
       }, 100);
-      return () => clearTimeout(timer);
+
+      // Global leave handler — cleans up the WebRTC session, then returns to dashboard
+      (window as any).leaveRoom = async () => {
+        try { await (window as any).leaveCall?.(); } catch {}
+        router.push("/");
+      };
+
+      return () => {
+        clearTimeout(timer);
+        delete (window as any).leaveRoom;
+      };
     }
-  }, [loading, roomId, role]);
+  }, [loading, roomId, role, router]);
 
   if (loading) {
     return (
@@ -54,7 +104,9 @@ export default function RoomPage({ params: paramsPromise }: { params: Promise<{ 
   }
 
   return (
-    <div 
+    <>
+    <StickerPickerOverlay roomId={roomId} />
+    <div
       className="room-container-wrapper"
       style={{ width: "100%", height: "100vh" }}
       dangerouslySetInnerHTML={{
@@ -77,6 +129,11 @@ export default function RoomPage({ params: paramsPromise }: { params: Promise<{ 
           <span class="overlay-tag" id="sourceTag" style="display:none;">—</span>
           <span class="overlay-tag" id="qualityTag" style="display:none;">—</span>
         </div>
+
+        <button class="leave-room-btn" onclick="window.leaveRoom && window.leaveRoom()" title="Leave Room">
+          <span class="material-symbols-outlined">logout</span>
+          Leave
+        </button>
       </div>
 
       <div class="video-wrap" id="videoWrap" style="background:transparent !important; overflow:visible;">
@@ -141,6 +198,7 @@ export default function RoomPage({ params: paramsPromise }: { params: Promise<{ 
                <option value="2160p">4K</option><option value="1440p">2K</option><option value="1080p" selected>1080</option><option value="720p">720</option>
             </select>
             <button class="vbtn" id="drawToggleToolbar" onclick="toggleDrawToolbar()" style="display:none;" title="Draw Tool"><span class="material-symbols-outlined">draw</span></button>
+            <button class="vbtn" id="shareScreenBtn" onclick="window.startScreenShare()" title="Share Screen" style="display:none;"><span class="material-symbols-outlined">screen_share</span></button>
             <button class="vbtn" id="micBtnMain" onclick="toggleVoiceChat()" title="Toggle Microphone" style="background:rgba(239,68,68,0.2);border-color:rgba(239,68,68,0.3)"><span class="material-symbols-outlined" id="micIconMain">mic_off</span></button>
           </div>
 
@@ -187,6 +245,7 @@ export default function RoomPage({ params: paramsPromise }: { params: Promise<{ 
                   <div style="display:flex; padding:12px; background:rgba(255,255,255,0.03); border-top:1px solid rgba(255,255,255,0.08); align-items:center; gap:10px;">
                     <input type="file" id="fsChatInputFile" accept="image/*" style="display:none;" onchange="window.handleChatImageUpload(this)">
                     <button onclick="document.getElementById('fsChatInputFile').click()" style="background:none; border:none; color:rgba(255,255,255,0.5); cursor:pointer;"><span class="material-symbols-outlined" style="font-size:20px;">image</span></button>
+                    <button onclick="window.toggleStickerPicker && window.toggleStickerPicker()" style="background:none; border:none; color:rgba(255,255,255,0.5); cursor:pointer;" title="Cloud Stickers"><span class="material-symbols-outlined" style="font-size:20px;">emoji_emotions</span></button>
                     <textarea id="fsChatInput" placeholder="Type a message..." rows="1" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:20px; color:#fff; flex:1; font-size:13px; padding:10px 15px; outline:none; resize:none; font-family:inherit;" onkeypress="if(event.key==='Enter' && !event.shiftKey){event.preventDefault(); window.sendChatFs();}"></textarea>
                     <button onclick="window.sendChatFs()" style="width:40px; height:40px; border-radius:50%; background:var(--accent); border:none; color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:0.2s;"><span class="material-symbols-outlined" style="font-size:18px;">send</span></button>
                   </div>
@@ -217,10 +276,10 @@ export default function RoomPage({ params: paramsPromise }: { params: Promise<{ 
 
       <!-- Tabs -->
       <div class="panel-tabs">
-        <button class="panel-tab active" onclick="switchTab('chat')" id="tabChat" style="position:relative;">Chat<span class="tab-badge" id="chatBadge" style="background:var(--accent);">!</span></button>
-        <button class="panel-tab" onclick="switchTab('stats')" id="tabStats">Stats</button>
-        <button class="panel-tab" onclick="switchTab('settings')" id="tabSettings">Settings</button>
-        <button class="panel-tab" onclick="switchTab('people')" id="tabPeople" style="position:relative;">People<span class="tab-badge" id="peopleBadge">0</span></button>
+        <button class="panel-tab active" onclick="window.switchTab('chat')" id="tabChat" style="position:relative;">Chat<span class="tab-badge" id="chatBadge" style="background:var(--accent);">!</span></button>
+        <button class="panel-tab" onclick="window.switchTab('stats')" id="tabStats">Stats</button>
+        <button class="panel-tab" onclick="window.switchTab('settings')" id="tabSettings">Settings</button>
+        <button class="panel-tab" onclick="window.switchTab('people')" id="tabPeople" style="position:relative;">People<span class="tab-badge" id="peopleBadge">0</span></button>
       </div>
 
       <!-- CHAT TAB -->
@@ -252,6 +311,9 @@ export default function RoomPage({ params: paramsPromise }: { params: Promise<{ 
             </button>
             <button class="chat-attach" onclick="document.getElementById('chatFileInput').click()">
               <span class="material-symbols-outlined" style="font-size:18px;">image</span>
+            </button>
+            <button class="chat-attach" onclick="window.toggleStickerPicker && window.toggleStickerPicker()" title="Cloud Stickers">
+              <span class="material-symbols-outlined" style="font-size:18px;">emoji_emotions</span>
             </button>
             <button class="chat-attach" id="micBtnChat" onclick="toggleVoiceChat()" title="Voice Chat">
               <span class="material-symbols-outlined" id="micIconChat" style="font-size:18px;color:rgba(239,68,68,0.7);">mic_off</span>
@@ -339,6 +401,13 @@ export default function RoomPage({ params: paramsPromise }: { params: Promise<{ 
             <div class="form-group" id="lowDataGroup">
               <input type="checkbox" id="lowDataMode" style="width:16px;height:16px;cursor:pointer;" onchange="showToast(this.checked?'📉 Low Data Mode ON':'📉 Low Data Mode OFF')" />
               <label for="lowDataMode" style="margin:0;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text);">Low Data Mode</label>
+            </div>
+            <div style="background:rgba(51, 153, 51, 0.1); border:1px solid rgba(51, 153, 51, 0.3); padding:10px; border-radius:12px; margin-top:10px; display:flex; align-items:center; justify-content:space-between; cursor:pointer;" onclick="document.getElementById('noHeatToggle').click()">
+              <div style="display:flex; flex-direction:column;">
+                <span style="font-size:12px; font-weight:700; color:#339933;">🚀 No Heat Mode</span>
+                <small style="font-size:9px; color:var(--text-muted);">Save battery & boost speed</small>
+              </div>
+              <input type="checkbox" id="noHeatToggle" style="width:18px; height:18px; cursor:pointer;" onchange="toggleNoHeat(this.checked)" onclick="event.stopPropagation()" />
             </div>
           </div>
 
@@ -461,225 +530,6 @@ export default function RoomPage({ params: paramsPromise }: { params: Promise<{ 
             <button class="btn-action share" onclick="shareRoom()"><span class="material-symbols-outlined">share</span>Share Invite Link</button>
           </div>
 
-          <!-- ===== THEME CUSTOMIZER ===== -->
-          <div class="theme-section" id="themeCustomizer">
-            <div class="section-title" style="color:var(--accent);display:flex;align-items:center;gap:6px;">
-              <span class="material-symbols-outlined" style="font-size:14px;">palette</span>
-              Theme Customizer
-            </div>
-
-            <!-- QUICK NO-HEAT TOGGLE -->
-            <div style="background:rgba(51, 153, 51, 0.1); border:1px solid rgba(51, 153, 51, 0.3); padding:10px; border-radius:12px; margin-bottom:15px; display:flex; align-items:center; justify-content:space-between; cursor:pointer;" onclick="document.getElementById('noHeatToggle').click()">
-              <div style="display:flex; flex-direction:column;">
-                <span style="font-size:12px; font-weight:700; color:#339933;">🚀 No Heat Mode</span>
-                <small style="font-size:9px; color:var(--text-muted);">Save battery & boost speed</small>
-              </div>
-              <input type="checkbox" id="noHeatToggle" style="width:18px; height:18px; cursor:pointer;" onchange="toggleNoHeat(this.checked)" onclick="event.stopPropagation()" />
-            </div>
-
-            <!-- PRESETS -->
-            <div>
-              <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;">Quick Presets</div>
-              <div class="preset-grid" id="presetGrid">
-                <div class="preset-card" id="preset_rose" onclick="applyPreset('rose')" style="background:linear-gradient(135deg,#1a0a12,#3d1025);color:#F472B6;">
-                  <div class="preset-swatch" style="background:linear-gradient(135deg,#C94B7B,#7C3AED);"></div>
-                  Evening Rose
-                </div>
-                <div class="preset-card" id="preset_violet" onclick="applyPreset('violet')" style="background:linear-gradient(135deg,#0d0a1a,#1e0a3d);color:#c4b5fd;">
-                  <div class="preset-swatch" style="background:linear-gradient(135deg,#7C3AED,#3b82f6);"></div>
-                  Deep Violet
-                </div>
-                <div class="preset-card" id="preset_ocean" onclick="applyPreset('ocean')" style="background:linear-gradient(135deg,#071a2a,#0f3054);color:#7dd3fc;">
-                  <div class="preset-swatch" style="background:linear-gradient(135deg,#0891b2,#06b6d4);"></div>
-                  Ocean Dark
-                </div>
-                <div class="preset-card" id="preset_forest" onclick="applyPreset('forest')" style="background:linear-gradient(135deg,#071a0f,#0f3020);color:#86efac;">
-                  <div class="preset-swatch" style="background:linear-gradient(135deg,#16a34a,#4ade80);"></div>
-                  Forest Dark
-                </div>
-                <div class="preset-card" id="preset_mono" onclick="applyPreset('mono')" style="background:linear-gradient(135deg,#0a0a0a,#1a1a1a);color:#e5e5e5;">
-                  <div class="preset-swatch" style="background:linear-gradient(135deg,#737373,#d4d4d4);"></div>
-                  Mono Dark
-                </div>
-                <div class="preset-card" id="preset_gold" onclick="applyPreset('gold')" style="background:linear-gradient(135deg,#1a1200,#3d2d00);color:#fde68a;">
-                  <div class="preset-swatch" style="background:linear-gradient(135deg,#d97706,#fbbf24);"></div>
-                  Gold Rush
-                </div>
-              </div>
-            </div>
-
-            <!-- COLORS: BACKGROUND -->
-            <div class="color-group">
-              <div class="color-group-header" onclick="toggleColorGroup('grpBg')">
-                🖼️ Background & Surfaces
-                <span class="material-symbols-outlined" style="font-size:14px;">expand_more</span>
-              </div>
-              <div class="color-group-body collapsed" id="grpBg">
-                <div class="color-row">
-                  <input type="color" class="cpick" id="cp_bg" oninput="liveApply('--bg',this.value)" />
-                  <label>Page Background</label><span id="lbl_bg">#1a0a12</span>
-                </div>
-                <div class="color-row">
-                  <input type="color" class="cpick" id="cp_panel" oninput="liveApply('--panel-bg-raw',this.value)" />
-                  <label>Side Panel</label><span id="lbl_panel">#140810</span>
-                </div>
-                <div class="color-row">
-                  <input type="color" class="cpick" id="cp_surface" oninput="liveApplySurface(this.value)" />
-                  <label>Card Surface</label><span id="lbl_surface">#ffffff08</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- COLORS: ACCENT -->
-            <div class="color-group">
-              <div class="color-group-header" onclick="toggleColorGroup('grpAccent')">
-                🎨 Accent & Buttons
-                <span class="material-symbols-outlined" style="font-size:14px;">expand_more</span>
-              </div>
-              <div class="color-group-body collapsed" id="grpAccent">
-                <div class="color-row">
-                  <input type="color" class="cpick" id="cp_accent" oninput="liveApplyAccent(this.value)" />
-                  <label>Primary Accent</label><span id="lbl_accent">#C94B7B</span>
-                </div>
-                <div class="color-row">
-                  <input type="color" class="cpick" id="cp_accent2" oninput="liveApply('--accent2',this.value)" />
-                  <label>Secondary Accent</label><span id="lbl_accent2">#7C3AED</span>
-                </div>
-                <div class="color-row">
-                  <input type="color" class="cpick" id="cp_soft" oninput="liveApply('--pink-soft',this.value)" />
-                  <label>Soft Highlight</label><span id="lbl_soft">#F472B6</span>
-                </div>
-                <div class="color-row">
-                  <input type="color" class="cpick" id="cp_red" oninput="liveApply('--red',this.value)" />
-                  <label>Danger / Mic Off</label><span id="lbl_red">#ef4444</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- COLORS: TEXT -->
-            <div class="color-group">
-              <div class="color-group-header" onclick="toggleColorGroup('grpText')">
-                🔤 Text & Fonts
-                <span class="material-symbols-outlined" style="font-size:14px;">expand_more</span>
-              </div>
-              <div class="color-group-body collapsed" id="grpText">
-                <div class="color-row">
-                  <input type="color" class="cpick" id="cp_text" oninput="liveApply('--text',this.value)" />
-                  <label>Main Text</label><span id="lbl_text">#F5E6EF</span>
-                </div>
-                <div class="color-row">
-                  <input type="color" class="cpick" id="cp_muted" oninput="liveApplyMuted(this.value)" />
-                  <label>Muted Text</label><span id="lbl_muted">#99667a</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- COLORS: BORDERS -->
-            <div class="color-group">
-              <div class="color-group-header" onclick="toggleColorGroup('grpBorder')">
-                📏 Borders & Lines
-                <span class="material-symbols-outlined" style="font-size:14px;">expand_more</span>
-              </div>
-              <div class="color-group-body collapsed" id="grpBorder">
-                <div class="color-row">
-                  <input type="color" class="cpick" id="cp_border" oninput="liveApplyBorder(this.value,'--glass-border')" />
-                  <label>Regular Borders</label><span id="lbl_border">#ffffff14</span>
-                </div>
-                <div class="color-row">
-                  <input type="color" class="cpick" id="cp_border2" oninput="liveApplyBorder(this.value,'--glass-border-strong')" />
-                  <label>Strong Borders</label><span id="lbl_border2">#C94B7B47</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- COLORS: CHAT BUBBLES -->
-            <div class="color-group">
-              <div class="color-group-header" onclick="toggleColorGroup('grpChat')">
-                💬 Chat Bubbles
-                <span class="material-symbols-outlined" style="font-size:14px;">expand_more</span>
-              </div>
-              <div class="color-group-body collapsed" id="grpChat">
-                <div class="color-row">
-                  <input type="color" class="cpick" id="cp_bubble_me" oninput="liveApplyBubble('me',this.value)" />
-                  <label>My Bubble Color</label><span id="lbl_bubble_me">#C94B7B</span>
-                </div>
-                <div class="color-row">
-                  <input type="color" class="cpick" id="cp_bubble_other" oninput="liveApplyBubble('other',this.value)" />
-                  <label>Other's Bubble</label><span id="lbl_bubble_other">#ffffff</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- EFFECTS -->
-            <div class="color-group">
-              <div class="color-group-header" onclick="toggleColorGroup('grpFx')">
-                ✨ Visual Effects
-                <span class="material-symbols-outlined" style="font-size:14px;">expand_more</span>
-              </div>
-              <div class="color-group-body collapsed" id="grpFx">
-                <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;">Glow Intensity</div>
-                <input type="range" class="styled-range" id="glowSlider" min="0" max="100" value="40"
-                  oninput="liveApplyGlow(this.value)" />
-                <div style="font-size:10px;color:var(--text-muted);margin:8px 0 4px;">Aurora Speed</div>
-                <input type="range" class="styled-range" id="auroraSpeed" min="4" max="30" value="12"
-                  oninput="liveApplyAurora(this.value)" />
-                <div style="display:flex;align-items:center;gap:8px;margin-top:10px;">
-                  <input type="checkbox" id="particlesToggle" checked style="width:14px;height:14px;cursor:pointer;" onchange="liveApplyParticles(this.checked)" />
-                  <label for="particlesToggle" style="font-size:12px;cursor:pointer;">Background Particles</label>
-                </div>
-              </div>
-            </div>
-
-            <div class="theme-toggle-row">
-              <div style="flex:1;">
-                <label style="font-size:12px;font-weight:600;">🌈 Dynamic Mode</label>
-                <small>Video colors → UI colors (Chrome only)</small>
-              </div>
-              <div class="toggle-sw" id="dynamicToggle" onclick="toggleDynamic()"></div>
-            </div>
-            <div id="ambientControl" style="padding:0 15px 15px; display:none;">
-               <div style="font-size:10px; color:var(--text-muted); margin-bottom:6px;">Ambient Power</div>
-               <input type="range" class="styled-range" id="ambientSlider" min="0" max="100" value="60" oninput="liveApplyAmbient(this.value)" />
-            </div>
-            <div class="theme-toggle-row" id="syncToggleRow">
-              <div style="flex:1;">
-                <label style="font-size:12px;font-weight:600;">🔗 Sync with Host</label>
-                <small>Use host's theme (viewers only)</small>
-              </div>
-              <div class="toggle-sw" id="syncToggle" onclick="toggleThemeSync()"></div>
-            </div>
-            <div class="theme-toggle-row">
-              <div style="flex:1;">
-                <label style="font-size:12px;font-weight:600;">🎨 Gradient Background</label>
-                <small>Two-color gradient instead of flat color</small>
-              </div>
-              <div class="toggle-sw" id="gradientToggle" onclick="toggleGradientBg()"></div>
-            </div>
-            <div id="gradientPickers" style="display:none;">
-              <div class="color-group">
-                <div class="color-group-body" style="display:flex;">
-                  <div class="color-row">
-                    <input type="color" class="cpick" id="cp_grad1" value="#1a0a12" oninput="updateGradientBg()" />
-                    <label>Gradient Start</label>
-                  </div>
-                  <div class="color-row">
-                    <input type="color" class="cpick" id="cp_grad2" value="#0d0a1a" oninput="updateGradientBg()" />
-                    <label>End</label>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- ACTIONS -->
-            <div class="theme-actions">
-              <button class="theme-btn" onclick="saveTheme()">💾 Save Theme</button>
-              <button class="theme-btn danger" onclick="resetTheme()">↩️ Reset</button>
-              <button class="theme-btn" onclick="exportTheme()">📤 Export</button>
-              <button class="theme-btn" onclick="importTheme()">📥 Import</button>
-            </div>
-            <textarea class="theme-export-box" id="themeExportBox" placeholder="Export/import JSON here..."></textarea>
-          </div>
-          <!-- ===== END THEME CUSTOMIZER ===== -->
         </div>
       </div>
 
@@ -699,5 +549,6 @@ export default function RoomPage({ params: paramsPromise }: { params: Promise<{ 
 <canvas id="colorExtractCanvas" width="16" height="9" style="display:none;"></canvas>`
       }}
     />
+    </>
   );
 }

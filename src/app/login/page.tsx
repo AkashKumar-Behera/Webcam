@@ -18,6 +18,7 @@ function LoginFormContent() {
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const PROFILE_KEY = "nova_user_profile";
 
@@ -142,7 +143,17 @@ function LoginFormContent() {
         });
       } catch (err: any) {
         console.error(err);
-        setStatus(err.message || "Sign up failed.");
+        let msg = "Sign up failed.";
+        if (err.code === "auth/email-already-in-use") {
+          msg = "This email is already registered.";
+        } else if (err.code === "auth/weak-password") {
+          msg = "Password should be at least 6 characters.";
+        } else if (err.code === "auth/invalid-email") {
+          msg = "Invalid email format.";
+        } else if (err.message) {
+          msg = err.message;
+        }
+        setStatus(msg);
         setLoading(false);
       }
     } else {
@@ -164,7 +175,13 @@ function LoginFormContent() {
         });
       } catch (err: any) {
         console.error(err);
-        setStatus(err.message || "Sign in failed.");
+        let msg = "Sign in failed.";
+        if (err.code === "auth/invalid-credential" || err.code === "auth/wrong-password" || err.code === "auth/user-not-found") {
+          msg = "Incorrect email or password.";
+        } else if (err.message) {
+          msg = err.message;
+        }
+        setStatus(msg);
         setLoading(false);
       }
     }
@@ -248,15 +265,23 @@ function LoginFormContent() {
                 required 
               />
             </label>
-            <label className="field" aria-label="Password">
+            <label className="field" aria-label="Password" style={{ position: "relative" }}>
               <span className="material-symbols-outlined">lock</span>
               <input 
                 id="passwordInput" 
-                type="password" 
+                type={showPassword ? "text" : "password"} 
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter password" 
+                style={{ paddingRight: "40px" }}
               />
+              <span 
+                className="material-symbols-outlined" 
+                style={{ position: "absolute", right: "12px", cursor: "pointer", userSelect: "none", color: "var(--text-muted)", fontSize: "20px" }}
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                {showPassword ? "visibility" : "visibility_off"}
+              </span>
             </label>
             
             <div className="options-row">
@@ -329,16 +354,24 @@ function LoginFormContent() {
                 required 
               />
             </label>
-            <label className="field" aria-label="Password">
+            <label className="field" aria-label="Password" style={{ position: "relative" }}>
               <span className="material-symbols-outlined">lock</span>
               <input 
                 id="passwordInputSignUp" 
-                type="password" 
+                type={showPassword ? "text" : "password"} 
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Create password" 
                 required 
+                style={{ paddingRight: "40px" }}
               />
+              <span 
+                className="material-symbols-outlined" 
+                style={{ position: "absolute", right: "12px", cursor: "pointer", userSelect: "none", color: "var(--text-muted)", fontSize: "20px" }}
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                {showPassword ? "visibility" : "visibility_off"}
+              </span>
             </label>
             
             <button className="primary-btn" type="submit" disabled={loading}>
