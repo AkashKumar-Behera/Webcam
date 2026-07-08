@@ -46,6 +46,7 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
   let lastSavedTime = 0;
   let localLockdownTimer = null;
   let countdownInterval = null;
+  let lastSyncTimestamp = 0;
 
   onValue(ref(db, ".info/serverTimeOffset"), (snap) => {
     serverTimeOffset = snap.val() || 0;
@@ -84,6 +85,7 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
 
   function triggerLockdown(seekTime) {
     console.log(">>> [roomConnection] Manual seek detected, writing lockdown state to Firebase...");
+    lastSyncTimestamp = Date.now();
     set(ref(db, `rooms/${roomIdFromUrl}/youtube/lockdown`), {
       active: true,
       initiator: signedInProfile.name || "A user",
@@ -122,6 +124,7 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
             const restoreTime = timeSnap.exists() ? timeSnap.val() : 0;
             console.log(">>> [roomConnection] Lockdown finished. Host restoring time:", restoreTime);
             
+            lastSyncTimestamp = Date.now();
             set(ref(db, `rooms/${roomIdFromUrl}/youtube`), {
               state: "paused",
               time: restoreTime,
@@ -221,6 +224,14 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
     if (!ytPlayer) return;
     if (isSyncing) return;
 
+    // Ignore events triggered immediately after an NTP sync to prevent loop/stutter race conditions
+    const timeSinceSync = Date.now() - lastSyncTimestamp;
+    if (timeSinceSync < 2500) {
+      lastSavedTime = ytPlayer.getCurrentTime();
+      console.log(">>> [roomConnection] Ignoring state change event (recent sync):", timeSinceSync, "ms");
+      return;
+    }
+
     get(ref(db, `rooms/${roomIdFromUrl}/youtube/lockdown`)).then((lockSnap) => {
       if (lockSnap.exists() && lockSnap.val().active) {
         ytPlayer.pauseVideo();
@@ -248,6 +259,7 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
 
       console.log(">>> [roomConnection] User state change:", dbState, "at time:", curTime);
       lastSavedTime = curTime;
+      lastSyncTimestamp = Date.now();
       set(ref(db, `rooms/${roomIdFromUrl}/youtube`), {
         state: dbState,
         time: curTime,
@@ -263,6 +275,9 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
     onValue(ref(db, `rooms/${roomIdFromUrl}/youtube`), (snap) => {
       if (!snap.exists() || !ytPlayer || typeof ytPlayer.getPlayerState !== "function") return;
       const data = snap.val();
+      
+      // Update sync timestamp on incoming Firebase updates
+      lastSyncTimestamp = Date.now();
       
       // Prevent syncing back our own updates to avoid loops/stutters
       if (data.sender === signedInProfile.uid) return;
