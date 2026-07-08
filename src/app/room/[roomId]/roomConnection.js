@@ -253,6 +253,10 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
     const shareScreenBtn = document.getElementById("shareScreenBtn");
     if (shareScreenBtn) shareScreenBtn.style.display = "none";
     
+    // Hide floating WebRTC control buttons overlay on video screen
+    const videoBtns = document.querySelector(".video-btns");
+    if (videoBtns) videoBtns.style.setProperty("display", "none", "important");
+
     const youtubeHostSettings = document.getElementById("youtubeHostSettings");
     if (youtubeHostSettings) {
       youtubeHostSettings.style.display = "block";
