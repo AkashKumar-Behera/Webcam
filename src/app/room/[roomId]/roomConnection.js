@@ -46,6 +46,7 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
   let isSyncing = false;
   let serverTimeOffset = 0;
   let userFriends = [];
+  let currentPeopleSubTab = "friends";
 
   async function fetchFriends() {
     if (!signedInProfile || !signedInProfile.uid) return;
@@ -1057,56 +1058,93 @@ function changeActionBtns(mode) { const c = document.getElementById("actionBtns"
 /* PEOPLE TAB */
 function renderPeopleTab() {
   const c = document.getElementById("peopleList"); if (!c) return;
-  let html = "";
-  const pending = Object.entries(pendingViewers);
-  if (isHost && pending.length > 0) { html += `<div class="ppl-section">⏳ Waiting to Join</div>`; for (const [vid, d] of pending) { const col = nameToHsl(d.name); html += `<div class="ppl-item pending-item"><div class="ppl-av" style="background:${col}">${d.name[0].toUpperCase()}</div><div class="ppl-name">${esc(d.name)}</div><div class="ppl-btns"><button class="pa-btn approve" onclick="approveViewer('${vid}','${esc(d.name)}')"><span class="material-symbols-outlined">check</span></button><button class="pa-btn deny" onclick="denyViewer('${vid}','${esc(d.name)}')"><span class="material-symbols-outlined">close</span></button></div></div>`; } }
-
-  html += `<div class="ppl-section">👥 In Session</div>`;
   
-  // Show "You"
-  const colMe = nameToHsl(myName || "User");
-  const myRole = isHost ? "HOST" : "YOU";
-  html += `<div class="ppl-item"><div class="ppl-av" style="background:${colMe}">${(myName || "U")[0].toUpperCase()}</div><div class="ppl-name">${esc(myName || "User")} <span class="role-badge">${myRole}</span></div></div>`;
-
-  // Show Host if someone else is hosting
-  if (!isHost && hostInfo && hostInfo.name !== myName) {
-    const colHost = nameToHsl(hostInfo.name);
-    html += `<div class="ppl-item"><div class="ppl-av" style="background:${colHost}">${hostInfo.name[0].toUpperCase()}</div><div class="ppl-name">${esc(hostInfo.name)} <span class="role-badge">HOST</span></div></div>`;
-  }
-
-  const connectedArr = Object.entries(connectedViewers);
-  for (const [vid, p] of connectedArr) {
-    if (p.name === myName) continue;
-    const col = nameToHsl(p.name);
-    html += `<div class="ppl-item"><div class="ppl-av" style="background:${col}">${p.name[0].toUpperCase()}</div><div class="ppl-name">${esc(p.name)}</div>${isHost ? `<button class="pa-btn kick" onclick="kickViewer('${vid}','${esc(p.name)}')"><span class="material-symbols-outlined">person_remove</span></button>` : ""}</div>`;
-  }
-
-  // Invite Friends list inside room
-  if (userFriends && userFriends.length > 0) {
-    html += `<div class="ppl-section" style="margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px;">📩 Invite Friends</div>`;
-    for (const friend of userFriends) {
-      const col = nameToHsl(friend.name);
-      html += `<div class="ppl-item" style="justify-content:space-between; display:flex; align-items:center;"><div style="display:flex; align-items:center; gap:8px;"><div class="ppl-av" style="background:${col}">${friend.name[0].toUpperCase()}</div><div class="ppl-name">${esc(friend.name)}</div></div><button class="pa-btn invite" style="background:rgba(201,75,123,0.12); color:var(--accent); border:1px solid rgba(201,75,123,0.3); border-radius:8px; padding:2px 8px; font-size:10px; cursor:pointer;" onclick="window.inviteFriendFromRoom('${friend.uid}','${esc(friend.name)}')">Invite</button></div>`;
+  // Toggle sub-tab button active styling in DOM
+  const btnFriends = document.getElementById("subTabFriends");
+  const btnSession = document.getElementById("subTabSession");
+  if (btnFriends && btnSession) {
+    if (currentPeopleSubTab === "friends") {
+      btnFriends.style.background = "rgba(201, 75, 123, 0.12)";
+      btnFriends.style.borderColor = "rgba(201, 75, 123, 0.35)";
+      btnFriends.style.color = "var(--accent)";
+      btnFriends.style.fontWeight = "700";
+      
+      btnSession.style.background = "transparent";
+      btnSession.style.borderColor = "rgba(255,255,255,0.08)";
+      btnSession.style.color = "var(--text-muted)";
+      btnSession.style.fontWeight = "600";
+    } else {
+      btnSession.style.background = "rgba(201, 75, 123, 0.12)";
+      btnSession.style.borderColor = "rgba(201, 75, 123, 0.35)";
+      btnSession.style.color = "var(--accent)";
+      btnSession.style.fontWeight = "700";
+      
+      btnFriends.style.background = "transparent";
+      btnFriends.style.borderColor = "rgba(255,255,255,0.08)";
+      btnFriends.style.color = "var(--text-muted)";
+      btnFriends.style.fontWeight = "600";
     }
   }
 
-  if (!html) html = `<div class="ppl-empty"><span class="material-symbols-outlined">group</span><p>No one yet</p></div>`;
+  let html = "";
+  if (currentPeopleSubTab === "friends") {
+    // Render Friends list
+    if (userFriends && userFriends.length > 0) {
+      for (const friend of userFriends) {
+        const col = nameToHsl(friend.name);
+        html += `<div class="ppl-item" style="justify-content:space-between; display:flex; align-items:center; margin-bottom:8px;"><div style="display:flex; align-items:center; gap:8px;"><div class="ppl-av" style="background:${col}">${friend.name[0].toUpperCase()}</div><div class="ppl-name">${esc(friend.name)}</div></div><button class="pa-btn invite" style="background:rgba(201,75,123,0.12); color:var(--accent); border:1px solid rgba(201,75,123,0.3); border-radius:8px; padding:4px 10px; font-size:11px; cursor:pointer;" onclick="window.inviteFriendFromRoom('${friend.uid}','${esc(friend.name)}')">Invite</button></div>`;
+      }
+    } else {
+      html = `<div class="ppl-empty"><span class="material-symbols-outlined">group</span><p>No friends added yet</p></div>`;
+    }
+  } else {
+    // Render In Session list
+    const pending = Object.entries(pendingViewers);
+    // Show "You"
+    const colMe = nameToHsl(myName || "User");
+    const myRole = isHost ? "HOST" : "YOU";
+    html += `<div class="ppl-item" style="margin-bottom:8px;"><div class="ppl-av" style="background:${colMe}">${(myName || "U")[0].toUpperCase()}</div><div class="ppl-name">${esc(myName || "User")} <span class="role-badge">${myRole}</span></div></div>`;
+
+    // Show Host if someone else is hosting
+    if (!isHost && hostInfo && hostInfo.name !== myName) {
+      const colHost = nameToHsl(hostInfo.name);
+      html += `<div class="ppl-item" style="margin-bottom:8px;"><div class="ppl-av" style="background:${colHost}">${hostInfo.name[0].toUpperCase()}</div><div class="ppl-name">${esc(hostInfo.name)} <span class="role-badge">HOST</span></div></div>`;
+    }
+
+    const connectedArr = Object.entries(connectedViewers);
+    for (const [vid, p] of connectedArr) {
+      if (p.name === myName) continue;
+      const col = nameToHsl(p.name);
+      html += `<div class="ppl-item" style="margin-bottom:8px;"><div class="ppl-av" style="background:${col}">${p.name[0].toUpperCase()}</div><div class="ppl-name">${esc(p.name)}</div>${isHost ? `<button class="pa-btn kick" onclick="kickViewer('${vid}','${esc(p.name)}')" style="margin-left:auto;"><span class="material-symbols-outlined">person_remove</span></button>` : ""}</div>`;
+    }
+    
+    if (connectedArr.length === 0 && !isHost) {
+      // Safety fallback
+      if (!html) html = `<div class="ppl-empty"><span class="material-symbols-outlined">group</span><p>No one yet</p></div>`;
+    }
+  }
+
   c.innerHTML = html;
-  const badge = document.getElementById("peopleBadge"); if (badge) { badge.textContent = pending.length; badge.style.display = pending.length > 0 ? "flex" : "none"; }
+  
+  // Set badge count based on active in-session count (connected viewers + host + you)
+  const activeCount = Object.keys(connectedViewers).length + 1;
+  const badge = document.getElementById("peopleBadge"); 
+  if (badge) { 
+    badge.textContent = activeCount; 
+    badge.style.display = "flex"; 
+  }
+  
   if (window._pipWin && window._pipWin.document) {
     const pipPpl = window._pipWin.document.getElementById("pip-ppl");
     if (pipPpl) pipPpl.innerHTML = html;
   }
 }
 
-window.approveViewer = async (vid, name) => { 
-  const token = pendingViewers[vid]?.token;
-  if (token) approvedTokens[vid] = token;
-  await set(ref(db, `rooms/${roomId}/waitroom/${vid}/status`), "approved"); 
-  delete pendingViewers[vid]; 
-  renderPeopleTab(); 
+window.switchPeopleSubTab = (subTabName) => {
+  currentPeopleSubTab = subTabName;
+  renderPeopleTab();
 };
-window.denyViewer = async (vid, name) => { await set(ref(db, `rooms/${roomId}/waitroom/${vid}/status`), "denied"); setTimeout(() => remove(ref(db, `rooms/${roomId}/waitroom/${vid}`)), 3000); delete pendingViewers[vid]; renderPeopleTab(); showToast(`✗ ${name} declined`); };
+
 window.kickViewer = async (vid, name) => { await set(ref(db, `rooms/${roomId}/viewers/${vid}/kicked`), true); setTimeout(() => remove(ref(db, `rooms/${roomId}/viewers/${vid}`)), 2000); try { screenPcMap[vid]?.close(); } catch (_) { } delete screenPcMap[vid]; delete connectedViewers[vid]; renderPeopleTab(); showToast(`👢 ${name} removed`); };
 window.muteAllViewers = async () => { if (!isHost || !roomId) return; await set(ref(db, `rooms/${roomId}/muteAll`), Date.now()); showToast("🤫 Muted all viewers"); };
 window.inviteFriendFromRoom = async (friendUid, friendName) => {
