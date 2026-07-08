@@ -34,38 +34,55 @@ export default function CloudStickers({ uid, mode, onSelect }: Props) {
   const [showNewFolder, setShowNewFolder] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const rootPath = `stickers/${uid}`;
+  const rootPath = "stickers/global";
 
   const loadFolders = useCallback(async (force = false) => {
-    if (!uid) return;
-    if (folderCache && !force) {
-      setFolders(folderCache);
-      setLoadingFolders(false);
-      if (folderCache.length > 0) setActiveFolder((f) => f || folderCache![0]);
-      return;
-    }
-    setLoadingFolders(true);
+    // Read from localStorage cache first for instant load
+    try {
+      const cached = localStorage.getItem("nova_folders_cache");
+      if (cached && !force) {
+        const parsed = JSON.parse(cached);
+        setFolders(parsed);
+        setLoadingFolders(false);
+        if (parsed.length > 0) setActiveFolder((f) => f || parsed[0]);
+      }
+    } catch (e) {}
+
     try {
       const res = await listAll(sRef(storage, rootPath));
       const names = res.prefixes.map((p) => p.name);
-      folderCache = names;
-      setFolders(names);
-      if (names.length > 0) setActiveFolder((f) => f || names[0]);
+      
+      const cached = localStorage.getItem("nova_folders_cache");
+      if (force || !cached || JSON.stringify(names) !== cached) {
+        localStorage.setItem("nova_folders_cache", JSON.stringify(names));
+        setFolders(names);
+        if (names.length > 0) setActiveFolder((f) => f || names[0]);
+      }
     } catch (err) {
       console.error("Failed to list sticker folders:", err);
     } finally {
       setLoadingFolders(false);
     }
-  }, [uid, rootPath]);
+  }, []);
 
   const loadStickers = useCallback(async (folder: string, force = false) => {
-    if (!uid || !folder) return;
-    const cacheKey = `${uid}/${folder}`;
-    if (stickerCache[cacheKey] && !force) {
-      setStickers(stickerCache[cacheKey]);
-      return;
+    if (!folder) return;
+    const cacheKey = `nova_stickers_cache_${folder}`;
+
+    // Read from localStorage cache first for instant load
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached && !force) {
+        const parsed = JSON.parse(cached);
+        setStickers(parsed);
+      }
+    } catch (e) {}
+
+    // Show loading spinner only if we don't have cached data to avoid flicker
+    if (!localStorage.getItem(cacheKey)) {
+      setLoadingStickers(true);
     }
-    setLoadingStickers(true);
+    
     try {
       const res = await listAll(sRef(storage, `${rootPath}/${folder}`));
       const items = res.items.filter((i) => i.name !== ".keep");
@@ -76,15 +93,19 @@ export default function CloudStickers({ uid, mode, onSelect }: Props) {
           url: await getDownloadURL(item)
         }))
       );
-      stickerCache[cacheKey] = list;
-      setStickers(list);
+      
+      const cached = localStorage.getItem(cacheKey);
+      if (force || !cached || JSON.stringify(list) !== cached) {
+        localStorage.setItem(cacheKey, JSON.stringify(list));
+        setStickers(list);
+      }
     } catch (err) {
       console.error("Failed to load stickers:", err);
       setStickers([]);
     } finally {
       setLoadingStickers(false);
     }
-  }, [uid, rootPath]);
+  }, []);
 
   useEffect(() => { loadFolders(); }, [loadFolders]);
   useEffect(() => {
@@ -99,7 +120,6 @@ export default function CloudStickers({ uid, mode, onSelect }: Props) {
     try {
       // Storage has no empty folders — a .keep placeholder makes it exist in the cloud
       await uploadString(sRef(storage, `${rootPath}/${name}/.keep`), "");
-      folderCache = null;
       await loadFolders(true);
       setActiveFolder(name);
       setNewFolderName("");
@@ -145,8 +165,7 @@ export default function CloudStickers({ uid, mode, onSelect }: Props) {
     try {
       const res = await listAll(sRef(storage, `${rootPath}/${folder}`));
       await Promise.all(res.items.map((item) => deleteObject(item)));
-      folderCache = null;
-      delete stickerCache[`${uid}/${folder}`];
+      localStorage.removeItem(`nova_stickers_cache_${folder}`);
       setActiveFolder("");
       await loadFolders(true);
     } catch (err) {

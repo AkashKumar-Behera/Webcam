@@ -59,16 +59,33 @@ export default function RoomPage({ params: paramsPromise }: { params: Promise<{ 
   useEffect(() => {
     // Verify auth
     const localProfile = localStorage.getItem(PROFILE_KEY);
+    console.log(">>> [Room Page] Initial localProfile:", localProfile);
     if (!localProfile) {
+      console.log(">>> [Room Page] No local profile, redirecting to login...");
       router.push(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
       return;
     }
 
-    // Read role query param
-    const search = new URLSearchParams(window.location.search);
-    const queryRole = search.get("role") || "viewer";
-    setRole(queryRole);
-    setLoading(false);
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      console.log(">>> [Room Page] onAuthStateChanged user:", user ? user.uid : "null");
+      if (user) {
+        // Read role query param
+        const search = new URLSearchParams(window.location.search);
+        const queryRole = search.get("role") || "viewer";
+        setRole(queryRole);
+        setLoading(false);
+      } else {
+        // Only redirect if there is no localProfile (e.g. user manually logged out)
+        const currentProfile = localStorage.getItem(PROFILE_KEY);
+        console.log(">>> [Room Page] Auth null, currentProfile:", currentProfile);
+        if (!currentProfile) {
+          console.log(">>> [Room Page] No current profile, redirecting to login...");
+          router.push(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+        }
+      }
+    });
+
+    return () => unsubscribe();
   }, [router]);
 
   useEffect(() => {
@@ -140,6 +157,11 @@ export default function RoomPage({ params: paramsPromise }: { params: Promise<{ 
         <canvas id="ambientCanvas" class="ambient-glow-layer"></canvas>
         <video id="remoteVideo" autoplay playsinline muted style="z-index:5; position:relative;"></video>
         <audio id="bgAudio" playsinline loop></audio>
+
+        <!-- YouTube Player Container -->
+        <div id="ytPlayerContainer" style="display:none; width:100%; height:100%; position:relative; z-index:6; min-height:360px; border-radius:20px; overflow:hidden; background:#000;">
+          <div id="ytPlayer" style="width:100%; height:100%;"></div>
+        </div>
 
         <!-- Wait Overlay (When screen share paused) -->
         <div id="waitOverlay" style="display:none; position:absolute; inset:0; background:rgba(13,10,20,0.85); backdrop-filter:blur(10px); z-index:5; flex-direction:column; align-items:center; justify-content:center; color:#F5E6EF; text-align:center;">
@@ -461,6 +483,23 @@ export default function RoomPage({ params: paramsPromise }: { params: Promise<{ 
                 <option value="h264" selected>H.264 (Compatible - Default)</option>
               </select>
             </div>
+
+            <!-- YOUTUBE HOST CONTROLS -->
+            <div id="youtubeHostSettings" style="display:none; border-top:1px solid rgba(255,255,255,0.08); padding-top:14px; margin-top:14px;">
+              <div class="section-title">📺 YouTube Sync Controls</div>
+              <div class="form-group">
+                <label>YouTube Link or Video ID</label>
+                <div style="display:flex;gap:6px;">
+                  <input class="form-input" id="ytUrlInput" placeholder="Paste YouTube link or ID" style="flex:1;" />
+                  <button class="btn-action" onclick="window.changeYoutubeVideo && window.changeYoutubeVideo(document.getElementById('ytUrlInput').value)" style="width:70px;padding:0;font-size:12px;flex-shrink:0;">Load</button>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
+                <button class="btn-action" onclick="window.playYoutubeForEveryone && window.playYoutubeForEveryone()" style="background:rgba(16,185,129,0.1);color:#10b981;border-color:rgba(16,185,129,0.3);"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px;">play_arrow</span> Play All</button>
+                <button class="btn-action" onclick="window.pauseYoutubeForEveryone && window.pauseYoutubeForEveryone()" style="background:rgba(239,68,68,0.1);color:#ef4444;border-color:rgba(239,68,68,0.3);"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px;">pause</span> Pause All</button>
+              </div>
+            </div>
+          </div>
             <!-- Bitrate adjustment removed as requested -->
             <button class="btn-action" onclick="window.replaceScreenShareBtn();window.pushHostSettings();" style="height:34px;font-size:12px;background:rgba(201,75,123,0.12);color:var(--accent);border-color:rgba(201,75,123,0.3);margin:10px 0;">
               <span class="material-symbols-outlined" style="font-size:16px;">task_alt</span> Apply Settings

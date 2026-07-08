@@ -25,16 +25,204 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
   }
 
   const signedInProfile = readUserProfile();
-  if (!signedInProfile?.name || !signedInProfile?.email) {
+  console.log(">>> [roomConnection] signedInProfile:", signedInProfile);
+  if (!signedInProfile || !signedInProfile.name) {
+    console.log(">>> [roomConnection] Missing profile or name, redirecting to login...");
     redirectToLogin();
     return;
   }
+  // Ensure email has a fallback value if it is empty
+  if (!signedInProfile.email) {
+    signedInProfile.email = `${signedInProfile.uid || 'user'}@google.local`;
+  }
   window._novaUserProfile = signedInProfile;
+
+  let roomMode = "party";
+  let initialYoutubeUrl = "";
+  let currentVideoId = "";
+  let ytPlayer = null;
+  let isSyncing = false;
+
+  function extractVideoId(url) {
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : url;
+  }
+
+  function createPlayer(videoId) {
+    console.log(">>> [roomConnection] Creating YouTube Player with videoId:", videoId);
+    ytPlayer = new YT.Player("ytPlayer", {
+      videoId: videoId,
+      playerVars: {
+        playsinline: 1,
+        controls: roleFromUrl === "host" ? 1 : 0,
+        disablekb: roleFromUrl === "host" ? 0 : 1,
+        rel: 0
+      },
+      events: {
+        onReady: () => {
+          console.log(">>> [roomConnection] YouTube Player Ready");
+          if (roleFromUrl === "host") {
+            set(ref(db, `rooms/${roomIdFromUrl}/youtube`), {
+              state: "paused",
+              time: 0,
+              videoId: videoId,
+              sender: signedInProfile.uid,
+              timestamp: Date.now()
+            });
+          } else {
+            startYoutubeViewerSync();
+          }
+        },
+        onStateChange: onPlayerStateChange
+      }
+    });
+  }
+
+  function onPlayerStateChange(event) {
+    if (roleFromUrl !== "host" || !ytPlayer) return;
+    if (isSyncing) return;
+    
+    const state = event.data;
+    let dbState = "";
+    if (state === YT.PlayerState.PLAYING) {
+      dbState = "playing";
+    } else if (state === YT.PlayerState.PAUSED) {
+      dbState = "paused";
+    } else {
+      return;
+    }
+    
+    console.log(">>> [roomConnection] Host state change:", dbState, "at time:", ytPlayer.getCurrentTime());
+    set(ref(db, `rooms/${roomIdFromUrl}/youtube`), {
+      state: dbState,
+      time: ytPlayer.getCurrentTime(),
+      videoId: currentVideoId,
+      sender: signedInProfile.uid,
+      timestamp: Date.now()
+    });
+  }
+
+  function startYoutubeViewerSync() {
+    console.log(">>> [roomConnection] Starting YouTube Viewer Sync listener...");
+    onValue(ref(db, `rooms/${roomIdFromUrl}/youtube`), (snap) => {
+      if (!snap.exists() || !ytPlayer || typeof ytPlayer.getPlayerState !== "function") return;
+      const data = snap.val();
+      
+      if (data.videoId && data.videoId !== currentVideoId) {
+        currentVideoId = data.videoId;
+        ytPlayer.cueVideoById(data.videoId);
+      }
+      
+      const latency = (Date.now() - data.timestamp) / 1000;
+      const targetTime = data.state === "playing" ? data.time + latency : data.time;
+      
+      const currentTime = ytPlayer.getCurrentTime();
+      const diff = Math.abs(currentTime - targetTime);
+      
+      isSyncing = true;
+      if (diff > 2) {
+        ytPlayer.seekTo(targetTime, true);
+      }
+      
+      if (data.state === "playing") {
+        if (ytPlayer.getPlayerState() !== YT.PlayerState.PLAYING) {
+          ytPlayer.playVideo();
+        }
+      } else if (data.state === "paused") {
+        if (ytPlayer.getPlayerState() !== YT.PlayerState.PAUSED) {
+          ytPlayer.pauseVideo();
+        }
+      }
+      isSyncing = false;
+    });
+  }
+
+  window.changeYoutubeVideo = (urlOrId) => {
+    if (roleFromUrl !== "host" || !ytPlayer) return;
+    const videoId = extractVideoId(urlOrId);
+    if (!videoId) {
+      alert("Invalid YouTube URL or ID");
+      return;
+    }
+    console.log(">>> [roomConnection] Changing YouTube Video to:", videoId);
+    currentVideoId = videoId;
+    ytPlayer.loadVideoById(videoId);
+    
+    set(ref(db, `rooms/${roomIdFromUrl}/youtube`), {
+      state: "paused",
+      time: 0,
+      videoId: videoId,
+      sender: signedInProfile.uid,
+      timestamp: Date.now()
+    });
+  };
+
+  window.playYoutubeForEveryone = () => {
+    if (roleFromUrl !== "host" || !ytPlayer) return;
+    ytPlayer.playVideo();
+  };
+
+  window.pauseYoutubeForEveryone = () => {
+    if (roleFromUrl !== "host" || !ytPlayer) return;
+    ytPlayer.pauseVideo();
+  };
+
+  function setupYoutubeMode(youtubeUrl) {
+    console.log(">>> [roomConnection] Setting up YouTube Sync Mode with URL:", youtubeUrl);
+    
+    const remoteVideo = document.getElementById("remoteVideo");
+    if (remoteVideo) remoteVideo.style.display = "none";
+    
+    const noSignal = document.getElementById("noSignal");
+    if (noSignal) noSignal.style.display = "none";
+    
+    const ytPlayerContainer = document.getElementById("ytPlayerContainer");
+    if (ytPlayerContainer) ytPlayerContainer.style.display = "block";
+    
+    const changeScreenBtn = document.getElementById("changeScreenBtn");
+    if (changeScreenBtn) changeScreenBtn.style.display = "none";
+    const shareScreenBtn = document.getElementById("shareScreenBtn");
+    if (shareScreenBtn) shareScreenBtn.style.display = "none";
+    
+    if (roleFromUrl === "host") {
+      const youtubeHostSettings = document.getElementById("youtubeHostSettings");
+      if (youtubeHostSettings) {
+        youtubeHostSettings.style.display = "block";
+        const ytUrlInput = document.getElementById("ytUrlInput");
+        if (ytUrlInput) ytUrlInput.value = youtubeUrl;
+      }
+      const hostOnlySettings = document.getElementById("hostOnlySettings");
+      if (hostOnlySettings) hostOnlySettings.style.display = "none";
+    } else {
+      const viewerHostSettings = document.getElementById("viewerHostSettings");
+      if (viewerHostSettings) viewerHostSettings.style.display = "none";
+    }
+    
+    currentVideoId = extractVideoId(youtubeUrl) || "8NDApwV46aM";
+    
+    if (!window.YT) {
+      const tag = document.createElement("script");
+      tag.src = "https://www.youtube.com/iframe_api";
+      const firstScriptTag = document.getElementsByTagName("script")[0];
+      firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+    }
+    
+    if (window.YT && window.YT.Player) {
+      createPlayer(currentVideoId);
+    } else {
+      window.onYouTubeIframeAPIReady = () => {
+        createPlayer(currentVideoId);
+      };
+    }
+  }
 
   // Private room password check
   get(ref(db, `rooms/${roomIdFromUrl}`)).then((snap) => {
     if (snap.exists()) {
       const roomData = snap.val();
+      roomMode = roomData.mode || "party";
+      initialYoutubeUrl = roomData.youtubeUrl || "";
       if (roomData.visibility === "private" && roleFromUrl !== "host") {
         const enteredPassword = prompt("This watch room is password protected. Enter room password to join:");
         if (enteredPassword !== roomData.password) {
@@ -42,6 +230,10 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
           window.location.replace("/");
           return;
         }
+      }
+      
+      if (roomMode === "youtube") {
+        setupYoutubeMode(initialYoutubeUrl);
       }
     }
   });
@@ -803,6 +995,16 @@ window.denyViewer = async (vid, name) => { await set(ref(db, `rooms/${roomId}/wa
 window.kickViewer = async (vid, name) => { await set(ref(db, `rooms/${roomId}/viewers/${vid}/kicked`), true); setTimeout(() => remove(ref(db, `rooms/${roomId}/viewers/${vid}`)), 2000); try { screenPcMap[vid]?.close(); } catch (_) { } delete screenPcMap[vid]; delete connectedViewers[vid]; renderPeopleTab(); showToast(`👢 ${name} removed`); };
 window.muteAllViewers = async () => { if (!isHost || !roomId) return; await set(ref(db, `rooms/${roomId}/muteAll`), Date.now()); showToast("🤫 Muted all viewers"); };
 window.applyBitrateNow = () => { logStatus("Bitrate dynamically managed by Cloudflare SFU."); };
+window.setMovieVolume = (val) => {
+  const video = document.getElementById("remoteVideo");
+  if (video) {
+    video.volume = val / 100;
+  }
+  const display = document.getElementById("movieVolVal");
+  if (display) {
+    display.textContent = `${val}%`;
+  }
+};
 
 window.pushHostSettings = () => {
   if (!isHost || !roomId) return;
@@ -2087,8 +2289,26 @@ window.addEventListener('offline', () => { logStatus('Network offline.'); showTo
   const userInput = document.getElementById("userName");
   if (userInput && signedInProfile?.name) userInput.value = signedInProfile.name;
 
+  const isMobileDevice = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+  if (isMobileDevice) {
+    console.log(">>> [roomConnection] Mobile device detected, hiding WebRTC controls");
+    const elementsToHide = [
+      "changeScreenBtn", "shareScreenBtn", "noHeatBtnMain", "noHeatBtnQuick",
+      "quickResSelect", "quickResSelectFS", "drawToggleToolbar", "drawToggleToolbarFS",
+      "nonFsTrigger", "lowDataGroup", "actionBtns"
+    ];
+    elementsToHide.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.setProperty("display", "none", "important");
+    });
+  }
+
   // Auto-connect after UI settles
   setTimeout(async () => {
+    if (roomMode === "youtube") {
+      console.log(">>> [roomConnection] Bypassing WebRTC stream connection (YouTube mode active)");
+      return;
+    }
     if (roleFromUrl === "host") {
       try {
         const statusSnap = await get(ref(db, `rooms/${roomIdFromUrl}/signals/streamStatus/active`));

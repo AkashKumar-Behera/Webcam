@@ -41,6 +41,11 @@ export default function DashboardPage() {
       setAppTheme(localStorage.getItem("nova_theme") || "gunmetal");
       setAppFont(localStorage.getItem("nova_font") || "inter");
       setSidebarCollapsed(localStorage.getItem("nova_sidebar_collapsed") === "true");
+      const checkMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+      setIsMobile(checkMobile);
+      if (checkMobile) {
+        setMode("youtube");
+      }
     } catch {}
   }, []);
 
@@ -65,9 +70,10 @@ export default function DashboardPage() {
   const [photoURL, setPhotoURL] = useState("");
   const [bio, setBio] = useState("");
 
-  // Room configs
   const [room, setRoom] = useState("");
   const [mode, setMode] = useState("party");
+  const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [isMobile, setIsMobile] = useState(false);
   const [mood, setMood] = useState({ id: "movie", emoji: "🎬", label: "Movie Night" });
   const [enableMic, setEnableMic] = useState(true);
   const [showHostSettings, setShowHostSettings] = useState(false);
@@ -112,16 +118,54 @@ export default function DashboardPage() {
     // Auth verification
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       const localProfile = localStorage.getItem(PROFILE_KEY);
-      if (!user && !localProfile) {
-        router.push("/login");
+      if (!user) {
+        if (!localProfile) {
+          router.push("/login");
+        }
       } else {
-        const uid = user?.uid || (localProfile ? JSON.parse(localProfile).uid : "");
+        const uid = user.uid;
         setMyUid(uid);
         setLoading(false);
-        if (uid) {
-          syncUserData(uid);
-          unsubFriends = listenToFriendsAndNotifs(uid);
-          syncOnlineStatus(uid);
+        syncUserData(uid);
+        unsubFriends = listenToFriendsAndNotifs(uid);
+        syncOnlineStatus(uid);
+
+        // Auto-fix: if database/local storage has a fallback email, but Firebase Auth has the real email, update it!
+        try {
+          const parsed = localProfile ? JSON.parse(localProfile) : {};
+          if (user.email && (!parsed.email || parsed.email.endsWith("@google.local"))) {
+            console.log(">>> [Dashboard] Auto-syncing real Google email:", user.email);
+            const updatedProfile = {
+              uid: user.uid,
+              name: user.displayName || user.email.split("@")[0] || "Nova User",
+              email: user.email,
+              provider: user.providerData?.[0]?.providerId || "google",
+              photoURL: user.photoURL || ""
+            };
+            localStorage.setItem(PROFILE_KEY, JSON.stringify(updatedProfile));
+            localStorage.setItem("watchparty_name", updatedProfile.name);
+            localStorage.setItem("watchparty_email", updatedProfile.email);
+            
+            // Sync to RTDB
+            set(ref(db, `users/${user.uid}`), {
+              name: updatedProfile.name,
+              email: updatedProfile.email,
+              photoURL: updatedProfile.photoURL,
+              provider: updatedProfile.provider,
+              lastActive: Date.now()
+            }).catch(err => console.error("Auto-sync RTDB fail:", err));
+            
+            // Sync to Firestore
+            setDoc(doc(firestore, "users", user.uid), {
+              name: updatedProfile.name,
+              email: updatedProfile.email,
+              photoURL: updatedProfile.photoURL,
+              provider: updatedProfile.provider,
+              lastActive: Date.now()
+            }, { merge: true }).catch(err => console.error("Auto-sync Firestore fail:", err));
+          }
+        } catch (e) {
+          console.warn("Auto-sync profile check failed:", e);
         }
       }
     });
@@ -335,6 +379,8 @@ export default function DashboardPage() {
       password: visibility === "private" ? roomPassword : "",
       moodLabel: mood.label,
       moodEmoji: mood.emoji,
+      mode: mode,
+      youtubeUrl: mode === "youtube" ? youtubeUrl.trim() : "",
       createdAt: Date.now()
     });
 
@@ -691,6 +737,10 @@ export default function DashboardPage() {
                       <button 
                         className="room-join-btn" 
                         onClick={() => {
+                          if (r.mode === "party" && isMobile) {
+                            alert("Watch Party (WebRTC Screen Share) is desktop-only. You cannot join this room on mobile. Try hosting or joining a YouTube sync room!");
+                            return;
+                          }
                           if (r.visibility === "private") {
                             const pwd = prompt("This room is private. Enter room password to join:");
                             if (pwd !== r.password) {
@@ -736,22 +786,40 @@ export default function DashboardPage() {
                       <div style={{ marginTop: "10px" }}>
                         <div className="modal-section-title">Session Type</div>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                          <div 
+                          <button 
                             className={`mode-btn ${mode === "party" ? "active-mode" : ""}`} 
-                            onClick={() => setMode("party")}
+                            onClick={() => !isMobile && setMode("party")}
+                            disabled={isMobile}
+                            style={{ opacity: isMobile ? 0.4 : 1, cursor: isMobile ? "not-allowed" : "pointer" }}
+                            title={isMobile ? "Desktop Only" : ""}
+                            type="button"
                           >
                             <span className="material-symbols-outlined">groups</span>
-                            Watch Party
-                          </div>
-                          <div 
-                            className={`mode-btn ${mode === "broadcast" ? "active-mode" : ""}`} 
-                            onClick={() => setMode("broadcast")}
+                            Watch Party {isMobile && "💻"}
+                          </button>
+                          <button 
+                            className={`mode-btn ${mode === "youtube" ? "active-mode" : ""}`} 
+                            onClick={() => setMode("youtube")}
+                            type="button"
                           >
-                            <span className="material-symbols-outlined">radio</span>
-                            Broadcast
-                          </div>
+                            <span className="material-symbols-outlined">smart_display</span>
+                            YouTube Sync
+                          </button>
                         </div>
                       </div>
+
+                      {mode === "youtube" && (
+                        <div style={{ marginTop: "12px" }}>
+                          <div className="modal-section-title">YouTube URL / Video ID</div>
+                          <input 
+                            className="modal-input" 
+                            value={youtubeUrl} 
+                            onChange={(e) => setYoutubeUrl(e.target.value)} 
+                            placeholder="Paste YouTube Video URL or ID" 
+                            required
+                          />
+                        </div>
+                      )}
 
                       <div>
                         <div className="modal-section-title">Your Mood Tonight 🌙</div>

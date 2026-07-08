@@ -91,10 +91,11 @@ function LoginFormContent() {
   };
 
   const profileFromGoogle = (user: any): Profile => {
+    const emailVal = user.email || user.providerData?.[0]?.email || `${user.uid}@google.local`;
     return {
       uid: user.uid,
-      name: user.displayName || user.email?.split("@")[0] || "Nova User",
-      email: user.email || "",
+      name: user.displayName || emailVal.split("@")[0] || "Nova User",
+      email: emailVal,
       provider: "google",
       photoURL: user.photoURL || ""
     };
