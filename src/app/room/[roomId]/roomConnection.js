@@ -318,8 +318,8 @@ export function startRoomConnection(roomIdFromUrl, roleFromUrl) {
     }
 
     if (roleFromUrl === "host") {
-      const ytUrlInputGroup = document.getElementById("ytUrlInputGroup");
-      if (ytUrlInputGroup) ytUrlInputGroup.style.display = "block";
+      const ytUrlBar = document.getElementById("ytUrlBar");
+      if (ytUrlBar) ytUrlBar.style.display = "flex";
       const ytUrlInput = document.getElementById("ytUrlInput");
       if (ytUrlInput) ytUrlInput.value = youtubeUrl;
       const hostOnlySettings = document.getElementById("hostOnlySettings");
@@ -859,10 +859,64 @@ function saveTimeCapsule() {
   const dur = Math.floor((Date.now() - startTime) / 60000);
   const capsule = { roomId, date: new Date().toLocaleDateString(), duration: dur + ' min', mood: window._currentMood?.label || '—', role: isHost ? 'Host' : 'Viewer' };
   const prev = JSON.parse(localStorage.getItem('saath_memories') || '[]');
-  prev.unshift(capsule); if (prev.length > 20) prev.pop();
+  prev.unshift(capsule); if (prev.length > 10) prev.pop(); // Limit to 10 entries
   localStorage.setItem('saath_memories', JSON.stringify(prev));
   if (dur >= 2) showToast(`✨ ${dur} min together saved in memories!`);
 }
+
+function saveWatchMemory(videoId) {
+  if (!roomIdFromUrl) return;
+  
+  let videoTitle = "YouTube Video";
+  if (ytPlayer && typeof ytPlayer.getVideoData === "function") {
+    const vdata = ytPlayer.getVideoData();
+    if (vdata && vdata.title) videoTitle = vdata.title;
+  }
+  
+  const capsule = {
+    type: "youtube",
+    roomId: roomIdFromUrl,
+    videoId: videoId,
+    title: videoTitle,
+    date: new Date().toLocaleDateString(),
+    duration: "YouTube",
+    mood: window._currentMood?.label || 'Movie Night',
+    role: isHost ? 'Host' : 'Viewer'
+  };
+
+  const prev = JSON.parse(localStorage.getItem('saath_memories') || '[]');
+  const exists = prev.some(m => m.videoId === videoId && m.roomId === roomIdFromUrl);
+  if (!exists) {
+    prev.unshift(capsule);
+    if (prev.length > 10) prev.pop(); // Limit to 10 entries
+    localStorage.setItem('saath_memories', JSON.stringify(prev));
+    console.log(">>> [roomConnection] Saved watch memory for videoId:", videoId);
+  }
+}
+
+window.changeYoutubeVideoFromUrl = async () => {
+  if (!isHost) return;
+  const input = document.getElementById("ytUrlInput");
+  const url = input?.value.trim();
+  if (!url) return;
+  
+  const videoId = extractVideoId(url);
+  if (videoId) {
+    console.log(">>> [roomConnection] Changing YouTube Video to ID:", videoId);
+    input.value = "";
+    
+    // Write new videoId to RTDB
+    await set(ref(db, `rooms/${roomId}/youtube/videoId`), videoId);
+    await set(ref(db, `rooms/${roomId}/youtube/state`), "playing");
+    await set(ref(db, `rooms/${roomId}/youtube/time`), 0);
+    await set(ref(db, `rooms/${roomId}/youtube/timestamp`), Date.now() + serverTimeOffset);
+    
+    saveWatchMemory(videoId);
+    showToast("📺 Loading new video...");
+  } else {
+    showToast("⚠️ Invalid YouTube URL");
+  }
+};
 
 window.handleScreenEnd = () => {
   if (!isHost) return;
@@ -1555,6 +1609,123 @@ window.confirmHost = async () => {
   showToast("🎬 Live! Room: " + roomId);
 };
 
+window.confirmHostYoutube = async () => {
+  gestureUnlock();
+  roomId = document.getElementById("roomId").value.trim();
+  myName = document.getElementById("userName").value.trim() || "Host";
+  if (!roomId) {
+    roomId = Math.random().toString(36).substr(2, 8).toUpperCase();
+    document.getElementById("roomId").value = roomId;
+  }
+  isHost = true;
+  window._myVid = "host";
+  startSilenceLoop();
+  const ns = document.getElementById("noSignal");
+  if (ns) ns.classList.add("hidden");
+  const liveBadge = document.getElementById("liveBadge");
+  if (liveBadge) liveBadge.style.display = "flex";
+  const sourceTag = document.getElementById("sourceTag");
+  if (sourceTag) {
+    sourceTag.style.display = "";
+    sourceTag.textContent = "HOSTING";
+  }
+  updateConnStatus("connected");
+  changeActionBtns("session");
+  hostInfo = { name: myName, role: 'host' };
+  document.getElementById("hostOnlySettings")?.style.removeProperty("display");
+  const lowDataGroup = document.getElementById("lowDataGroup");
+  if (lowDataGroup) lowDataGroup.style.display = "none";
+  window.switchTab("chat");
+  renderPeopleTab();
+  fetchFriends();
+  
+  // Initialize Cloudflare Voice Host Connection in YouTube mode
+  try {
+    cfApp = new RealtimeApp();
+    const pc = new RTCPeerConnection(servers);
+    screenPcMap["host_cf"] = pc;
+    
+    // Add default audio transceiver for media channel negotiation
+    pc.addTransceiver('audio', { direction: 'recvonly' });
+    
+    const offer = await pc.createOffer();
+    const mungedOffer = applyCodecPreferences(offer.sdp);
+    await pc.setLocalDescription({ type: "offer", sdp: mungedOffer });
+    
+    const newSessionResult = await cfApp.newSession(mungedOffer);
+    await pc.setRemoteDescription(new RTCSessionDescription(newSessionResult.sessionDescription));
+    
+    myCfSessionId = cfApp.sessionId;
+    
+    // Announce presenter details so viewers can connect to host's audio session
+    const roomRef = ref(db, `rooms/${roomId}`);
+    await set(ref(db, `rooms/${roomId}/host`), {
+      name: myName,
+      uid: signedInProfile.uid,
+      created: Date.now(),
+      cfSessionId: myCfSessionId,
+      cfTrackVideo: "",
+      cfTrackAudio: "",
+      role: 'host',
+      mood: window._currentMood?.label || 'Movie Night'
+    }).catch(e => logStatus(`Firebase Host Error: ${e.message}`));
+    onDisconnect(roomRef).remove();
+    
+    const unsubW = onChildAdded(ref(db, `rooms/${roomId}/waitroom`), snap => {
+      const vid = snap.key, data = snap.val(); if (!data || !vid || data.status) return;
+      logStatus(`Auto-approving join request from: ${data.name}`);
+      set(ref(db, `rooms/${roomId}/waitroom/${vid}/status`), "approved");
+      if (data.token) {
+        approvedTokens[vid] = data.token;
+      }
+    });
+    
+    const unsubVoice = onChildAdded(ref(db, `rooms/${roomId}/voice`), async snap => {
+      const peerVid = snap.key; if (peerVid === window._myVid || !snap.val()) return;
+      pullVoiceTracks(snap.val().cfSessionId, snap.val().trackName, pc);
+    });
+    
+    firebaseUnsubs.push(unsubW, unsubVoice);
+    
+    const viewersRef = ref(db, `rooms/${roomId}/viewers`);
+    const unsubAdded = onChildAdded(viewersRef, (snap) => {
+      const vid = snap.key;
+      if (!connectedViewers[vid]) {
+        get(ref(db, `rooms/${roomId}/viewers/${vid}/ready`)).then(s => { 
+          if (!s.exists()) return;
+          const n = s.val()?.name || "Viewer"; 
+          const uid = s.val()?.uid || null;
+          connectedViewers[vid] = { name: n, uid: uid }; 
+          renderPeopleTab(); 
+          addSystemMsg(`👋 ${n} joined`); 
+          playProceduralSound("join"); 
+        });
+      }
+    });
+    
+    const unsubRemoved = onChildRemoved(viewersRef, (snap) => {
+      const vid = snap.key;
+      if (connectedViewers[vid]) {
+        const n = connectedViewers[vid].name;
+        delete connectedViewers[vid];
+        renderPeopleTab();
+        addSystemMsg(`🚪 ${n} left`);
+      }
+    });
+    
+    firebaseUnsubs.push(unsubAdded, unsubRemoved);
+    
+    startHostStats(); startChatListener(); startTypingListener(); startReactionListener();
+    window.pushHostSettings();
+    _reconnectAttempt = 0;
+    _startConnPoll();
+    showToast("🎬 Live! Room: " + roomId);
+  } catch (e) {
+    console.error("Failed to start voice host session:", e);
+    logStatus(`Voice Host Error: ${e.message}`);
+  }
+};
+
 
 console.log("LOG 3.4: Viewer functions starting");
 /* VIEWER */
@@ -1707,7 +1878,7 @@ window.confirmJoin = async () => {
       if (hostData.cfTrackVideo) trackObjects.push({ location: 'remote', sessionId: hostData.cfSessionId, trackName: hostData.cfTrackVideo });
       if (hostData.cfTrackAudio) trackObjects.push({ location: 'remote', sessionId: hostData.cfSessionId, trackName: hostData.cfTrackAudio });
 
-      if (trackObjects.length === 0) {
+      if (trackObjects.length === 0 && roomMode !== "youtube") {
         logStatus("No tracks available from presenter."); return;
       }
 
@@ -1721,19 +1892,21 @@ window.confirmJoin = async () => {
       const newSessionResult = await cfApp.newSession(munged3);
       await pc.setRemoteDescription(new RTCSessionDescription(newSessionResult.sessionDescription));
 
-      logStatus("Requesting tracks from Cloudflare Call...");
-      const newRemoteTracksResult = await cfApp.newTracks(trackObjects);
-      if (newRemoteTracksResult.requiresImmediateRenegotiation) {
-        switch (newRemoteTracksResult.sessionDescription.type) {
-          case 'offer':
-            await pc.setRemoteDescription(new RTCSessionDescription(newRemoteTracksResult.sessionDescription));
-            const answer = await pc.createAnswer();
-            const mungedAns = applyCodecPreferences(answer.sdp);
-            await pc.setLocalDescription({ type: 'answer', sdp: mungedAns });
-            await cfApp.sendAnswerSDP(mungedAns);
-            logStatus("Tracks negotiation completed.");
-            break;
-          default: throw new Error("Expected offer SDP from Cloudflare");
+      if (trackObjects.length > 0) {
+        logStatus("Requesting tracks from Cloudflare Call...");
+        const newRemoteTracksResult = await cfApp.newTracks(trackObjects);
+        if (newRemoteTracksResult.requiresImmediateRenegotiation) {
+          switch (newRemoteTracksResult.sessionDescription.type) {
+            case 'offer':
+              await pc.setRemoteDescription(new RTCSessionDescription(newRemoteTracksResult.sessionDescription));
+              const answer = await pc.createAnswer();
+              const mungedAns = applyCodecPreferences(answer.sdp);
+              await pc.setLocalDescription({ type: 'answer', sdp: mungedAns });
+              await cfApp.sendAnswerSDP(mungedAns);
+              logStatus("Tracks negotiation completed.");
+              break;
+            default: throw new Error("Expected offer SDP from Cloudflare");
+          }
         }
       }
 
@@ -2094,6 +2267,16 @@ window.leaveCall = async () => {
 /* CHAT */
 window.sendChat = () => {
   const inp = document.getElementById("chatInput"), msg = inp?.value.trim();
+  if (!msg || !roomId) return;
+  const name = document.getElementById("userName")?.value.trim() || (isHost ? "Host" : "Viewer");
+  stopLocalTyping();
+  push(ref(db, `rooms/${roomId}/chat`), { sender: name, text: msg, time: Date.now() });
+  inp.value = "";
+  inp.style.height = "auto";
+};
+
+window.sendChatFs = () => {
+  const inp = document.getElementById("fsChatInput"), msg = inp?.value.trim();
   if (!msg || !roomId) return;
   const name = document.getElementById("userName")?.value.trim() || (isHost ? "Host" : "Viewer");
   stopLocalTyping();
@@ -2554,6 +2737,53 @@ window.addEventListener('offline', () => { logStatus('Network offline.'); showTo
     }
   };
 
+  window.toggleFullscreen = () => {
+    const container = document.getElementById("videoWrap");
+    if (!container) return;
+    if (!document.fullscreenElement) {
+      container.requestFullscreen().catch((err) => {
+        console.error(`Error attempting to enable fullscreen: ${err.message}`);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  };
+
+  window.togglePip = async () => {
+    const video = document.getElementById("remoteVideo");
+    if (!video) return;
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+      } else {
+        if (document.pictureInPictureEnabled) {
+          await video.requestPictureInPicture();
+        } else {
+          showToast("⚠️ PiP not supported on this browser");
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  window.toggleFsMenu = (menuId) => {
+    const el = document.getElementById(menuId);
+    if (!el) return;
+    const menus = ["fsReactMenu", "fsChatBox"];
+    menus.forEach(id => {
+      if (id !== menuId) {
+        const other = document.getElementById(id);
+        if (other) other.style.display = "none";
+      }
+    });
+    if (el.style.display === "none" || el.style.display === "") {
+      el.style.display = "flex";
+    } else {
+      el.style.display = "none";
+    }
+  };
+
   // Pre-populate Room ID and User Name from URL and Local Cache Profile
   const roomInput = document.getElementById("roomId");
   if (roomInput) roomInput.value = roomIdFromUrl || "";
@@ -2576,22 +2806,23 @@ window.addEventListener('offline', () => { logStatus('Network offline.'); showTo
 
   // Auto-connect after UI settles
   setTimeout(async () => {
-    if (roomMode === "youtube") {
-      console.log(">>> [roomConnection] Bypassing WebRTC stream connection (YouTube mode active)");
-      return;
-    }
     if (roleFromUrl === "host") {
-      try {
-        const statusSnap = await get(ref(db, `rooms/${roomIdFromUrl}/signals/streamStatus/active`));
-        if (statusSnap.exists() && statusSnap.val() === true) {
-          logStatus("A screen share session is already active. Auto-joining as viewer...");
-          window.confirmJoin();
-        } else {
-          logStatus("Auto-starting screen share presentation...");
+      if (roomMode === "youtube") {
+        logStatus("Auto-starting YouTube voice host session...");
+        window.confirmHostYoutube();
+      } else {
+        try {
+          const statusSnap = await get(ref(db, `rooms/${roomIdFromUrl}/signals/streamStatus/active`));
+          if (statusSnap.exists() && statusSnap.val() === true) {
+            logStatus("A screen share session is already active. Auto-joining as viewer...");
+            window.confirmJoin();
+          } else {
+            logStatus("Auto-starting screen share presentation...");
+            window.confirmHost();
+          }
+        } catch (e) {
           window.confirmHost();
         }
-      } catch (e) {
-        window.confirmHost();
       }
     } else {
       logStatus("Auto-joining room...");

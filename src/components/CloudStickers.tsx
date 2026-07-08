@@ -19,14 +19,11 @@ type Props = {
   onSelect?: (url: string) => void;
 };
 
-// Simple in-memory cache so the picker opens instantly after first load
-const stickerCache: Record<string, Sticker[]> = {};
-let folderCache: string[] | null = null;
-
 export default function CloudStickers({ uid, mode, onSelect }: Props) {
   const [folders, setFolders] = useState<string[]>([]);
-  const [activeFolder, setActiveFolder] = useState<string>("");
+  const [activeFolder, setActiveFolder] = useState<string>("All");
   const [stickers, setStickers] = useState<Sticker[]>([]);
+  const [allStickersMap, setAllStickersMap] = useState<Record<string, Sticker[]>>({});
   const [loadingFolders, setLoadingFolders] = useState(true);
   const [loadingStickers, setLoadingStickers] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -36,49 +33,78 @@ export default function CloudStickers({ uid, mode, onSelect }: Props) {
 
   const rootPath = "stickers/global";
 
+  const loadAllStickersData = useCallback(async (folderList: string[], force = false) => {
+    const map: Record<string, Sticker[]> = {};
+    for (const folder of folderList) {
+      const cacheKey = `nova_stickers_cache_${folder}`;
+      let list: Sticker[] = [];
+      try {
+        const cached = localStorage.getItem(cacheKey);
+        if (cached && !force) {
+          list = JSON.parse(cached);
+        }
+      } catch (e) {}
+
+      if (list.length === 0 || force) {
+        try {
+          const res = await listAll(sRef(storage, `${rootPath}/${folder}`));
+          const items = res.items.filter((i) => i.name !== ".keep");
+          list = await Promise.all(
+            items.map(async (item) => ({
+              name: item.name,
+              fullPath: item.fullPath,
+              url: await getDownloadURL(item)
+            }))
+          );
+          localStorage.setItem(cacheKey, JSON.stringify(list));
+        } catch (err) {
+          console.error("Failed to load stickers for folder:", folder, err);
+        }
+      }
+      map[folder] = list;
+    }
+    setAllStickersMap(map);
+  }, []);
+
   const loadFolders = useCallback(async (force = false) => {
-    // Read from localStorage cache first for instant load
     try {
       const cached = localStorage.getItem("nova_folders_cache");
       if (cached && !force) {
         const parsed = JSON.parse(cached);
         setFolders(parsed);
         setLoadingFolders(false);
-        if (parsed.length > 0) setActiveFolder((f) => f || parsed[0]);
+        setActiveFolder((f) => f || "All");
+        loadAllStickersData(parsed);
+        return;
       }
     } catch (e) {}
 
     try {
       const res = await listAll(sRef(storage, rootPath));
       const names = res.prefixes.map((p) => p.name);
-      
-      const cached = localStorage.getItem("nova_folders_cache");
-      if (force || !cached || JSON.stringify(names) !== cached) {
-        localStorage.setItem("nova_folders_cache", JSON.stringify(names));
-        setFolders(names);
-        if (names.length > 0) setActiveFolder((f) => f || names[0]);
-      }
+      localStorage.setItem("nova_folders_cache", JSON.stringify(names));
+      setFolders(names);
+      setActiveFolder((f) => f || "All");
+      loadAllStickersData(names, force);
     } catch (err) {
       console.error("Failed to list sticker folders:", err);
     } finally {
       setLoadingFolders(false);
     }
-  }, []);
+  }, [loadAllStickersData]);
 
   const loadStickers = useCallback(async (folder: string, force = false) => {
-    if (!folder) return;
+    if (!folder || folder === "All") return;
     const cacheKey = `nova_stickers_cache_${folder}`;
 
-    // Read from localStorage cache first for instant load
     try {
       const cached = localStorage.getItem(cacheKey);
       if (cached && !force) {
-        const parsed = JSON.parse(cached);
-        setStickers(parsed);
+        setStickers(JSON.parse(cached));
+        return;
       }
     } catch (e) {}
 
-    // Show loading spinner only if we don't have cached data to avoid flicker
     if (!localStorage.getItem(cacheKey)) {
       setLoadingStickers(true);
     }
@@ -93,12 +119,8 @@ export default function CloudStickers({ uid, mode, onSelect }: Props) {
           url: await getDownloadURL(item)
         }))
       );
-      
-      const cached = localStorage.getItem(cacheKey);
-      if (force || !cached || JSON.stringify(list) !== cached) {
-        localStorage.setItem(cacheKey, JSON.stringify(list));
-        setStickers(list);
-      }
+      localStorage.setItem(cacheKey, JSON.stringify(list));
+      setStickers(list);
     } catch (err) {
       console.error("Failed to load stickers:", err);
       setStickers([]);
@@ -108,9 +130,13 @@ export default function CloudStickers({ uid, mode, onSelect }: Props) {
   }, []);
 
   useEffect(() => { loadFolders(); }, [loadFolders]);
+  
   useEffect(() => {
-    if (activeFolder) loadStickers(activeFolder);
-    else setStickers([]);
+    if (activeFolder && activeFolder !== "All") {
+      loadStickers(activeFolder);
+    } else {
+      setStickers([]);
+    }
   }, [activeFolder, loadStickers]);
 
   const createFolder = async () => {
@@ -118,7 +144,6 @@ export default function CloudStickers({ uid, mode, onSelect }: Props) {
     if (!name) return;
     if (folders.includes(name)) { setActiveFolder(name); setShowNewFolder(false); return; }
     try {
-      // Storage has no empty folders — a .keep placeholder makes it exist in the cloud
       await uploadString(sRef(storage, `${rootPath}/${name}/.keep`), "");
       await loadFolders(true);
       setActiveFolder(name);
@@ -131,7 +156,7 @@ export default function CloudStickers({ uid, mode, onSelect }: Props) {
   };
 
   const handleUpload = async (files: FileList | null) => {
-    if (!files || files.length === 0 || !activeFolder) return;
+    if (!files || files.length === 0 || !activeFolder || activeFolder === "All") return;
     setUploading(true);
     try {
       for (const file of Array.from(files)) {
@@ -141,6 +166,7 @@ export default function CloudStickers({ uid, mode, onSelect }: Props) {
         await uploadBytes(sRef(storage, `${rootPath}/${activeFolder}/${safeName}`), file);
       }
       await loadStickers(activeFolder, true);
+      await loadAllStickersData(folders, true);
     } catch (err) {
       console.error("Upload failed:", err);
       alert("Sticker upload failed. Check Firebase Storage rules.");
@@ -154,7 +180,21 @@ export default function CloudStickers({ uid, mode, onSelect }: Props) {
     if (!confirm(`Delete sticker "${sticker.name}"?`)) return;
     try {
       await deleteObject(sRef(storage, sticker.fullPath));
-      await loadStickers(activeFolder, true);
+      if (activeFolder && activeFolder !== "All") {
+        await loadStickers(activeFolder, true);
+      }
+      await loadAllStickersData(folders, true);
+    } catch (err) {
+      console.error("Delete failed:", err);
+    }
+  };
+
+  const deleteStickerFromAll = async (folderName: string, sticker: Sticker) => {
+    if (!confirm(`Delete sticker "${sticker.name}" from "${folderName}"?`)) return;
+    try {
+      await deleteObject(sRef(storage, sticker.fullPath));
+      await loadStickers(folderName, true);
+      await loadAllStickersData(folders, true);
     } catch (err) {
       console.error("Delete failed:", err);
     }
@@ -166,7 +206,7 @@ export default function CloudStickers({ uid, mode, onSelect }: Props) {
       const res = await listAll(sRef(storage, `${rootPath}/${folder}`));
       await Promise.all(res.items.map((item) => deleteObject(item)));
       localStorage.removeItem(`nova_stickers_cache_${folder}`);
-      setActiveFolder("");
+      setActiveFolder("All");
       await loadFolders(true);
     } catch (err) {
       console.error("Folder delete failed:", err);
@@ -183,15 +223,15 @@ export default function CloudStickers({ uid, mode, onSelect }: Props) {
           <span className="stk-muted">Loading folders…</span>
         ) : (
           <>
-            {folders.map((f) => (
+            {["All", ...folders].map((f) => (
               <button
                 key={f}
                 className={`stk-folder-chip ${activeFolder === f ? "active" : ""}`}
                 onClick={() => setActiveFolder(f)}
               >
-                <span className="material-symbols-outlined">folder</span>
+                <span className="material-symbols-outlined">{f === "All" ? "auto_awesome" : "folder"}</span>
                 {f}
-                {!isPicker && activeFolder === f && (
+                {f !== "All" && !isPicker && activeFolder === f && (
                   <span
                     className="material-symbols-outlined stk-folder-del"
                     title="Delete folder"
@@ -229,40 +269,70 @@ export default function CloudStickers({ uid, mode, onSelect }: Props) {
         )}
       </div>
 
-      {/* Sticker grid */}
-      <div className="stk-grid-wrap">
-        {!activeFolder && !loadingFolders ? (
-          <div className="stk-empty">
-            <span className="material-symbols-outlined">emoji_emotions</span>
-            <p>{isPicker ? "No sticker folders yet. Create them from the Dashboard → Stickers tab." : "Create a folder to start saving stickers."}</p>
-          </div>
-        ) : loadingStickers ? (
-          <div className="stk-grid">
-            {[1, 2, 3, 4, 5, 6].map((n) => <div key={n} className="stk-item shimmer-element" />)}
-          </div>
-        ) : stickers.length === 0 && activeFolder ? (
-          <div className="stk-empty">
-            <span className="material-symbols-outlined">add_photo_alternate</span>
-            <p>{isPicker ? "This folder is empty." : "Upload PNG / GIF / WebP stickers to this folder."}</p>
-          </div>
+      {/* Sticker grid / Grouped view */}
+      <div className="stk-grid-wrap" style={{ maxHeight: "420px", overflowY: "auto" }}>
+        {activeFolder === "All" ? (
+          folders.length === 0 ? (
+            <div className="stk-empty">
+              <span className="material-symbols-outlined">emoji_emotions</span>
+              <p>{isPicker ? "No sticker folders yet." : "Create a folder to start saving stickers."}</p>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "20px", paddingRight: "4px" }}>
+              {folders.map((folderName) => {
+                const folderStickers = allStickersMap[folderName] || [];
+                if (folderStickers.length === 0) return null;
+                return (
+                  <div key={folderName} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    <div style={{ fontSize: "11px", fontWeight: "700", color: "var(--accent)", borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>folder</span> {folderName}
+                    </div>
+                    <div className="stk-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(70px, 1fr))", gap: "8px" }}>
+                      {folderStickers.map((s) => (
+                        <div key={s.fullPath} className="stk-item" onClick={() => isPicker && onSelect?.(s.url)} style={{ width: "70px", height: "70px", position: "relative" }}>
+                          <img src={s.url} alt={s.name} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                          {!isPicker && (
+                            <button className="stk-del" title="Delete" onClick={(e) => { e.stopPropagation(); deleteStickerFromAll(folderName, s); }}>
+                              <span className="material-symbols-outlined">close</span>
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )
         ) : (
-          <div className="stk-grid">
-            {stickers.map((s) => (
-              <div key={s.fullPath} className="stk-item" onClick={() => isPicker && onSelect?.(s.url)}>
-                <img src={s.url} alt={s.name} loading="lazy" />
-                {!isPicker && (
-                  <button className="stk-del" title="Delete" onClick={() => deleteSticker(s)}>
-                    <span className="material-symbols-outlined">close</span>
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
+          loadingStickers ? (
+            <div className="stk-grid">
+              {[1, 2, 3, 4, 5, 6].map((n) => <div key={n} className="stk-item shimmer-element" />)}
+            </div>
+          ) : stickers.length === 0 && activeFolder ? (
+            <div className="stk-empty">
+              <span className="material-symbols-outlined">add_photo_alternate</span>
+              <p>{isPicker ? "This folder is empty." : "Upload PNG / GIF / WebP stickers to this folder."}</p>
+            </div>
+          ) : (
+            <div className="stk-grid">
+              {stickers.map((s) => (
+                <div key={s.fullPath} className="stk-item" onClick={() => isPicker && onSelect?.(s.url)}>
+                  <img src={s.url} alt={s.name} loading="lazy" />
+                  {!isPicker && (
+                    <button className="stk-del" title="Delete" onClick={(e) => { e.stopPropagation(); deleteSticker(s); }}>
+                      <span className="material-symbols-outlined">close</span>
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )
         )}
       </div>
 
       {/* Upload row (manage mode only) */}
-      {!isPicker && activeFolder && (
+      {!isPicker && activeFolder && activeFolder !== "All" && (
         <div className="stk-upload-row">
           <input
             ref={fileInputRef}

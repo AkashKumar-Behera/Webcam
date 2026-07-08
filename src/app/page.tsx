@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { auth, db, firestore } from "../lib/firebase";
-import { onAuthStateChanged, signOut } from "firebase/auth";
+import { auth, db, firestore, storage } from "../lib/firebase";
+import { onAuthStateChanged, signOut, updateProfile } from "firebase/auth";
 import { ref, set, get, push, onValue, remove, onDisconnect, query as rtdbQuery, limitToLast } from "firebase/database";
 import { collection, doc, getDoc, getDocs, setDoc, deleteDoc, query, where, onSnapshot } from "firebase/firestore";
 import CloudStickers from "../components/CloudStickers";
+import { LayoutDashboard, Users, Bell, Smile, Settings, User } from "lucide-react";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -40,6 +41,7 @@ export default function DashboardPage() {
     try {
       setAppTheme(localStorage.getItem("nova_theme") || "gunmetal");
       setAppFont(localStorage.getItem("nova_font") || "inter");
+      setIconPack(localStorage.getItem("nova_icon_pack") || "material");
       setSidebarCollapsed(localStorage.getItem("nova_sidebar_collapsed") === "true");
       const checkMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
       setIsMobile(checkMobile);
@@ -69,6 +71,8 @@ export default function DashboardPage() {
   const [email, setEmail] = useState("");
   const [photoURL, setPhotoURL] = useState("");
   const [bio, setBio] = useState("");
+  const [uploadingPic, setUploadingPic] = useState(false);
+  const [iconPack, setIconPack] = useState("material");
 
   const [room, setRoom] = useState("");
   const [mode, setMode] = useState("party");
@@ -370,6 +374,145 @@ export default function DashboardPage() {
     setRoom(code);
   };
 
+  const deleteSingleMemory = (index: number) => {
+    const updated = [...memories];
+    updated.splice(index, 1);
+    localStorage.setItem("saath_memories", JSON.stringify(updated));
+    setMemories(updated);
+  };
+
+  const clearAllMemories = () => {
+    if (window.confirm("Are you sure you want to clear all watch memories?")) {
+      localStorage.setItem("saath_memories", "[]");
+      setMemories([]);
+    }
+  };
+
+  const handleProfilePicChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !myUid) return;
+
+    setUploadingPic(true);
+    try {
+      // 1. Compress Image using canvas
+      const img = new Image();
+      img.src = URL.createObjectURL(file);
+      await new Promise((resolve) => (img.onload = resolve));
+
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      const maxSize = 250; // Keep PFP small and optimized
+      let width = img.width;
+      let height = img.height;
+
+      if (width > height) {
+        if (width > maxSize) {
+          height *= maxSize / width;
+          width = maxSize;
+        }
+      } else {
+        if (height > maxSize) {
+          width *= maxSize / height;
+          height = maxSize;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      ctx?.drawImage(img, 0, 0, width, height);
+
+      const blob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob((b) => resolve(b), "image/png", 0.85);
+      });
+
+      if (!blob) throw new Error("Compression failed");
+
+      // 2. Upload to Firebase Storage
+      const { ref: sRef, uploadBytes, getDownloadURL } = await import("firebase/storage");
+      const fileRef = sRef(storage, `users/${myUid}/profile_pic.png`);
+      await uploadBytes(fileRef, blob);
+      const downloadURL = await getDownloadURL(fileRef);
+
+      // 3. Update Auth User photoURL
+      if (auth.currentUser) {
+        await updateProfile(auth.currentUser, { photoURL: downloadURL });
+      }
+
+      // 4. Update Database profile picture
+      await set(ref(db, `users/${myUid}/photoURL`), downloadURL);
+      
+      const { doc: firestoreDoc, updateDoc } = await import("firebase/firestore");
+      const userDocRef = firestoreDoc(firestore, "users", myUid);
+      await updateDoc(userDocRef, { photoURL: downloadURL }).catch(() => {});
+
+      setPhotoURL(downloadURL);
+
+      // Update local storage signedInProfile
+      const localProfileStr = localStorage.getItem(PROFILE_KEY);
+      if (localProfileStr) {
+        const localProfile = JSON.parse(localProfileStr);
+        localProfile.photoURL = downloadURL;
+        localStorage.setItem(PROFILE_KEY, JSON.stringify(localProfile));
+      }
+
+      alert("Profile picture updated successfully!");
+    } catch (err: any) {
+      console.error(err);
+      alert("Failed to upload profile picture: " + err.message);
+    } finally {
+      setUploadingPic(false);
+    }
+  };
+
+  const applyIconPack = (pack: string) => {
+    setIconPack(pack);
+    localStorage.setItem("nova_icon_pack", pack);
+  };
+
+  const renderIcon = (name: string, size = 20) => {
+    if (iconPack === "lucide") {
+      switch (name) {
+        case "dashboard": return <LayoutDashboard size={size} style={{ color: "inherit" }} />;
+        case "friends": return <Users size={size} style={{ color: "inherit" }} />;
+        case "notifications": return <Bell size={size} style={{ color: "inherit" }} />;
+        case "stickers": return <Smile size={size} style={{ color: "inherit" }} />;
+        case "settings": return <Settings size={size} style={{ color: "inherit" }} />;
+        case "profile": return <User size={size} style={{ color: "inherit" }} />;
+        default: return <Settings size={size} style={{ color: "inherit" }} />;
+      }
+    } else {
+      const materialName = name === "profile" ? "account_circle" : 
+                           name === "friends" ? "groups" : 
+                           name === "stickers" ? "emoji_emotions" : name;
+      return <span className="material-symbols-outlined" style={{ fontSize: `${size}px`, color: "inherit" }}>{materialName}</span>;
+    }
+  };
+
+  const replayYoutubeSession = async (videoId: string, title: string) => {
+    const finalRoom = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const roomRef = ref(db, `rooms/${finalRoom}`);
+    const currentUid = myUid || auth.currentUser?.uid || "guest_" + Math.random().toString(36).substring(2, 5);
+    const hostPayload = {
+      name: name.trim() || "Host",
+      email: email || `${(name.trim() || "Host").toLowerCase()}@manual.local`,
+      uid: currentUid,
+      photoURL: photoURL || ""
+    };
+
+    await set(roomRef, {
+      host: hostPayload,
+      visibility: "public",
+      password: "",
+      moodLabel: "Movie Night",
+      moodEmoji: "🎬",
+      mode: "youtube",
+      youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
+      createdAt: Date.now()
+    });
+
+    router.push(`/room/${finalRoom}?role=host`);
+  };
+
   const handleStartHost = async () => {
     if (!name.trim()) {
       alert("Please enter your name.");
@@ -618,7 +761,7 @@ export default function DashboardPage() {
             onClick={() => setActiveTab("dashboard")}
             title={sidebarCollapsed ? "Dashboard" : undefined}
           >
-            <span className="material-symbols-outlined">dashboard</span>
+            {renderIcon("dashboard", 20)}
             <span className="sidebar-label">Dashboard</span>
           </button>
           <button 
@@ -626,16 +769,16 @@ export default function DashboardPage() {
             onClick={() => setActiveTab("friends")}
             title={sidebarCollapsed ? "Friends" : undefined}
           >
-            <span className="material-symbols-outlined">groups</span>
+            {renderIcon("friends", 20)}
             <span className="sidebar-label">Friends</span>
           </button>
           <button 
             className={`sidebar-item ${activeTab === "notifications" ? "active" : ""}`}
             onClick={() => setActiveTab("notifications")}
-            title={sidebarCollapsed ? "Invites & Notifications" : undefined}
+            title={sidebarCollapsed ? "Notifications" : undefined}
           >
-            <span className="material-symbols-outlined">notifications</span>
-            <span className="sidebar-label">Invites & Notifs</span>
+            {renderIcon("notifications", 20)}
+            <span className="sidebar-label">Notifications</span>
             {notifications.length > 0 && (
               <span style={{ marginLeft: "auto", background: "#ef4444", color: "#fff", borderRadius: "50%", padding: "2px 6px", fontSize: "10px", fontWeight: "bold" }}>
                 {notifications.length}
@@ -647,7 +790,7 @@ export default function DashboardPage() {
             onClick={() => setActiveTab("stickers")}
             title={sidebarCollapsed ? "Stickers" : undefined}
           >
-            <span className="material-symbols-outlined">emoji_emotions</span>
+            {renderIcon("stickers", 20)}
             <span className="sidebar-label">Stickers</span>
           </button>
           <button
@@ -655,7 +798,7 @@ export default function DashboardPage() {
             onClick={() => setActiveTab("settings")}
             title={sidebarCollapsed ? "Settings" : undefined}
           >
-            <span className="material-symbols-outlined">tune</span>
+            {renderIcon("settings", 20)}
             <span className="sidebar-label">Settings</span>
           </button>
           <button
@@ -663,7 +806,7 @@ export default function DashboardPage() {
             onClick={() => setActiveTab("profile")}
             title={sidebarCollapsed ? "Profile" : undefined}
           >
-            <span className="material-symbols-outlined">person</span>
+            {renderIcon("profile", 20)}
             <span className="sidebar-label">Profile</span>
           </button>
         </nav>
@@ -1325,6 +1468,37 @@ export default function DashboardPage() {
 
             <div className="settings-card">
               <div className="settings-card-title">
+                {renderIcon("settings", 20)}
+                Icon Pack
+              </div>
+              <div style={{ display: "flex", gap: "24px", marginTop: "12px" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", color: "#fff", fontSize: "13px", fontWeight: "500" }}>
+                  <input 
+                    type="radio" 
+                    name="iconPack" 
+                    value="material" 
+                    checked={iconPack === "material"} 
+                    onChange={() => applyIconPack("material")}
+                    style={{ accentColor: "var(--accent)", cursor: "pointer" }}
+                  />
+                  Google Material Symbols
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", color: "#fff", fontSize: "13px", fontWeight: "500" }}>
+                  <input 
+                    type="radio" 
+                    name="iconPack" 
+                    value="lucide" 
+                    checked={iconPack === "lucide"} 
+                    onChange={() => applyIconPack("lucide")}
+                    style={{ accentColor: "var(--accent)", cursor: "pointer" }}
+                  />
+                  Lucide Icons
+                </label>
+              </div>
+            </div>
+
+            <div className="settings-card">
+              <div className="settings-card-title">
                 <span className="material-symbols-outlined">text_fields</span>
                 Font
               </div>
@@ -1343,48 +1517,141 @@ export default function DashboardPage() {
         )}
 
         {activeTab === "profile" && (
-          <div className="profile-container">
-            <div className="profile-card">
-              <div className="profile-avatar-large">
-                {photoURL ? (
-                  <img src={photoURL} alt={name} referrerPolicy="no-referrer" style={{ width: "100%", height: "100%", borderRadius: "50%" }} />
-                ) : (
-                  name.charAt(0).toUpperCase()
-                )}
-              </div>
-              <span className="profile-name">{name}</span>
-              <span className="profile-email">{email}</span>
-              
-              <div className="profile-bio-box">
-                <div className="profile-bio-label">Bio</div>
-                <textarea 
-                  className="profile-bio-textarea"
-                  value={bio}
-                  onChange={(e) => setBio(e.target.value)}
-                  placeholder="Tell your friends about yourself..."
+          <div className="profile-container" style={{ display: "flex", gap: "32px", width: "100%", height: "100%", padding: "24px", boxSizing: "border-box" }}>
+            <div className="profile-left-col" style={{ width: "320px", flexShrink: 0 }}>
+              <div className="profile-card" style={{ width: "100%", boxSizing: "border-box" }}>
+                <div 
+                  onClick={() => document.getElementById("profilePicInput")?.click()}
+                  title="Click to change profile picture"
+                  className="profile-avatar-large" 
+                  style={{ position: "relative", cursor: "pointer", overflow: "hidden" }}
+                >
+                  {photoURL ? (
+                    <img src={photoURL} alt={name} referrerPolicy="no-referrer" style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }} />
+                  ) : (
+                    name.charAt(0).toUpperCase()
+                  )}
+                  {uploadingPic ? (
+                    <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <span style={{ fontSize: "11px", color: "var(--accent)" }}>...</span>
+                    </div>
+                  ) : (
+                    <div className="avatar-hover-overlay" style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", opacity: 0, transition: "opacity 0.2s ease" }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: "24px", color: "#fff" }}>photo_camera</span>
+                    </div>
+                  )}
+                </div>
+                <input 
+                  type="file" 
+                  id="profilePicInput" 
+                  accept="image/*" 
+                  onChange={handleProfilePicChange} 
+                  style={{ display: "none" }} 
                 />
-                <button className="profile-bio-save" onClick={saveBio}>Save Bio</button>
+                <span className="profile-name">{name}</span>
+                <span className="profile-email">{email}</span>
+                
+                <div className="profile-bio-box">
+                  <div className="profile-bio-label">Bio</div>
+                  <textarea 
+                    className="profile-bio-textarea"
+                    value={bio}
+                    onChange={(e) => setBio(e.target.value)}
+                    placeholder="Tell your friends about yourself..."
+                  />
+                  <button className="profile-bio-save" onClick={saveBio}>Save Bio</button>
+                </div>
               </div>
             </div>
 
-            {/* Watch memories history */}
-            <div>
-              <h2 className="memories-title">Watch Memories</h2>
-              {memories.length === 0 ? (
-                <div style={{ textAlign: "center", color: "var(--text-muted-2)", padding: "20px" }}>
-                  <p>Memories of watch sessions will appear here.</p>
+            <div className="profile-right-col" style={{ flex: 1 }}>
+              {/* Watch memories history */}
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                  <h2 className="memories-title" style={{ margin: 0 }}>Watch Memories</h2>
+                  {memories.length > 0 && (
+                    <button 
+                      onClick={clearAllMemories} 
+                      style={{ background: "rgba(239, 68, 68, 0.12)", border: "1px solid rgba(239, 68, 68, 0.25)", color: "#ef4444", fontSize: "11px", padding: "5px 12px", borderRadius: "100px", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", fontWeight: "600", transition: "0.2s" }}
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>delete_sweep</span> Clear All
+                    </button>
+                  )}
                 </div>
-              ) : (
-                memories.map((m, idx) => (
-                  <div key={idx} className="memory-item">
-                    <div className="memory-details">
-                      <span className="memory-room">Room {m.roomId} ({m.role})</span>
-                      <span className="memory-meta">Played {m.mood} on {m.date}</span>
-                    </div>
-                    <span className="memory-meta" style={{ fontWeight: 600, color: "var(--accent)" }}>{m.duration}</span>
+                {memories.length === 0 ? (
+                  <div style={{ textAlign: "center", color: "var(--text-muted-2)", padding: "20px" }}>
+                    <p>Memories of watch sessions will appear here.</p>
                   </div>
-                ))
-              )}
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "16px" }}>
+                    {memories.slice(0, 10).map((m, idx) => (
+                      <div key={idx} className="memory-card" style={{ background: "rgba(255, 255, 255, 0.02)", border: "1px solid rgba(255, 255, 255, 0.06)", borderRadius: "16px", padding: "16px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                        {m.type === "youtube" && m.videoId ? (
+                          <div 
+                            onClick={() => replayYoutubeSession(m.videoId, m.title)}
+                            title="Click to Host and Play this video!"
+                            className="memory-thumb-container"
+                            style={{ width: "100%", height: "140px", borderRadius: "10px", overflow: "hidden", position: "relative", marginBottom: "4px", cursor: "pointer" }}
+                          >
+                            <img src={`https://img.youtube.com/vi/${m.videoId}/mqdefault.jpg`} alt={m.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} referrerPolicy="no-referrer" />
+                            
+                            {/* Hover Play Overlay */}
+                            <div className="thumb-hover-overlay" style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", opacity: 0, transition: "opacity 0.2s ease" }}>
+                              <span className="material-symbols-outlined" style={{ fontSize: "36px", color: "var(--accent)" }}>play_circle</span>
+                            </div>
+
+                            <div style={{ position: "absolute", bottom: "8px", right: "8px", background: "rgba(15,12,22,0.85)", backdropFilter: "blur(4px)", padding: "2px 8px", borderRadius: "6px", fontSize: "9px", color: "var(--accent)", fontWeight: "700", border: "1px solid rgba(201,75,123,0.3)" }}>
+                              YOUTUBE
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ width: "100%", height: "140px", borderRadius: "10px", overflow: "hidden", position: "relative", marginBottom: "4px", background: "linear-gradient(135deg, rgba(201,75,123,0.06), rgba(124,58,237,0.06))", border: "1px solid rgba(255,255,255,0.03)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: "36px", color: "var(--accent)", opacity: 0.4 }}>screen_share</span>
+                          </div>
+                        )}
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span className="memory-room" style={{ fontSize: "11px", fontWeight: "700", color: "var(--accent)" }}>
+                            {m.type === "youtube" ? "📺 YouTube" : "🎥 Screen Share"}
+                          </span>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                            <span className="memory-meta" style={{ fontSize: "10px", padding: "2px 8px", background: "rgba(255, 255, 255, 0.05)", borderRadius: "100px", color: "var(--text-muted)" }}>
+                              {m.role || "Host"}
+                            </span>
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); deleteSingleMemory(idx); }} 
+                              style={{ background: "transparent", border: "none", color: "rgba(255,255,255,0.3)", cursor: "pointer", display: "flex", padding: 0 }} 
+                              title="Delete Memory"
+                            >
+                              <span className="material-symbols-outlined" style={{ fontSize: "15px" }}>delete</span>
+                            </button>
+                          </div>
+                        </div>
+                        <div className="memory-details" style={{ flex: 1 }}>
+                          <span 
+                            onClick={() => { if (m.type === "youtube" && m.videoId) replayYoutubeSession(m.videoId, m.title); }}
+                            style={{ fontSize: "13px", fontWeight: "600", color: "#fff", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", lineHeight: "1.4", cursor: m.type === "youtube" ? "pointer" : "default" }} 
+                            title={m.title || `Room ${m.roomId}`}
+                          >
+                            {m.title || `Room ${m.roomId}`}
+                          </span>
+                          {m.type === "youtube" && (
+                            <span style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px", display: "block" }}>
+                              Room: {m.roomId}
+                            </span>
+                          )}
+                          <span className="memory-meta" style={{ fontSize: "10px", color: "var(--text-muted-2)", marginTop: "4px", display: "block" }}>
+                            Played {m.mood || "—"} on {m.date}
+                          </span>
+                        </div>
+                        <div style={{ borderTop: "1px solid rgba(255,255,255,0.04)", paddingTop: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>Duration</span>
+                          <span style={{ fontSize: "11px", fontWeight: "700", color: "#fff" }}>{m.duration}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}

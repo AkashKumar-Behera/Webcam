@@ -193,6 +193,13 @@ export default function RoomPage({ params: paramsPromise }: { params: Promise<{ 
         <video id="remoteVideo" autoplay playsinline muted style="z-index:5; position:relative;"></video>
         <audio id="bgAudio" playsinline loop></audio>
 
+        <!-- YouTube URL Bar (Host only, floating at the top of videoWrap) -->
+        <div id="ytUrlBar" style="display:none; position:absolute; top:16px; left:50%; transform:translateX(-50%); width:80%; max-width:500px; z-index:1000; background:rgba(15,12,22,0.85); backdrop-filter:blur(20px); border:1px solid rgba(255,255,255,0.1); border-radius:100px; padding:4px 8px; align-items:center; gap:8px; box-shadow:0 10px 30px rgba(0,0,0,0.5);">
+          <span class="material-symbols-outlined" style="color:var(--accent); font-size:20px; margin-left:8px;">link</span>
+          <input type="text" id="ytUrlInput" placeholder="Paste YouTube link here..." style="flex:1; background:transparent; border:none; color:#fff; font-size:12px; outline:none; padding:6px 0;" onkeypress="if(event.key==='Enter'){window.changeYoutubeVideoFromUrl();}"/>
+          <button onclick="window.changeYoutubeVideoFromUrl()" style="background:var(--accent); color:#fff; border:none; border-radius:100px; padding:6px 16px; font-size:11px; font-weight:700; cursor:pointer; transition:0.2s;">Play</button>
+        </div>
+
         <!-- YouTube Player Container -->
         <div id="ytPlayerContainer" style="display:none; width:100%; height:100%; position:relative; z-index:6; min-height:360px; border-radius:20px; overflow:hidden; background:#000;">
           <div id="ytPlayer" style="width:100%; height:100%;"></div>
@@ -241,79 +248,54 @@ export default function RoomPage({ params: paramsPromise }: { params: Promise<{ 
         </div>
 
 
-        <div class="video-btns">
-          <!-- Popup Menu -->
-          <div id="nonFsPopup" class="non-fs-popup">
-             <!-- QUICK NO-HEAT (IN POPUP) -->
-             <button class="vbtn" id="noHeatBtnQuick" onclick="document.getElementById('noHeatToggle').click()" title="Toggle No Heat" style="border-color:#339933; background:rgba(51,153,51,0.1) !important;">
-               <span class="material-symbols-outlined" style="color:#339933;">bolt</span>
-             </button>
-             <button class="vbtn" id="changeScreenBtn" onclick="window.replaceScreenShareBtn()" style="display:none;" title="Change Screen"><span class="material-symbols-outlined">screen_share</span></button>
-            <button class="vbtn" onclick="toggleFullscreen()" title="Fullscreen"><span class="material-symbols-outlined">fullscreen</span></button>
-            <button class="vbtn" onclick="togglePip()" title="Picture-in-Picture"><span class="material-symbols-outlined">picture_in_picture</span></button>
-            <button class="vbtn" id="refreshBtn" onclick="manualResync()" style="display:none;" title="Refresh Stream"><span class="material-symbols-outlined">refresh</span></button>
-            <!-- Resolution Select (Main) -->
-            <select id="quickResSelect" class="vbtn" style="display:none; width:42px; padding:0; font-size:9px;" onchange="document.getElementById('scrResS').value=this.value; window.replaceScreenShareBtn()">
-               <option value="2160p">4K</option><option value="1440p">2K</option><option value="1080p" selected>1080</option><option value="720p">720</option>
-            </select>
-            <button class="vbtn" id="drawToggleToolbar" onclick="toggleDrawToolbar()" style="display:none;" title="Draw Tool"><span class="material-symbols-outlined">draw</span></button>
-            <button class="vbtn" id="shareScreenBtn" onclick="window.startScreenShare()" title="Share Screen" style="display:none;"><span class="material-symbols-outlined">screen_share</span></button>
-            <button class="vbtn" id="micBtnMain" onclick="toggleVoiceChat()" title="Toggle Microphone" style="background:rgba(239,68,68,0.2);border-color:rgba(239,68,68,0.3)"><span class="material-symbols-outlined" id="micIconMain">mic_off</span></button>
-          </div>
-
-          <!-- Main Screen Quick No Heat -->
-          <button class="vbtn" id="noHeatBtnMain" onclick="document.getElementById('noHeatToggle').click()" style="background:#000 !important; border:1px solid #339933 !important; animation: micPulse 2s infinite;" title="No Heat Mode">
-            <span class="material-symbols-outlined" style="color:#339933; font-size:20px;">bolt</span>
-          </button>
+        <!-- Floating Controls Left -->
+        <div class="float-toolbar-left" id="floatToolbarLeft">
+          <button class="float-vbtn" onclick="window.toggleFullscreen()" title="Fullscreen"><span class="material-symbols-outlined">fullscreen</span></button>
+          <button class="float-vbtn" onclick="window.togglePip()" title="Picture-in-Picture"><span class="material-symbols-outlined">picture_in_picture</span></button>
+          <button class="float-vbtn" id="changeScreenBtn" onclick="window.replaceScreenShareBtn()" style="display:none;" title="Change Screen"><span class="material-symbols-outlined">screen_share</span></button>
+          <button class="float-vbtn" id="refreshBtn" onclick="manualResync()" style="display:none;" title="Resync"><span class="material-symbols-outlined">refresh</span></button>
           
-          <!-- Trigger Button -->
-          <button class="vbtn" id="nonFsTrigger" onclick="toggleNonFsPopup()" style="background:rgba(15,12,22,0.9) !important; border:1px solid rgba(255,255,255,0.1) !important; box-shadow:none !important;"><span class="material-symbols-outlined" style="opacity:0.6;">apps</span></button>
+          <select id="quickResSelect" class="float-vbtn" style="display:none;" onchange="document.getElementById('scrResS').value=this.value; window.replaceScreenShareBtn()">
+             <option value="2160p">4K</option><option value="1440p">2K</option><option value="1080p" selected>1080</option><option value="720p">720</option>
+          </select>
+          
+          <button class="float-vbtn" id="drawToggleToolbar" onclick="toggleDrawToolbar()" style="display:none;" title="Draw Tool"><span class="material-symbols-outlined">draw</span></button>
+          <button class="float-vbtn" id="shareScreenBtn" onclick="window.startScreenShare()" style="display:none;" title="Share Screen"><span class="material-symbols-outlined">screen_share</span></button>
+          <button class="float-vbtn" id="micBtnMain" onclick="toggleVoiceChat()" title="Toggle Microphone" style="background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.25); color:#ef4444;"><span class="material-symbols-outlined" id="micIconMain">mic_off</span></button>
         </div>
 
-          <!-- FULLSCREEN ONLY: LEFT POPUP -->
-          <div class="fs-mob-left">
-            <div id="mobSessionMenu" class="mob-menu-expand">
-               <button class="vbtn" onclick="toggleFullscreen()"><span class="material-symbols-outlined">fullscreen_exit</span></button>
-               <button class="vbtn" onclick="togglePip()"><span class="material-symbols-outlined">picture_in_picture</span></button>
-               <button class="vbtn" onclick="manualResync()"><span class="material-symbols-outlined">refresh</span></button>
-               <select id="quickResSelectFS" class="vbtn" style="width:38px; padding:0; font-size:9px;" onchange="document.getElementById('scrResS').value=this.value; window.replaceScreenShareBtn()">
-                  <option value="2160p">4K</option><option value="1440p">2K</option><option value="1080p" selected>1080</option><option value="720p">720</option>
-               </select>
-               <button class="vbtn" id="drawToggleToolbarFS" onclick="toggleDrawToolbar()"><span class="material-symbols-outlined">draw</span></button>
-               <button class="vbtn" id="fsMicBtn" onclick="toggleVoiceChat()"><span class="material-symbols-outlined">mic</span></button>
-            </div>
-            <button class="vbtn" id="mobNavToggle" onclick="window.toggleMobControls()" style="background:var(--accent); color:#fff; border:none; box-shadow:0 4px 15px var(--accent-glow);">
-               <span class="material-symbols-outlined">widgets</span>
-            </button>
-          </div>
+        <!-- Floating Close (Leave) button bottom-left -->
+        <button class="float-close-btn" onclick="window.leaveRoom && window.leaveRoom()" title="Leave Room">
+          <span class="material-symbols-outlined">close</span>
+        </button>
 
-          <!-- FULLSCREEN ONLY: RIGHT INTERACTION STACK -->
-          <div class="fs-mob-right">
-             <!-- Reactions -->
-             <div style="position:relative;">
-               <div id="fsReactMenu" class="fs-popup-menu" style="display:none; position:absolute; bottom:130%; right:0; padding:10px; flex-wrap:wrap; width:180px; gap:8px;">
-                 <button class="emj-btn" onclick="sendReaction('❤️')">❤️</button><button class="emj-btn" onclick="sendReaction('😂')">😂</button><button class="emj-btn" onclick="sendReaction('👍')">👍</button><button class="emj-btn" onclick="sendReaction('😮')">😮</button><button class="emj-btn" onclick="sendReaction('🔥')">🔥</button><button class="emj-btn" onclick="sendReaction('💀')">💀</button>
-               </div>
-               <button class="vbtn" onclick="window.toggleFsMenu('fsReactMenu')" style="background:rgba(201,75,123,0.3); border-color:rgba(201,75,123,0.5);"><span class="material-symbols-outlined">add_reaction</span></button>
-             </div>
-             <!-- Chat -->
-             <div style="position:relative;">
-              <div id="fsChatBox" class="fs-popup-menu" style="display:none; position:absolute; bottom:140%; right:0; width:320px; max-width:85vw; flex-direction:column; background:rgba(15,12,22,0.9); backdrop-filter:blur(25px); border:1px solid rgba(201,75,123,0.3); border-radius:30px; box-shadow:0 15px 50px rgba(0,0,0,0.6); overflow:hidden; transform-origin:bottom right;">
-                  <div id="fsChatMessages" style="flex:1; overflow-y:auto; padding:15px; display:flex; flex-direction:column; gap:10px; max-height:300px; scrollbar-width:none;"></div>
-                  <div id="fsChatTypingStatus" class="typing-status" hidden></div>
-                  <div style="display:flex; padding:12px; background:rgba(255,255,255,0.03); border-top:1px solid rgba(255,255,255,0.08); align-items:center; gap:10px;">
-                    <input type="file" id="fsChatInputFile" accept="image/*" style="display:none;" onchange="window.handleChatImageUpload(this)">
-                    <button onclick="document.getElementById('fsChatInputFile').click()" style="background:none; border:none; color:rgba(255,255,255,0.5); cursor:pointer;"><span class="material-symbols-outlined" style="font-size:20px;">image</span></button>
-                    <button onclick="window.toggleStickerPicker && window.toggleStickerPicker()" style="background:none; border:none; color:rgba(255,255,255,0.5); cursor:pointer;" title="Cloud Stickers"><span class="material-symbols-outlined" style="font-size:20px;">emoji_emotions</span></button>
-                    <textarea id="fsChatInput" placeholder="Type a message..." rows="1" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:20px; color:#fff; flex:1; font-size:13px; padding:10px 15px; outline:none; resize:none; font-family:inherit;" onkeypress="if(event.key==='Enter' && !event.shiftKey){event.preventDefault(); window.sendChatFs();}"></textarea>
-                    <button onclick="window.sendChatFs()" style="width:40px; height:40px; border-radius:50%; background:var(--accent); border:none; color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:0.2s;"><span class="material-symbols-outlined" style="font-size:18px;">send</span></button>
-                  </div>
-               </div>
-               <button class="vbtn" id="fsChatBtn" onclick="window.toggleFsMenu('fsChatBox'); document.getElementById('fsChatInput').focus();" style="background:rgba(201,75,123,0.3); border-color:rgba(201,75,123,0.5);">
-                 <span class="material-symbols-outlined">chat</span>
-                 <span id="fsChatBadge" style="display:none; position:absolute; top:-2px; right:-2px; width:10px; height:10px; background:var(--accent); border-radius:50%; border:2px solid #000;"></span>
-               </button>
-             </div>
+        <!-- Floating Right Action Buttons -->
+        <div class="float-actions-right">
+          <!-- Reactions -->
+          <div style="position:relative;">
+            <div id="fsReactMenu" class="fs-popup-menu" style="display:none; position:absolute; bottom:130%; right:0; padding:10px; flex-wrap:wrap; width:180px; gap:8px; background:rgba(15,12,22,0.9); border:1px solid rgba(201,75,123,0.3); border-radius:20px; box-shadow:0 10px 25px rgba(0,0,0,0.5);">
+              <button class="emj-btn" onclick="sendReaction('❤️')">❤️</button><button class="emj-btn" onclick="sendReaction('😂')">😂</button><button class="emj-btn" onclick="sendReaction('👍')">👍</button><button class="emj-btn" onclick="sendReaction('😮')">😮</button><button class="emj-btn" onclick="sendReaction('🔥')">🔥</button><button class="emj-btn" onclick="sendReaction('💀')">💀</button>
+            </div>
+            <button class="float-action-btn" onclick="window.toggleFsMenu('fsReactMenu')"><span class="material-symbols-outlined">add_reaction</span></button>
+          </div>
+          
+          <!-- Chat -->
+          <div style="position:relative;">
+            <div id="fsChatBox" class="fs-popup-menu" style="display:none; position:absolute; bottom:140%; right:0; width:320px; max-width:85vw; flex-direction:column; background:rgba(15,12,22,0.9); backdrop-filter:blur(25px); border:1px solid rgba(201,75,123,0.35); border-radius:24px; box-shadow:0 15px 40px rgba(0,0,0,0.5); overflow:hidden; transform-origin:bottom right;">
+              <div id="fsChatMessages" style="flex:1; overflow-y:auto; padding:15px; display:flex; flex-direction:column; gap:10px; max-height:260px; scrollbar-width:none;"></div>
+              <div id="fsChatTypingStatus" class="typing-status" hidden></div>
+              <div style="display:flex; padding:10px; background:rgba(255,255,255,0.03); border-top:1px solid rgba(255,255,255,0.08); align-items:center; gap:8px;">
+                <input type="file" id="fsChatInputFile" accept="image/*" style="display:none;" onchange="window.handleChatImageUpload(this)">
+                <button onclick="document.getElementById('fsChatInputFile').click()" style="background:none; border:none; color:rgba(255,255,255,0.5); cursor:pointer;"><span class="material-symbols-outlined" style="font-size:18px;">image</span></button>
+                <button onclick="window.toggleStickerPicker && window.toggleStickerPicker()" style="background:none; border:none; color:rgba(255,255,255,0.5); cursor:pointer;" title="Cloud Stickers"><span class="material-symbols-outlined" style="font-size:18px;">emoji_emotions</span></button>
+                <textarea id="fsChatInput" placeholder="Type a message..." rows="1" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:15px; color:#fff; flex:1; font-size:12px; padding:8px 12px; outline:none; resize:none; font-family:inherit;" onkeypress="if(event.key==='Enter' && !event.shiftKey){event.preventDefault(); window.sendChatFs();}"></textarea>
+                <button onclick="window.sendChatFs()" style="width:34px; height:34px; border-radius:50%; background:var(--accent); border:none; color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer;"><span class="material-symbols-outlined" style="font-size:16px;">send</span></button>
+              </div>
+            </div>
+            <button class="float-action-btn" id="fsChatBtn" onclick="window.toggleFsMenu('fsChatBox'); document.getElementById('fsChatInput').focus();" style="position:relative;">
+              <span class="material-symbols-outlined">chat</span>
+              <span id="fsChatBadge" style="display:none; position:absolute; top:-2px; right:-2px; width:10px; height:10px; background:var(--accent); border-radius:50%; border:2px solid #000;"></span>
+            </button>
           </div>
         </div>
 
@@ -321,6 +303,7 @@ export default function RoomPage({ params: paramsPromise }: { params: Promise<{ 
         <!-- Emoji Float Zone -->
         <div class="emoji-overlay" id="emojiOverlay"></div>
       </div>
+    </div>
 
       <!-- SIDE PANEL -->
       <div class="side-panel">
@@ -338,7 +321,7 @@ export default function RoomPage({ params: paramsPromise }: { params: Promise<{ 
         <button class="panel-tab active" onclick="window.switchTab('chat')" id="tabChat" style="position:relative;">Chat<span class="tab-badge" id="chatBadge" style="background:var(--accent);">!</span></button>
         <button class="panel-tab" onclick="window.switchTab('stats')" id="tabStats">Stats</button>
         <button class="panel-tab" onclick="window.switchTab('settings')" id="tabSettings">Settings</button>
-        <button class="panel-tab" onclick="window.switchTab('people')" id="tabPeople" style="position:relative;">People<span class="tab-badge" id="peopleBadge">0</span></button>
+        <button class="panel-tab" onclick="window.switchTab('people')" id="tabPeople" style="position:relative;">People</button>
       </div>
 
       <!-- CHAT TAB -->
@@ -461,13 +444,7 @@ export default function RoomPage({ params: paramsPromise }: { params: Promise<{ 
               <input type="checkbox" id="lowDataMode" style="width:16px;height:16px;cursor:pointer;" onchange="showToast(this.checked?'📉 Low Data Mode ON':'📉 Low Data Mode OFF')" />
               <label for="lowDataMode" style="margin:0;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text);">Low Data Mode</label>
             </div>
-            <div style="background:rgba(51, 153, 51, 0.1); border:1px solid rgba(51, 153, 51, 0.3); padding:10px; border-radius:12px; margin-top:10px; display:flex; align-items:center; justify-content:space-between; cursor:pointer;" onclick="document.getElementById('noHeatToggle').click()">
-              <div style="display:flex; flex-direction:column;">
-                <span style="font-size:12px; font-weight:700; color:#339933;">🚀 No Heat Mode</span>
-                <small style="font-size:9px; color:var(--text-muted);">Save battery & boost speed</small>
-              </div>
-              <input type="checkbox" id="noHeatToggle" style="width:18px; height:18px; cursor:pointer;" onchange="toggleNoHeat(this.checked)" onclick="event.stopPropagation()" />
-            </div>
+            <!-- No Heat Mode Removed -->
           </div>
 
           <!-- Viewer Host Info -->
