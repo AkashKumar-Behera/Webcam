@@ -1568,7 +1568,7 @@ window.confirmJoin = async () => {
   fetchFriends();
 
   // Mobile Gesture Unlock
-  const v = document.getElementById("remoteVideo"); if (v) { v.play().catch(() => { }); }
+  const v = document.getElementById("remoteVideo"); if (v && (v.src || v.srcObject)) { v.play().catch(() => { }); }
 
   document.getElementById("hostOnlySettings") && (document.getElementById("hostOnlySettings").style.display = "none");
   document.getElementById("lowDataGroup") && (document.getElementById("lowDataGroup").style.display = "flex");
@@ -2414,8 +2414,8 @@ window.recoverAutoplay = () => {
   gestureUnlock();
   const vid = document.getElementById("remoteVideo");
   const aud = document.getElementById("bgAudio");
-  if (vid) vid.play().catch(console.error);
-  if (aud) aud.play().catch(console.error);
+  if (vid && (vid.src || vid.srcObject)) vid.play().catch(() => {});
+  if (aud && (aud.src || aud.srcObject)) aud.play().catch(() => {});
 };
 
   console.log("LOG 3.5: Event listeners starting");
