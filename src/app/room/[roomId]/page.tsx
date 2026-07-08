@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { startRoomConnection } from "./roomConnection";
 import { auth, db } from "../../../lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { ref, push } from "firebase/database";
+import { ref, push, get } from "firebase/database";
 import CloudStickers from "../../../components/CloudStickers";
 
 function StickerPickerOverlay({ roomId }: { roomId: string }) {
@@ -66,14 +66,44 @@ export default function RoomPage({ params: paramsPromise }: { params: Promise<{ 
       return;
     }
 
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       console.log(">>> [Room Page] onAuthStateChanged user:", user ? user.uid : "null");
       if (user) {
-        // Read role query param
-        const search = new URLSearchParams(window.location.search);
-        const queryRole = search.get("role") || "viewer";
-        setRole(queryRole);
-        setLoading(false);
+        try {
+          // Fetch room details to verify host UID
+          const roomRef = ref(db, `rooms/${roomId}`);
+          const snap = await get(roomRef);
+          
+          let resolvedRole = "viewer";
+          if (snap.exists()) {
+            const roomData = snap.val();
+            const hostUid = roomData.host?.uid;
+            
+            if (hostUid && user.uid === hostUid) {
+              resolvedRole = "host";
+              // If the URL doesn't have role=host, update it silently
+              const search = new URLSearchParams(window.location.search);
+              if (search.get("role") !== "host") {
+                router.replace(`/room/${roomId}?role=host`);
+              }
+            } else {
+              resolvedRole = "viewer";
+              // If the URL has role=host but they are not the host, correct it
+              const search = new URLSearchParams(window.location.search);
+              if (search.get("role") === "host") {
+                router.replace(`/room/${roomId}?role=viewer`);
+              }
+            }
+          }
+          
+          setRole(resolvedRole);
+          setLoading(false);
+        } catch (err) {
+          console.error("Failed to verify room host:", err);
+          // Fallback to viewer on error
+          setRole("viewer");
+          setLoading(false);
+        }
       } else {
         // Only redirect if there is no localProfile (e.g. user manually logged out)
         const currentProfile = localStorage.getItem(PROFILE_KEY);
@@ -86,7 +116,7 @@ export default function RoomPage({ params: paramsPromise }: { params: Promise<{ 
     });
 
     return () => unsubscribe();
-  }, [router]);
+  }, [router, roomId]);
 
   useEffect(() => {
     if (!loading && roomId) {
