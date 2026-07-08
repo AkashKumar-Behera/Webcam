@@ -141,10 +141,15 @@ export default function RoomPage({ params: paramsPromise }: { params: Promise<{ 
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#030408] text-white">
-        <div className="text-center">
-          <span className="material-symbols-outlined text-4xl animate-spin text-[#10b981]">autorenew</span>
-          <p className="mt-2 text-sm text-[#94a3b8]">Loading Room Session...</p>
+      <div className="loading-screen">
+        <div className="loading-container">
+          <div className="loading-logo-container">
+            <div className="loading-logo-glow"></div>
+            <img src="/iconRm.png" alt="Nova" className="loading-logo" />
+            <div className="loading-spinner"></div>
+          </div>
+          <div className="loading-brand">Nova</div>
+          <p className="loading-subtext">Loading Room Session...</p>
         </div>
       </div>
     );
